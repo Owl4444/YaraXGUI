@@ -28,3 +28,7 @@ This includes number of rules and number of patterns hit during the match
 
 ### Pattern Matches
 This maps the file to the rule that was hit along with the actual data that were matched from the files.
+
+# Demo
+
+![img/YaraXGUI-demo.png](./img/YaraXGUI-demo.png)

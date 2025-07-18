@@ -1,6 +1,10 @@
 # YaraXGUI
 This contains the release of YaraXGUI which gives a graphical view of Yara-x. I foresee myself doing more YARA rule writings and therefore, it might be a good time to learn more about ImGUI as well.
 
+# Video Demo
+
+Can watch from this [link](https://youtu.be/RYoayoBdKNQ)
+
 ## Usage
 
 ### YARA Rule Input

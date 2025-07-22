@@ -1981,7 +1981,7 @@ void RenderYARAUI() {
         float button_height = 35.0f;
         float remaining_height = content_region.y - ImGui::GetCursorPosY() - 1.7 * button_height;
         float compilation_height = 180.0f;
-        float main_content_height = remaining_height - compilation_height - button_height - 100.0f;
+        float main_content_height = remaining_height - compilation_height - button_height - 60.0f;
         float left_panel_width = content_region.x * left_panel_ratio - 5.0f;
         float right_panel_width = content_region.x * right_panel_ratio - 5.0f;
         // Right Panel
@@ -2052,7 +2052,8 @@ void RenderYARAUI() {
         }
 
         // Compilation output
-        ImGui::Text("Compilation output");
+        //ImGui::Text("Compilation output");
+        ImGui::Spacing();
         ImGui::Separator();
         /*ImGui::BeginChild("CompilationOutput", ImVec2(-1, compilation_height), true, ImGuiWindowFlags_AlwaysVerticalScrollbar);
         ImGui::TextWrapped("%s", compilation_output_buffer.c_str());
@@ -2065,20 +2066,11 @@ void RenderYARAUI() {
 
         RenderCompilationOutput(140.0f);
 
-
-
-
-
-
-
-
-
-
-
-
+        /*
         if (ImGui::Button("Clear Output", ImVec2(150, button_height))) {
             compilation_output_buffer.clear();
         }
+        */
     }
     ImGui::End();
 }

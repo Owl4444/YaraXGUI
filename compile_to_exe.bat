@@ -1,0 +1,1 @@
+R:/YaraXGUI_Qt/YaraXGUI/.qtcreator/Python_3_13_7venv/Scripts/python.exe -m PyInstaller yaraxgui.spec

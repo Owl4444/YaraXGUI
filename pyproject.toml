@@ -1,0 +1,5 @@
+[project]
+name = "PySide Widgets Project"
+
+[tool.pyside6-project]
+files = ["form.ui", "mainwindow.py", "yara_highlighter.py"]

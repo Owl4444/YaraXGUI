@@ -838,23 +838,6 @@ class MainWindow(QMainWindow):
         # Show in status bar for immediate feedback
         self.statusBar().showMessage(error_msg, 5000)
     
-    def _show_success_message(self, message: str, details: str = "") -> None:
-        """
-        Show success message with consistent formatting.
-        
-        Args:
-            message: Main success message
-            details: Optional additional details
-        """
-        full_message = message
-        if details:
-            full_message += f": {details}"
-            
-        self.ui.tb_compilation_output.append(
-            f'<span style="color: green;">✅ {full_message}</span>'
-        )
-        self.statusBar().showMessage(message, 3000)
-    
     def _show_compilation_error_dialog(self, error_msg: str) -> None:
         """
         Show compilation error dialog for immediate user notification.
@@ -1455,19 +1438,6 @@ class MainWindow(QMainWindow):
                 '<span style="color: orange;">ℹ️ Rules modified - please recompile before scanning</span>'
             )
             self.statusBar().showMessage("⚠ Rules modified - recompile required", 3000)
-    
-    def set_ast_highlighting_enabled(self, enabled: bool):
-        """Enable or disable AST-based syntax highlighting for performance control."""
-        if hasattr(self, 'highlighter') and self.highlighter:
-            self.highlighter.set_ast_enabled(enabled)
-            status = "enabled" if enabled else "disabled"
-            self.statusBar().showMessage(f"AST-based highlighting {status}", 2000)
-    
-    def set_ast_file_size_limit(self, limit_kb: int):
-        """Set the file size limit for AST parsing (in KB)."""
-        if hasattr(self, 'highlighter') and self.highlighter:
-            self.highlighter.set_ast_file_size_limit(limit_kb * 1024)  # Convert KB to bytes
-            self.statusBar().showMessage(f"AST file size limit set to {limit_kb}KB", 2000)
 
     def _load_text_to_editor(self, text: str, source_path: str | None = None):
         """Load text into the editor after checking file size.
@@ -1519,39 +1489,6 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Load failed", f"Could not load YARA text:\n{e}")
     
-    def get_ast_highlighting_status(self) -> dict:
-        """Get current AST highlighting status and performance information."""
-        if hasattr(self, 'highlighter') and self.highlighter:
-            return self.highlighter.get_ast_status()
-        return {
-            'ast_available': False,
-            'ast_enabled': False,
-            'file_size_limit': 0,
-            'cache_active': False,
-            'cached_identifiers_count': 0
-        }
-    
-    def show_ast_performance_info(self):
-        """Show AST highlighting performance information to the user."""
-        status = self.get_ast_highlighting_status()
-        
-        info_lines = [
-            f"AST Library Available: {'✅ Yes' if status['ast_available'] else '❌ No'}",
-            f"AST Highlighting Enabled: {'✅ Yes' if status['ast_enabled'] else '❌ No'}",
-            f"File Size Limit: {status['file_size_limit'] // 1024}KB",
-            f"Cache Active: {'✅ Yes' if status['cache_active'] else '❌ No'}",
-            f"Cached Identifiers: {status['cached_identifiers_count']}"
-        ]
-        
-        current_file_size = len(self.ui.te_yara_editor.toPlainText())
-        info_lines.append(f"Current File Size: {current_file_size // 1024}KB ({current_file_size} chars)")
-        
-        if current_file_size > status['file_size_limit']:
-            info_lines.append("⚠️ Current file exceeds AST limit - using regex fallback")
-        
-        info_text = "\n".join(info_lines)
-        QMessageBox.information(self, "AST Highlighting Status", info_text)
-
     def on_save_rule(self):
         """Save the YARA rule from the editor to a file"""
         # Get the current text
@@ -1711,144 +1648,6 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             raise Exception(f"yaraast parsing failed: {str(e)}")
-
-    def format_yara_basic(self, text: str) -> str:
-        """
-        Fallback basic YARA formatting when yaraast is not available.
-        
-        Args:
-            text: Raw YARA rule text to format
-            
-        Returns:
-            Basic formatted YARA rule text with proper indentation
-        """
-        lines = text.split('\n')
-        formatted_lines = []
-        indent_level = 0
-        
-        for line in lines:
-            stripped = line.strip()
-            if not stripped:
-                formatted_lines.append('')
-                continue
-            
-            # Decrease indent for closing braces
-            if stripped.startswith('}'):
-                indent_level = max(0, indent_level - 1)
-            
-            # Add the line with proper indentation
-            formatted_lines.append('  ' * indent_level + stripped)
-            
-            # Increase indent for opening braces
-            if stripped.endswith('{'):
-                indent_level += 1
-        
-        return '\n'.join(formatted_lines)
-
-    def compile_yara_rules(self):
-        """Compile YARA rules from the editor with enhanced AST analysis"""
-        text = self.ui.te_yara_editor.toPlainText()
-        
-        # Clear compilation output first
-        self.ui.tb_compilation_output.clear()
-
-        if not text.strip():
-            self.ui.tb_compilation_output.setHtml(
-                '<span style="color: orange;">⚠ No YARA rule to compile.</span>'
-            )
-            self.statusBar().showMessage("No rule to compile", 3000)
-            return
-
-        from datetime import datetime
-        timestamp = datetime.now().strftime("%H:%M:%S")
-
-        # Pre-analysis with yaraast if available
-        ast_info = ""
-        if YARAAST_AVAILABLE:
-            try:
-                parser = Parser()
-                ast = parser.parse(text)
-                rule_count = len(ast.rules) if hasattr(ast, 'rules') else 0
-                ast_info = f'<span style="color: blue;">📋 AST Analysis: {rule_count} rules found</span><br>'
-            except Exception as e:
-                ast_info = f'<span style="color: orange;">⚠ AST pre-analysis failed: {str(e)[:50]}...</span><br>'
-
-        try:
-            # Show compiling message with timestamp and AST info
-            self.ui.tb_compilation_output.setHtml(
-                f'<span style="color: blue;">[{timestamp}] Compiling YARA rules...</span><br>'
-                f'{ast_info}'
-            )
-            QApplication.processEvents()
-            
-            # Try to compile the rules
-            self.compiled_rules = yara_x.compile(text)
-
-            # Success - show detailed info
-            success_msg = (
-                f'<span style="color: blue;">[{timestamp}] Compiling YARA rules...</span><br>'
-                f'{ast_info}'
-                '<span style="color: green; font-weight: bold;">✓ Compilation successful!</span><br>'
-            )
-            
-            # Add AST-based rule summary if available
-            if YARAAST_AVAILABLE:
-                try:
-                    parser = Parser()
-                    ast = parser.parse(text)
-                    rule_summaries = []
-                    for rule in ast.rules:
-                        tags_count = len(rule.tags) if hasattr(rule, 'tags') and rule.tags else 0
-                        meta_count = len(rule.meta) if hasattr(rule, 'meta') and rule.meta else 0
-                        strings_count = len(rule.strings) if hasattr(rule, 'strings') and rule.strings else 0
-                        
-                        summary = f"  🎯 {rule.identifier}: {strings_count} strings"
-                        if tags_count > 0:
-                            summary += f", {tags_count} tags"
-                        if meta_count > 0:
-                            summary += f", {meta_count} meta"
-                        rule_summaries.append(summary)
-                    
-                    if rule_summaries:
-                        success_msg += '<span style="color: gray;">Rule Details:</span><br>'
-                        success_msg += '<br>'.join(rule_summaries) + '<br>'
-                    
-                except Exception:
-                    pass  # Ignore AST analysis errors in success case
-            
-            success_msg += '<span style="color: gray;">Rules are ready to scan.</span>'
-            
-            self.ui.tb_compilation_output.setHtml(success_msg)
-            self.statusBar().showMessage("YARA rules compiled successfully", 4000)
-
-        except Exception as e:
-            # Compilation error
-            self.compiled_rules = None
-            error_msg = str(e)
-            
-            # Enhanced error reporting with AST if available
-            error_output = (
-                f'<span style="color: blue;">[{timestamp}] Compiling YARA rules...</span><br>'
-                f'{ast_info}'
-                '<span style="color: red; font-weight: bold;">✗ Compilation failed!</span><br><br>'
-            )
-            
-            # Try to provide more helpful error context
-            if YARAAST_AVAILABLE:
-                try:
-                    parser = Parser()
-                    ast = parser.parse(text)
-                    error_output += '<span style="color: orange;">📋 AST parsed successfully, error likely in rule logic</span><br><br>'
-                except Exception as ast_error:
-                    error_output += f'<span style="color: red;">📋 AST parsing also failed: {str(ast_error)[:100]}...</span><br><br>'
-            
-            error_output += self._format_code_html(error_msg, "red")
-            
-            self.ui.tb_compilation_output.setHtml(error_output)
-            self.statusBar().showMessage("Compilation failed - see errors below", 4000)
-            
-            # Show error message box for immediate user notification
-            self._show_compilation_error_dialog(error_msg)
 
     def validate_yara_syntax(self, text):
         """Validate YARA syntax using yaraast and provide detailed feedback"""
@@ -2157,7 +1956,8 @@ class MainWindow(QMainWindow):
         
         # Populate additional views
         self.populate_similar_files()
-        self.populate_similar_tags()
+        # Similar tags will be populated when user selects a file
+        self._initialize_similar_tags_widget()
         self.populate_yara_match_details()
 
         # Show summary
@@ -2298,13 +2098,6 @@ class MainWindow(QMainWindow):
                 if not self.fs_model.is_excluded(file_path):
                     yield file_path
 
-    def get_selected_files(self) -> list[Path]:
-        """
-        Get list of files to scan (excluding items in exclusion list).
-        WARNING: For large directories, use iter_selected_files() instead.
-        """
-        return list(self.iter_selected_files())
-
     def on_results_tab_changed(self, index):
         """Handle tab changes in scan results - lazy load misses when needed"""
         if index == 1 and not self.misses_loaded:  # Misses tab (index 1)
@@ -2315,13 +2108,33 @@ class MainWindow(QMainWindow):
         if not current.isValid() or self._updating_selection:
             return
             
+        # Get the filename from the selected row in the hits table
         row = current.row()
-        if row >= len(self.scan_hits):
+        filename_item = self.hits_model.item(row, 0)  # First column has filename
+        if not filename_item:
+            return
+        
+        # Extract the actual filename (remove emoji prefixes like ⚠, 🔴, 🚨)
+        filename_display = filename_item.text()
+        # Remove emoji and count info to get clean filename
+        import re
+        filename = re.sub(r'^[⚠🔴🚨]\s*', '', filename_display)  # Remove emoji prefix
+        filename = re.sub(r'\s*\(\d+\)$', '', filename)  # Remove count suffix like (3)
+        filename = filename.strip()
+        
+        # Find the first hit data entry for this filename
+        hit_data = None
+        for hit in self.scan_hits:
+            if hit.get('filename') == filename:
+                hit_data = hit
+                break
+        
+        if not hit_data:
             return
             
-        hit_data = self.scan_hits[row]
         self.populate_rule_details(hit_data)
         self.populate_similar_files_for_selection(hit_data)
+        self.populate_similar_tags_for_selection(hit_data)  # Add similar tags for selected file
         self.populate_yara_match_details(hit_data)
 
     def populate_misses_tab(self):
@@ -2521,9 +2334,6 @@ class MainWindow(QMainWindow):
         rule_groups = {}
         
         for hit in self.scan_hits:
-            if hit['filename'] == selected_filename:
-                continue  # Skip the selected file itself
-                
             # Check if this file shares any rules with the selected file
             hit_rules = {rule['identifier'] for rule in hit['matched_rules']}
             shared_rules = selected_rules.intersection(hit_rules)
@@ -2537,7 +2347,8 @@ class MainWindow(QMainWindow):
                 rule_groups[shared_key].append({
                     'filename': hit['filename'],
                     'filepath': hit['filepath'],
-                    'shared_count': len(shared_rules)
+                    'shared_count': len(shared_rules),
+                    'is_selected': hit['filename'] == selected_filename
                 })
         
         # Sort groups by number of shared rules (most similar first)
@@ -2562,8 +2373,16 @@ class MainWindow(QMainWindow):
             
             # Add file children
             for file_info in files:
-                file_item = QTreeWidgetItem([f"📄 {file_info['filename']}", ""])
-                file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
+                if file_info.get('is_selected', False):
+                    # Mark the selected file with a star
+                    file_display = f"📄 {file_info['filename']} ⭐"
+                    tooltip_text = f"File: {file_info['filename']} (Selected)\nPath: {file_info['filepath']}"
+                else:
+                    file_display = f"📄 {file_info['filename']}"
+                    tooltip_text = f"File: {file_info['filename']}\nPath: {file_info['filepath']}"
+                
+                file_item = QTreeWidgetItem([file_display, ""])
+                file_item.setToolTip(0, tooltip_text)
                 group_item.addChild(file_item)
             
             self.ui.tw_similar_files.addTopLevelItem(group_item)
@@ -2582,65 +2401,96 @@ class MainWindow(QMainWindow):
                 total_files = sum(len(files) for _, files in sorted_groups)
                 self.ui.tabWidget_3.setTabText(tab_index, f"Similar Files ({total_files})")
 
-    def populate_similar_tags(self):
-        """Populate similar tags view by extracting tags from YARA rules"""
+    def populate_similar_tags_for_selection(self, selected_hit_data):
+        """Populate similar tags view based on the selected file's tags"""
         if not hasattr(self.ui, 'tw_similar_tags'):
             return  # Widget doesn't exist
             
         self.ui.tw_similar_tags.clear()
         
-        if not self.scan_hits:
+        if not self.scan_hits or not selected_hit_data:
             return
         
-        # Extract tags from all rules that matched
-        tags_to_files = {}  # tag -> list of files that have rules with this tag
+        selected_filename = selected_hit_data.get('filename', '')
         
+        # Get all tags from the selected file's rules (from scan results only)
+        selected_file_tags = set()
         for hit_data in self.scan_hits:
-            rule_name = hit_data.get('rule_name', 'Unknown')
-            filename = hit_data.get('filename', 'Unknown')
-            filepath = hit_data.get('filepath', '')
-            
-            # Parse the current YARA rule text to extract tags for this rule
-            rule_text = self.ui.te_yara_editor.toPlainText()
-            tags = self.extract_tags_from_rule(rule_text, rule_name)
-            
-            # Associate each tag with this file
-            for tag in tags:
-                if tag not in tags_to_files:
-                    tags_to_files[tag] = []
-                
-                # Avoid duplicates
-                if not any(f['filename'] == filename for f in tags_to_files[tag]):
-                    tags_to_files[tag].append({
-                        'filename': filename,
-                        'filepath': filepath,
-                        'rule_name': rule_name
-                    })
+            if hit_data.get('filename') == selected_filename:
+                # Extract tags from matched rules
+                for rule_info in hit_data.get('matched_rules', []):
+                    rule_name = rule_info.get('identifier', 'Unknown')
+                    tags = rule_info.get('tags', [])
+                    
+                    for tag in tags:
+                        if tag and tag.strip():
+                            selected_file_tags.add(tag.strip())
         
-        # Create tree items for each tag
-        for tag, files in sorted(tags_to_files.items()):
-            if not tag:  # Skip empty tags
-                continue
+        if not selected_file_tags:
+            # No tags found for selected file
+            no_tags_item = QTreeWidgetItem(["No tags found", ""])
+            self.ui.tw_similar_tags.addTopLevelItem(no_tags_item)
+            return
+        
+        # For each tag from the selected file, find other files with the same tag
+        for tag in sorted(selected_file_tags):
+            files_with_this_tag = []
+            
+            # Find all files (including the selected one) that have this tag
+            for hit_data in self.scan_hits:
+                filename = hit_data.get('filename', 'Unknown')
+                filepath = hit_data.get('filepath', '')
                 
-            tag_item = QTreeWidgetItem([f"🏷️ {tag}", f"{len(files)} files"])
-            tag_item.setToolTip(0, f"Tag: {tag}")
-            tag_item.setToolTip(1, f"{len(files)} files have rules with this tag")
+                # Check each rule in this file for the tag
+                for rule_info in hit_data.get('matched_rules', []):
+                    rule_name = rule_info.get('identifier', 'Unknown')
+                    tags = rule_info.get('tags', [])
+                    
+                    # Check if this rule has the current tag
+                    if any(t.strip() == tag for t in tags if t and t.strip()):
+                        # Avoid duplicates
+                        if not any(f['filename'] == filename and f['rule_name'] == rule_name for f in files_with_this_tag):
+                            files_with_this_tag.append({
+                                'filename': filename,
+                                'filepath': filepath,
+                                'rule_name': rule_name,
+                                'is_selected': filename == selected_filename
+                            })
             
-            # Add file children
-            for file_info in files:
-                file_item = QTreeWidgetItem([
-                    f"📄 {file_info['filename']}", 
-                    f"Rule: {file_info['rule_name']}"
-                ])
-                file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
-                file_item.setToolTip(1, f"Rule: {file_info['rule_name']}")
-                tag_item.addChild(file_item)
-            
-            self.ui.tw_similar_tags.addTopLevelItem(tag_item)
-            
-            # Expand if there are few enough files to see
-            if len(files) <= 10:
-                tag_item.setExpanded(True)
+            # Only show tags that have at least one file match
+            if files_with_this_tag:
+                # Create tag item
+                other_files_count = len([f for f in files_with_this_tag if not f['is_selected']])
+                tag_display = f"🏷️ {tag}"
+                if other_files_count > 0:
+                    tag_info = f"Selected + {other_files_count} others"
+                else:
+                    tag_info = "Only in selected file"
+                
+                tag_item = QTreeWidgetItem([tag_display, tag_info])
+                tag_item.setToolTip(0, f"Tag: {tag}")
+                tag_item.setToolTip(1, f"Found in {len(files_with_this_tag)} files total")
+                
+                # Add file children
+                for file_info in files_with_this_tag:
+                    if file_info['is_selected']:
+                        # Mark the selected file
+                        file_display = f"📄 {file_info['filename']} ⭐"
+                        file_info_text = f"Rule: {file_info['rule_name']} (Selected)"
+                    else:
+                        file_display = f"📄 {file_info['filename']}"
+                        file_info_text = f"Rule: {file_info['rule_name']}"
+                    
+                    file_item = QTreeWidgetItem([file_display, file_info_text])
+                    file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
+                    file_item.setToolTip(1, f"Rule: {file_info['rule_name']}")
+                    tag_item.addChild(file_item)
+                
+                self.ui.tw_similar_tags.addTopLevelItem(tag_item)
+                
+                # Expand if there are few enough files to see clearly
+                if len(files_with_this_tag) <= 5:
+                    tag_item.setExpanded(True)
         
         # Resize columns
         self.ui.tw_similar_tags.resizeColumnToContents(0)
@@ -2648,52 +2498,32 @@ class MainWindow(QMainWindow):
         
         # Update tab title
         if hasattr(self.ui, 'tabWidget_3'):
-            # Find the similar tags tab index
             for i in range(self.ui.tabWidget_3.count()):
                 if hasattr(self.ui.tabWidget_3.widget(i), 'objectName'):
                     widget = self.ui.tabWidget_3.widget(i)
                     if hasattr(widget, 'findChild') and widget.findChild(type(self.ui.tw_similar_tags)):
-                        total_tags = len(tags_to_files)
+                        total_tags = len(selected_file_tags)
                         self.ui.tabWidget_3.setTabText(i, f"Similar Tags ({total_tags})")
                         break
 
-    def extract_tags_from_rule(self, rule_text, rule_name=None):
-        """Extract tags from YARA rule text using basic regex parsing"""
-        try:
-            return self.extract_tags_basic(rule_text, rule_name)
-        except Exception as e:
-            print(f"Tag extraction failed: {e}")
-            return []
-
-    def extract_tags_basic(self, rule_text, rule_name=None):
-        """Fallback basic tag extraction when yaraast is not available"""
-        import re
+    def _initialize_similar_tags_widget(self):
+        """Initialize similar tags widget with instruction message"""
+        if not hasattr(self.ui, 'tw_similar_tags'):
+            return
+            
+        self.ui.tw_similar_tags.clear()
+        instruction_item = QTreeWidgetItem(["Select a file to see similar tags", ""])
+        instruction_item.setToolTip(0, "Click on a file in the hits table to see files with similar tags")
+        self.ui.tw_similar_tags.addTopLevelItem(instruction_item)
         
-        tags = set()
-        
-        if rule_name:
-            # Extract tags for a specific rule
-            rule_pattern = rf'rule\s+{re.escape(rule_name)}\s*{{[^}}]*?meta\s*:[^}}]*?tags\s*=\s*"([^"]*)"'
-            matches = re.finditer(rule_pattern, rule_text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                tag_string = match.group(1)
-                # Split by common delimiters
-                for tag in re.split(r'[,;|\s]+', tag_string):
-                    tag = tag.strip()
-                    if tag:
-                        tags.add(tag)
-        else:
-            # Extract all tags from all rules
-            meta_pattern = r'meta\s*:[^}]*?tags\s*=\s*"([^"]*)"'
-            matches = re.finditer(meta_pattern, rule_text, re.IGNORECASE | re.DOTALL)
-            for match in matches:
-                tag_string = match.group(1)
-                for tag in re.split(r'[,;|\s]+', tag_string):
-                    tag = tag.strip()
-                    if tag:
-                        tags.add(tag)
-        
-        return list(tags)
+        # Set initial tab title
+        if hasattr(self.ui, 'tabWidget_3'):
+            for i in range(self.ui.tabWidget_3.count()):
+                if hasattr(self.ui.tabWidget_3.widget(i), 'objectName'):
+                    widget = self.ui.tabWidget_3.widget(i)
+                    if hasattr(widget, 'findChild') and widget.findChild(type(self.ui.tw_similar_tags)):
+                        self.ui.tabWidget_3.setTabText(i, "Similar Tags")
+                        break
 
     def populate_yara_match_details(self, hit_data=None):
         """Populate comprehensive YARA match details table widget for ALL files"""
@@ -2950,18 +2780,6 @@ class MainWindow(QMainWindow):
                     self._updating_selection = False
                 break
 
-    def _format_file_size(self, size_bytes):
-        """Format file size in human readable format"""
-        if size_bytes == 0:
-            return "0 B"
-        
-        size_names = ["B", "KB", "MB", "GB", "TB"]
-        import math
-        i = int(math.floor(math.log(size_bytes, 1024)))
-        p = math.pow(1024, i)
-        s = round(size_bytes / p, 2)
-        return f"{s} {size_names[i]}"
-
     def _get_data_preview(self, filepath, offset, length, preview_length=64):
         """Get a preview of data at the specified offset"""
         try:
@@ -2987,20 +2805,6 @@ class MainWindow(QMainWindow):
                 }
         except Exception:
             return None
-
-    def _bytes_to_ascii(self, data):
-        """Convert bytes to ASCII representation, replacing non-printable with dots"""
-        if not data:
-            return ''
-        
-        result = []
-        for b in data:
-            if 32 <= b <= 126:  # Printable ASCII
-                result.append(chr(b))
-            else:
-                result.append('.')
-        
-        return ''.join(result)
 
 
 if __name__ == "__main__":

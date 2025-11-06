@@ -15,6 +15,8 @@ a = Analysis(
     datas=[
         # Include config files
         ('config', 'config'),
+        # Include assets folder (for runtime icon loading)
+        ('assets', 'assets'),
         # Include form.ui file if it exists
         ('form.ui', '.'),
     ],
@@ -60,5 +62,5 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon='YaraXGUI.ico',
+    icon='./assets/YaraXGUI.ico',
 )

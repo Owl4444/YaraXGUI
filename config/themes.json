@@ -9,7 +9,7 @@
       "secondary": "#9e9e9e",
       "accent": "#ff7043",
       
-      "text_primary": "#e0e0e0",
+      "text_primary": "#c5c5c5",
       "text_secondary": "#b0b0b0",
       "text_disabled": "#707070",
       "text_inverse": "#2b2b2b",
@@ -80,12 +80,12 @@
       "syntax_function": "#81c784",
       "syntax_section": "#64b5f6",
       
-      "column_file": "#2f3540",
-      "column_rule": "#35304a",
-      "column_pattern": "#4a3530",
-      "column_offset": "#4a2f35",
-      "column_data": "#304a35",
-      "column_hex": "#354a30"
+      "column_file": "#323536",
+      "column_rule": "#2f3234",
+      "column_pattern": "#363234",
+      "column_offset": "#343032",
+      "column_data": "#303634",
+      "column_hex": "#2e3436"
     },
     "font_family": "Segoe UI",
     "font_size": 9,
@@ -108,7 +108,7 @@
       "secondary": "#6c757d",
       "accent": "#ff6600",
       
-      "text_primary": "#212529",
+      "text_primary": "#4a4a4a",
       "text_secondary": "#6c757d",
       "text_disabled": "#adb5bd",
       "text_inverse": "#ffffff",
@@ -179,12 +179,12 @@
       "syntax_function": "#006633",
       "syntax_section": "#0033cc",
       
-      "column_file": "#fff8f0",
-      "column_rule": "#f0fff8",
-      "column_pattern": "#fffdf0",
-      "column_offset": "#fff0f8",
-      "column_data": "#f9fff0",
-      "column_hex": "#f0f8ff"
+      "column_file": "#fefdfb",
+      "column_rule": "#fbfef9",
+      "column_pattern": "#fefcf9",
+      "column_offset": "#fef9fc",
+      "column_data": "#f9fefb",
+      "column_hex": "#f9fcfe"
     },
     "font_family": "Segoe UI",
     "font_size": 9,
@@ -207,7 +207,7 @@
       "secondary": "#533483",
       "accent": "#e94560",
       
-      "text_primary": "#eee6e6",
+      "text_primary": "#b8b5b5",
       "text_secondary": "#a0a0a0",
       "text_disabled": "#606060",
       "text_inverse": "#1a1a2e",
@@ -275,12 +275,12 @@
       "syntax_literal": "#ffcc80",
       "syntax_function": "#81c784",
       "syntax_section": "#7cb7f7",
-      "column_file": "#1c1e2f",
-      "column_rule": "#1e1c2f",
-      "column_pattern": "#2f1e1c",
-      "column_offset": "#2f1c1e", 
-      "column_data": "#1e2f1c",
-      "column_hex": "#1c2f1e"
+      "column_file": "#1e2025",
+      "column_rule": "#1f2127",
+      "column_pattern": "#252024",
+      "column_offset": "#241f22",
+      "column_data": "#202523",
+      "column_hex": "#222420"
     },
     "font_family": "Segoe UI",
     "font_size": 9,
@@ -303,7 +303,7 @@
       "secondary": "#808080",
       "accent": "#ffff00",
       
-      "text_primary": "#ffffff",
+      "text_primary": "#d0d0d0",
       "text_secondary": "#c0c0c0",
       "text_disabled": "#808080",
       "text_inverse": "#000000",
@@ -372,11 +372,11 @@
       "syntax_function": "#ffffff",
       "syntax_section": "#00ffff",
       "column_file": "#1a1a1a",
-      "column_rule": "#2d2d2d",
-      "column_pattern": "#404040",
-      "column_offset": "#1f1f1f",
-      "column_data": "#333333",
-      "column_hex": "#262626"
+      "column_rule": "#1e1e1e",
+      "column_pattern": "#222222",
+      "column_offset": "#262626",
+      "column_data": "#2a2a2a",
+      "column_hex": "#2e2e2e"
     },
     "font_family": "Consolas",
     "font_size": 10,
@@ -399,7 +399,7 @@
       "secondary": "#98c379",
       "accent": "#e06c75",
       
-      "text_primary": "#abb2bf",
+      "text_primary": "#8b92a0",
       "text_secondary": "#5c6370",
       "text_disabled": "#3e4452",
       "text_inverse": "#1e2328",
@@ -467,12 +467,12 @@
       "syntax_literal": "#98c379",
       "syntax_function": "#98c379",
       "syntax_section": "#c678dd",
-      "column_file": "#252935",
-      "column_rule": "#29252f",
-      "column_pattern": "#352925",
-      "column_offset": "#2f3525",
-      "column_data": "#25352f",
-      "column_hex": "#2b2535"
+      "column_file": "#242730",
+      "column_rule": "#252930",
+      "column_pattern": "#302925",
+      "column_offset": "#2a3025",
+      "column_data": "#253025",
+      "column_hex": "#252a30"
     },
     "font_family": "Consolas",
     "font_size": 6,
@@ -495,8 +495,8 @@
       "secondary": "#008f11",
       "accent": "#ff0040",
       
-      "text_primary": "#00ff41",
-      "text_secondary": "#00cc33",
+      "text_primary": "#00cc33",
+      "text_secondary": "#00aa28",
       "text_disabled": "#004d0d",
       "text_inverse": "#000000",
       
@@ -566,12 +566,12 @@
       "syntax_function": "#60ff60",
       "syntax_section": "#6060ff",
       
-      "column_file": "#001100",
-      "column_rule": "#110000",
-      "column_pattern": "#001001",
-      "column_offset": "#100100",
-      "column_data": "#010010",
-      "column_hex": "#010101"
+      "column_file": "#0a0b0a",
+      "column_rule": "#0b0a0b",
+      "column_pattern": "#0b0a0a",
+      "column_offset": "#0a0b0a",
+      "column_data": "#0a0a0b",
+      "column_hex": "#0b0b0a"
     },
     "font_family": "Courier New",
     "font_size": 10,
@@ -594,8 +594,8 @@
       "secondary": "#00ffff",
       "accent": "#ffff00",
       
-      "text_primary": "#ff00ff",
-      "text_secondary": "#00ffff",
+      "text_primary": "#cc44cc",
+      "text_secondary": "#44cccc",
       "text_disabled": "#4d004d",
       "text_inverse": "#0a0a0a",
       
@@ -665,12 +665,12 @@
       "syntax_function": "#7fff00",
       "syntax_section": "#ff1493",
       
-      "column_file": "#1a0a2a",
-      "column_rule": "#2a0a1a",
-      "column_pattern": "#0a1a2a",
-      "column_offset": "#2a1a0a",
-      "column_data": "#0a2a1a",
-      "column_hex": "#1a2a0a"
+      "column_file": "#12101a",
+      "column_rule": "#1a1012",
+      "column_pattern": "#101a12",
+      "column_offset": "#1a1210",
+      "column_data": "#101a1a",
+      "column_hex": "#121a10"
     },
     "font_family": "Arial",
     "font_size": 10,
@@ -693,8 +693,8 @@
       "secondary": "#ff8c42",
       "accent": "#ffaa44",
       
-      "text_primary": "#ff8c42",
-      "text_secondary": "#cc6633",
+      "text_primary": "#cc7035",
+      "text_secondary": "#aa5528",
       "text_disabled": "#664422",
       "text_inverse": "#1a1209",
       
@@ -764,12 +764,12 @@
       "syntax_function": "#ff9944",
       "syntax_section": "#ffaa33",
       
-      "column_file": "#2a1b0f",
-      "column_rule": "#2a1f0b",
-      "column_pattern": "#2a1d0d",
-      "column_offset": "#2a1909",
-      "column_data": "#251a0f",
-      "column_hex": "#2d1e0a"
+      "column_file": "#1e1611",
+      "column_rule": "#1a1813",
+      "column_pattern": "#1c1615",
+      "column_offset": "#181a13",
+      "column_data": "#161c15",
+      "column_hex": "#141e17"
     },
     "font_family": "Cascadia Code",
     "font_size": 9,
@@ -792,8 +792,8 @@
       "secondary": "#4dd0e1",
       "accent": "#80deea",
       
-      "text_primary": "#b3e5fc",
-      "text_secondary": "#81d4fa",
+      "text_primary": "#88b3cc",
+      "text_secondary": "#6699bb",
       "text_disabled": "#455a64",
       "text_inverse": "#0a1421",
       
@@ -863,12 +863,12 @@
       "syntax_function": "#ba68c8",
       "syntax_section": "#64b5f6",
       
-      "column_file": "#1a2635",
-      "column_rule": "#1e2a3a",
-      "column_pattern": "#221f35",
-      "column_offset": "#35221f",
-      "column_data": "#1f3522",
-      "column_hex": "#22351f"
+      "column_file": "#101821",
+      "column_rule": "#111920",
+      "column_pattern": "#121a1f",
+      "column_offset": "#20181a",
+      "column_data": "#18201a",
+      "column_hex": "#1a1820"
     },
     "font_family": "Segoe UI",
     "font_size": 9,
@@ -891,8 +891,8 @@
       "secondary": "#81c784",
       "accent": "#a5d6a7",
       
-      "text_primary": "#c8e6c9",
-      "text_secondary": "#a5d6a7",
+      "text_primary": "#99bb9a",
+      "text_secondary": "#88aa89",
       "text_disabled": "#4e6e4e",
       "text_inverse": "#1a2f1a",
       
@@ -962,12 +962,12 @@
       "syntax_function": "#795548",
       "syntax_section": "#8bc34a",
       
-      "column_file": "#2a3f2a",
-      "column_rule": "#2f4a2f",
-      "column_pattern": "#3f2a3f",
-      "column_offset": "#4a2f2a",
-      "column_data": "#2a4a2f",
-      "column_hex": "#2f3f2a"
+      "column_file": "#1e2a1e",
+      "column_rule": "#1f2b1f",
+      "column_pattern": "#2a1e22",
+      "column_offset": "#242a1e",
+      "column_data": "#1e242a",
+      "column_hex": "#222a1e"
     },
     "font_family": "Segoe UI",
     "font_size": 9,
@@ -990,8 +990,8 @@
       "secondary": "#ce93d8",
       "accent": "#e1bee7",
       
-      "text_primary": "#f3e5f5",
-      "text_secondary": "#e1bee7",
+      "text_primary": "#b5a3bb",
+      "text_secondary": "#a599aa",
       "text_disabled": "#5e4e6e",
       "text_inverse": "#2a1e3d",
       
@@ -1061,12 +1061,12 @@
       "syntax_function": "#795548",
       "syntax_section": "#ab47bc",
       
-      "column_file": "#3a2e4d",
-      "column_rule": "#3d2a4d",
-      "column_pattern": "#4d2a3d",
-      "column_offset": "#4d3a2a",
-      "column_data": "#2a4d3a",
-      "column_hex": "#3a4d2a"
+      "column_file": "#2e253d",
+      "column_rule": "#2d263c",
+      "column_pattern": "#3d252e",
+      "column_offset": "#3c2d25",
+      "column_data": "#253d2d",
+      "column_hex": "#2e3d25"
     },
     "font_family": "Segoe UI",
     "font_size": 9,

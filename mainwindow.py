@@ -20,8 +20,8 @@ from PySide6.QtGui import (QIcon, QPainter, QPen, QPixmap, QStandardItem,
                            QStandardItemModel, QTextCursor)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog,
                                QFileSystemModel, QHeaderView, QListWidgetItem,
-                               QMainWindow, QMessageBox, QTreeView,
-                               QTreeWidgetItem)
+                               QMainWindow, QMessageBox, QTableWidgetItem,
+                               QTreeView, QTreeWidgetItem)
 
 # Local imports
 from themes import theme_manager
@@ -238,6 +238,10 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self.ui = Ui_MainWindow()
         self.ui.setupUi(self)
+        
+        # Set custom window title and icon
+        self.setWindowTitle("YaraXGUI - YARA Rule Scanner & Analyzer")
+        self.setup_application_icon()
 
         # Syntax highlighter (will be updated with theme later)
         self.highlighter = YaraHighlighter(self.ui.te_yara_editor.document())
@@ -428,6 +432,74 @@ class MainWindow(QMainWindow):
         self.theme_manager = theme_manager
         self.setup_theming()
         self.load_theme_settings()
+        
+        # Reset interface to default state on application startup
+        self.reset_interface_on_startup()
+
+    def reset_interface_on_startup(self):
+        """Reset the interface to default state when application starts"""
+        # Reset all tab focus to default states (same as Reset button)
+        # Main tabs: Focus on Scan Dir tab (index 0)
+        self.ui.tabWidget.setCurrentIndex(0)  # Switch to Scan Dir tab
+        
+        # Scan Results sub-tabs: Focus on Hits tab (index 0) 
+        if hasattr(self.ui, 'tabWidget_2'):
+            self.ui.tabWidget_2.setCurrentIndex(0)  # Focus on Hits tab
+        
+        # Details sub-tabs: Focus on Rule Details tab (index 0)
+        if hasattr(self.ui, 'tabWidget_3'):
+            self.ui.tabWidget_3.setCurrentIndex(0)  # Focus on Rule Details tab
+        
+        # Match Details tabs: If there are match details sub-tabs, focus on default
+        if hasattr(self.ui, 'tabWidget_4'):  # In case there's a 4th level of tabs
+            self.ui.tabWidget_4.setCurrentIndex(0)
+        
+        # Initialize similar tags widget with instruction message
+        self._initialize_similar_tags_widget()
+        
+        # Set status message
+        self.statusBar().showMessage("Application ready - select directory and YARA rules to begin", 4000)
+
+    def setup_application_icon(self):
+        """Setup application icon from YaraXGUI.ico file"""
+        from PySide6.QtGui import QIcon
+        from pathlib import Path
+        
+        try:
+            # Use the specific YaraXGUI.ico file
+            icon_path = Path(__file__).parent / "assets" / "YaraXGUI.ico"
+            
+            if icon_path.exists():
+                # Load the icon file
+                icon = QIcon(str(icon_path))
+                
+                # Verify the icon was loaded properly
+                if not icon.isNull():
+                    self.setWindowIcon(icon)
+                    print(f"✅ Application icon loaded successfully: {icon_path}")
+                else:
+                    print(f"❌ Failed to load icon - file may be corrupted: {icon_path}")
+                    self._use_fallback_icon()
+            else:
+                print(f"❌ Icon file not found: {icon_path}")
+                self._use_fallback_icon()
+                
+        except Exception as e:
+            print(f"❌ Error setting up application icon: {e}")
+            self._use_fallback_icon()
+
+    def _use_fallback_icon(self):
+        """Use a fallback icon when the main icon fails to load"""
+        try:
+            # Try to use a system icon as fallback
+            icon = self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogDetailedView)
+            if not icon.isNull():
+                self.setWindowIcon(icon)
+                print("🔄 Using fallback system icon")
+            else:
+                print("⚠️  No icon available - running without window icon")
+        except Exception as e:
+            print(f"⚠️  Fallback icon also failed: {e}")
 
     def setup_keyboard_shortcuts(self):
         """Setup keyboard shortcuts for the application"""
@@ -596,7 +668,16 @@ class MainWindow(QMainWindow):
         self.hits_model = QStandardItemModel()
         self.hits_model.setHorizontalHeaderLabels(['File', 'Path'])
         self.ui.tv_file_hits.setModel(self.hits_model)
-        self.ui.tv_file_hits.selectionModel().currentRowChanged.connect(self.on_hit_selected)
+        
+        # Enable multi-selection for hits table
+        self.ui.tv_file_hits.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.ui.tv_file_hits.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        
+        # Connect to selection changed instead of current row changed for multi-select
+        self.ui.tv_file_hits.selectionModel().selectionChanged.connect(self.on_hits_selection_changed)
+        
+        # Enable sorting for hits table
+        self.ui.tv_file_hits.setSortingEnabled(True)
         
         # Selection highlighting will be applied by theme system
         
@@ -605,8 +686,8 @@ class MainWindow(QMainWindow):
         # Configure hits table columns for full filename display
         hits_header = self.ui.tv_file_hits.horizontalHeader()
         hits_header.setStretchLastSection(True)  # Last column stretches to fill space
-        hits_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # File column auto-size to content
-        hits_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Path column stretches
+        hits_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # File column user-adjustable
+        hits_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Path column user-adjustable
         hits_header.setDefaultSectionSize(150)  # Default column width
         hits_header.setMinimumSectionSize(80)  # Minimum column width
         # Enable word wrapping and better text handling
@@ -619,11 +700,14 @@ class MainWindow(QMainWindow):
         self.ui.tv_file_misses.setModel(self.misses_model)
         self._make_table_compact(self.ui.tv_file_misses)
         
+        # Enable sorting for misses table
+        self.ui.tv_file_misses.setSortingEnabled(True)
+        
         # Configure misses table columns for full filename display
         misses_header = self.ui.tv_file_misses.horizontalHeader()
         misses_header.setStretchLastSection(True)  # Last column stretches to fill space
-        misses_header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)  # File column auto-size to content
-        misses_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Path column stretches
+        misses_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # File column user-adjustable
+        misses_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Path column user-adjustable
         misses_header.setDefaultSectionSize(150)  # Default column width
         misses_header.setMinimumSectionSize(80)  # Minimum column width
         # Enable word wrapping and better text handling
@@ -652,6 +736,9 @@ class MainWindow(QMainWindow):
         self.ui.tw_similar_files.setRootIsDecorated(True)  # Show expand/collapse arrows
         self.ui.tw_similar_files.setItemsExpandable(True)
         
+        # Enable sorting for similar files tree widget
+        self.ui.tw_similar_files.setSortingEnabled(True)
+        
         # Connect double-click handler for cross-widget synchronization
         self.ui.tw_similar_files.itemDoubleClicked.connect(self.on_similar_file_double_clicked)
         
@@ -664,6 +751,9 @@ class MainWindow(QMainWindow):
             self.ui.tw_similar_tags.setAlternatingRowColors(True)
             self.ui.tw_similar_tags.setRootIsDecorated(True)  # Show expand/collapse arrows
             self.ui.tw_similar_tags.setItemsExpandable(True)
+            
+            # Enable sorting for similar tags tree widget
+            self.ui.tw_similar_tags.setSortingEnabled(True)
             
             # Connect double-click handler for cross-widget synchronization
             self.ui.tw_similar_tags.itemDoubleClicked.connect(self.on_similar_tag_double_clicked)
@@ -712,6 +802,9 @@ class MainWindow(QMainWindow):
         
         # Make table compact
         self._make_table_compact(self.tw_yara_match_details)
+        
+        # Set minimum height to make the table taller by default
+        #self.tw_yara_match_details.setMinimumHeight(300)  # Adjust this value as needed
         
         # Connect double-click to show detailed info
         self.tw_yara_match_details.cellDoubleClicked.connect(self.on_match_detail_double_clicked)
@@ -828,15 +921,139 @@ class MainWindow(QMainWindow):
             error: The exception that occurred
             context: Description of the operation that failed
         """
-        error_msg = f"{context} failed: {str(error)}"
+        error_msg = str(error)
+        
+        # Format compilation error with better HTML formatting
+        formatted_error = self._format_compilation_error(error_msg, context)
         
         # Log to compilation output for user visibility
-        self.ui.tb_compilation_output.append(
-            f'<span style="color: red;">❌ {error_msg}</span>'
-        )
+        self.ui.tb_compilation_output.append(formatted_error)
         
-        # Show in status bar for immediate feedback
-        self.statusBar().showMessage(error_msg, 5000)
+        # Show simplified message in status bar
+        status_msg = f"{context} failed: {error_msg[:80]}{'...' if len(error_msg) > 80 else ''}"
+        self.statusBar().showMessage(status_msg, 5000)
+
+    def _safe_get_item_info(self, item):
+        """
+        Safely extract information from a tree widget item to avoid RuntimeError.
+        
+        Args:
+            item: QTreeWidgetItem to extract info from
+            
+        Returns:
+            dict: Dictionary with item information or None if item is invalid
+        """
+        if not item:
+            return None
+            
+        try:
+            return {
+                'text': item.text(0),
+                'parent': item.parent(),
+                'parent_text': item.parent().text(0) if item.parent() else None,
+                'child_count': item.childCount(),
+                'data': item.data(0, 32)  # Qt.UserRole
+            }
+        except RuntimeError:
+            # Item was deleted
+            return None
+
+    def _format_compilation_error(self, error_msg: str, context: str) -> str:
+        """
+        Format compilation errors with nice HTML styling and better readability.
+        
+        Args:
+            error_msg: The raw error message
+            context: The context where the error occurred
+            
+        Returns:
+            HTML-formatted error message
+        """
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        # Get theme-aware colors
+        theme_colors = self._get_theme_colors_for_output()
+        
+        # Parse common YARA error patterns for better formatting
+        if "syntax error" in error_msg.lower():
+            error_type = "Syntax Error"
+            icon = "📝"
+            color = "#d32f2f"  # Red
+        elif "undefined" in error_msg.lower():
+            error_type = "Undefined Reference"
+            icon = "❓"
+            color = "#f57c00"  # Orange
+        elif "duplicate" in error_msg.lower():
+            error_type = "Duplicate Definition"
+            icon = "🔄"
+            color = "#f57c00"  # Orange
+        elif "compilation" in context.lower():
+            error_type = "Compilation Error"
+            icon = "❌"
+            color = "#d32f2f"  # Red
+        else:
+            error_type = "Error"
+            icon = "⚠️"
+            color = "#d32f2f"  # Red
+        
+        # Extract line number if present
+        line_info = ""
+        import re
+        line_match = re.search(r'line (\d+)', error_msg, re.IGNORECASE)
+        if line_match:
+            line_num = line_match.group(1)
+            line_info = f'<span style="color: {theme_colors["secondary_text"]}; font-size: 12px;"> (Line {line_num})</span>'
+        
+        # Clean up the error message
+        clean_error = error_msg.strip()
+        if clean_error.startswith('line ') and ':' in clean_error:
+            # Remove redundant line info from beginning
+            clean_error = clean_error.split(':', 1)[1].strip()
+        
+        # Format the complete error with nice styling
+        formatted_error = f'''
+        <div style="border-left: 4px solid {color}; padding: 8px 12px; margin: 4px 0; background-color: {theme_colors["error_bg"]};">
+            <div style="color: {color}; font-weight: bold; margin-bottom: 4px;">
+                {icon} {error_type} <span style="color: {theme_colors["secondary_text"]}; font-size: 11px;">[{timestamp}]</span>{line_info}
+            </div>
+            <div style="color: {theme_colors["main_text"]}; font-family: 'Consolas', 'Courier New', monospace; font-size: 13px; line-height: 1.4;">
+                {self._escape_html(clean_error)}
+            </div>
+        </div>
+        '''
+        
+        return formatted_error
+
+    def _get_theme_colors_for_output(self):
+        """Get theme-appropriate colors for compilation output formatting"""
+        # Default colors (for light theme)
+        colors = {
+            "main_text": "#333333",
+            "secondary_text": "#666666", 
+            "error_bg": "rgba(211, 47, 47, 0.1)"
+        }
+        
+        # Check if we have a theme manager and current theme
+        if hasattr(self, 'theme_manager') and self.theme_manager.current_theme:
+            theme = self.theme_manager.current_theme
+            if hasattr(theme, 'colors'):
+                # Use theme colors for better dark mode support
+                colors["main_text"] = theme.colors.editor_text
+                colors["secondary_text"] = theme.colors.editor_text + "AA"  # Add some transparency
+                
+                # Adjust error background based on theme
+                if "dark" in theme.name.lower():
+                    colors["error_bg"] = "rgba(211, 47, 47, 0.2)"  # Slightly more visible in dark theme
+                else:
+                    colors["error_bg"] = "rgba(211, 47, 47, 0.1)"
+        
+        return colors
+
+    def _escape_html(self, text: str) -> str:
+        """Escape HTML characters in text for safe display"""
+        import html
+        return html.escape(text)
     
     def _show_compilation_error_dialog(self, error_msg: str) -> None:
         """
@@ -846,22 +1063,59 @@ class MainWindow(QMainWindow):
             error_msg: The compilation error message to display
         """
         from PySide6.QtWidgets import QMessageBox
+        import re
         
-        msg = QMessageBox()
+        msg = QMessageBox(self)
         msg.setIcon(QMessageBox.Icon.Critical)
-        msg.setWindowTitle("YARA Compilation Error")
-        msg.setText("Failed to compile YARA rule")
+        msg.setWindowTitle("⚠️ YARA Compilation Error")
+        
+        # Extract line number for better context
+        line_match = re.search(r'line (\d+)', error_msg, re.IGNORECASE)
+        if line_match:
+            line_num = line_match.group(1)
+            msg.setText(f"Compilation failed at line {line_num}")
+        else:
+            msg.setText("YARA rule compilation failed")
+        
+        # Clean up error message
+        clean_error = error_msg.strip()
+        if clean_error.startswith('line ') and ':' in clean_error:
+            clean_error = clean_error.split(':', 1)[1].strip()
         
         # Format the error message for better readability
-        if len(error_msg) > 300:
-            short_msg = error_msg[:300] + "..."
+        if len(clean_error) > 250:
+            short_msg = clean_error[:250] + "..."
             msg.setInformativeText(f"Error: {short_msg}")
-            msg.setDetailedText(error_msg)
+            msg.setDetailedText(f"Complete error message:\n\n{error_msg}")
         else:
-            msg.setInformativeText(f"Error: {error_msg}")
+            msg.setInformativeText(clean_error)
+        
+        # Simple styling for better appearance
+        msg.setStyleSheet("""
+            QMessageBox {
+                min-width: 300px;
+            }
+            QMessageBox QLabel {
+                min-width: 280px;
+            }
+        """)
         
         msg.setStandardButtons(QMessageBox.StandardButton.Ok)
         msg.exec()
+
+    def _show_reset_confirmation_dialog(self):
+        """Show a simple reset confirmation dialog"""
+        from PySide6.QtWidgets import QMessageBox
+        
+        reply = QMessageBox.question(
+            self, 
+            "Reset All", 
+            "This will clear ALL data:\n• YARA editor\n• Compilation output\n• Scan results\n• Directory selection\n• All tables and lists\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        return reply
     
     def _format_code_html(self, code: str, color: str = "black") -> str:
         """
@@ -1354,6 +1608,9 @@ class MainWindow(QMainWindow):
         if hasattr(self.ui, 'tw_match_details'):
             self.ui.tw_match_details.setStyleSheet(tree_selection_style.replace('QTreeWidget', 'QTableWidget'))
         
+        # Update compilation output styling for theme
+        self._update_compilation_output_theme(theme)
+        
         # Update checkbox icons with theme colors
         self.update_checkbox_icons(theme)
         
@@ -1362,6 +1619,23 @@ class MainWindow(QMainWindow):
         
         # Force text editor selection colors using palette
         self._update_text_editor_palette(theme)
+
+    def _update_compilation_output_theme(self, theme):
+        """Update compilation output styling based on current theme"""
+        colors = theme.colors
+        
+        # Apply theme-appropriate styling to compilation output
+        compilation_output_style = f"""
+        QTextBrowser {{
+            background-color: {colors.editor_background};
+            color: {colors.editor_text};
+            border: 1px solid {colors.editor_background};
+            selection-background-color: {colors.editor_selection};
+            selection-color: {colors.editor_text};
+        }}
+        """
+        
+        self.ui.tb_compilation_output.setStyleSheet(compilation_output_style)
 
     def _update_text_editor_palette(self, theme):
         """Force text editor selection colors using direct stylesheet"""
@@ -1568,12 +1842,7 @@ class MainWindow(QMainWindow):
 
     def on_reset(self):
         """Reset everything to a completely fresh start"""
-        reply = QMessageBox.question(
-            self, "Reset All", 
-            "This will clear ALL data:\n• YARA editor\n• Compilation output\n• Scan results\n• Directory selection\n• All tables and lists\n\nContinue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-            QMessageBox.StandardButton.No
-        )
+        reply = self._show_reset_confirmation_dialog()
         
         if reply == QMessageBox.StandardButton.Yes:
             # Clear YARA editor and compilation
@@ -1614,7 +1883,7 @@ class MainWindow(QMainWindow):
             
             # Reset directory tree
             self.fs_view.setRootIndex(QModelIndex())  # Empty tree
-            self.fs_model.exclusions.clear()  # Clear exclusions
+            self.fs_model._unchecked.clear()  # Clear exclusions
             
             # Clear and reset compilation output with helpful message
             self.ui.tb_compilation_output.clear()  # Explicitly clear first
@@ -1635,8 +1904,21 @@ class MainWindow(QMainWindow):
             # Reset size warning flag so it can show again for large files
             self._size_warning_shown = False
             
-            # Switch back to the directory selection tab
+            # Reset all tab focus to default states
+            # Main tabs: Focus on Scan Dir tab (index 0)
             self.ui.tabWidget.setCurrentIndex(0)  # Switch to Scan Dir tab
+            
+            # Scan Results sub-tabs: Focus on Hits tab (index 0) 
+            if hasattr(self.ui, 'tabWidget_2'):
+                self.ui.tabWidget_2.setCurrentIndex(0)  # Focus on Hits tab
+            
+            # Details sub-tabs: Focus on Rule Details tab (index 0)
+            if hasattr(self.ui, 'tabWidget_3'):
+                self.ui.tabWidget_3.setCurrentIndex(0)  # Focus on Rule Details tab
+            
+            # Match Details tabs: If there are match details sub-tabs, focus on default
+            if hasattr(self.ui, 'tabWidget_4'):  # In case there's a 4th level of tabs
+                self.ui.tabWidget_4.setCurrentIndex(0)
             
             self.statusBar().showMessage("Complete reset - ready for fresh start", 5000)
 
@@ -1901,9 +2183,21 @@ class MainWindow(QMainWindow):
             import yara_x
             rules = yara_x.compile(rule_text)
             
-            self.ui.tb_compilation_output.append(
-                f'\n<span style="color: green; font-weight: bold;">✓ Compilation successful!</span>\n'
-            )
+            # Format success message nicely with theme-aware colors
+            theme_colors = self._get_theme_colors_for_output()
+            success_bg = "rgba(76, 175, 80, 0.2)" if "dark" in getattr(self.theme_manager.current_theme, 'name', '').lower() else "rgba(76, 175, 80, 0.1)"
+            
+            success_msg = f'''
+            <div style="border-left: 4px solid #4caf50; padding: 8px 12px; margin: 4px 0; background-color: {success_bg};">
+                <div style="color: #4caf50; font-weight: bold; margin-bottom: 4px;">
+                    ✅ Compilation Successful <span style="color: {theme_colors["secondary_text"]}; font-size: 11px;">[{timestamp}]</span>
+                </div>
+                <div style="color: {theme_colors["main_text"]}; font-size: 13px;">
+                    YARA rules compiled and ready for scanning
+                </div>
+            </div>
+            '''
+            self.ui.tb_compilation_output.append(success_msg)
             QApplication.processEvents()
             return rules
             
@@ -1971,8 +2265,10 @@ class MainWindow(QMainWindow):
         Returns:
             True if file had matches, False otherwise
         """
-        # Read file and calculate SHA256
+        # Read file and calculate hashes
         data = file_path.read_bytes()
+        md5_hash = hashlib.md5(data).hexdigest()
+        sha1_hash = hashlib.sha1(data).hexdigest()
         sha256_hash = hashlib.sha256(data).hexdigest()
         
         # Scan with YARA
@@ -1988,7 +2284,10 @@ class MainWindow(QMainWindow):
             hit_data = {
                 'filename': filename,
                 'filepath': filepath,
+                'md5': md5_hash,
+                'sha1': sha1_hash,
                 'sha256': sha256_hash,
+                'file_data': data,  # Store file content for hex dumps
                 'matched_rules': matched_rules
             }
             self.scan_hits.append(hit_data)
@@ -2001,6 +2300,8 @@ class MainWindow(QMainWindow):
             miss_data = {
                 'filename': filename,
                 'filepath': filepath,
+                'md5': md5_hash,
+                'sha1': sha1_hash,
                 'sha256': sha256_hash
             }
             self.scan_misses.append(miss_data)
@@ -2020,8 +2321,10 @@ class MainWindow(QMainWindow):
             }
             
             # Extract pattern matches
+            has_string_matches = False
             for pattern in rule.patterns:
                 if pattern.matches:
+                    has_string_matches = True
                     pattern_info = {
                         'identifier': pattern.identifier,
                         'matches': [
@@ -2032,6 +2335,19 @@ class MainWindow(QMainWindow):
                         ]
                     }
                     rule_info['patterns'].append(pattern_info)
+            
+            # If rule matched but has no string pattern matches (condition-based match)
+            if not has_string_matches:
+                # Create a placeholder entry for condition-based matches
+                rule_info['patterns'].append({
+                    'identifier': 'Condition-based match',
+                    'matches': [
+                        {
+                            'offset': 0,
+                            'length': 0
+                        }
+                    ]
+                })
             
             matched_rules.append(rule_info)
         
@@ -2090,6 +2406,14 @@ class MainWindow(QMainWindow):
 
         if stats['matches'] > 0:
             self.ui.tb_compilation_output.append(f"\n✓ Results populated in Scan Results tab")
+            
+            # Populate all views immediately after scan completion
+            # This shows all results without requiring user to select anything
+            if self.scan_hits:
+                self.populate_rule_details_multi(self.scan_hits)
+                self.populate_similar_files_for_multi_selection(self.scan_hits) 
+                self.populate_similar_tags_for_multi_selection(self.scan_hits)
+                self.populate_match_details_multi(self.scan_hits)
         else:
             self.ui.tb_compilation_output.append(f"\n✓ No threats detected - all files clean")
 
@@ -2218,39 +2542,60 @@ class MainWindow(QMainWindow):
         if index == 1 and not self.misses_loaded:  # Misses tab (index 1)
             self.populate_misses_tab()
 
-    def on_hit_selected(self, current, previous):
-        """Handle selection of a hit file to show rule details and similar files"""
-        if not current.isValid() or self._updating_selection:
+    def on_hits_selection_changed(self, selected, deselected):
+        """Handle selection changes in hits table to show details for all selected files"""
+        if self._updating_selection:
             return
             
-        # Get the filename from the selected row in the hits table
-        row = current.row()
-        filename_item = self.hits_model.item(row, 0)  # First column has filename
-        if not filename_item:
+        # Get all currently selected rows
+        selection_model = self.ui.tv_file_hits.selectionModel()
+        selected_indexes = selection_model.selectedRows()
+        
+        if not selected_indexes:
+            # No selection - show all available data instead of clearing
+            if self.scan_hits:
+                # Show summary rule details for all scan results
+                self.populate_rule_details_multi(self.scan_hits)
+                # Show complete list for similar files and tags using all scan hits
+                self.populate_similar_files_for_multi_selection(self.scan_hits)
+                self.populate_similar_tags_for_multi_selection(self.scan_hits)
+                # Show all match details
+                self.populate_match_details_multi(self.scan_hits)
+            else:
+                self.clear_rule_details()
+                self.clear_similar_files()
+                self.clear_match_details()
             return
         
-        # Extract the actual filename (remove emoji prefixes like ⚠, 🔴, 🚨)
-        filename_display = filename_item.text()
-        # Remove emoji and count info to get clean filename
-        import re
-        filename = re.sub(r'^[⚠🔴🚨]\s*', '', filename_display)  # Remove emoji prefix
-        filename = re.sub(r'\s*\(\d+\)$', '', filename)  # Remove count suffix like (3)
-        filename = filename.strip()
+        # Collect all selected hit data
+        selected_hits = []
         
-        # Find the first hit data entry for this filename
-        hit_data = None
-        for hit in self.scan_hits:
-            if hit.get('filename') == filename:
-                hit_data = hit
-                break
-        
-        if not hit_data:
-            return
+        for index in selected_indexes:
+            row = index.row()
+            filepath_item = self.hits_model.item(row, 1)  # Second column has filepath
+            if not filepath_item:
+                continue
             
-        self.populate_rule_details(hit_data)
-        self.populate_similar_files_for_selection(hit_data)
-        self.populate_similar_tags_for_selection(hit_data)  # Add similar tags for selected file
-        self.populate_yara_match_details(hit_data)
+            # Get the exact filepath from the table
+            filepath = filepath_item.text()
+            
+            # Find the exact hit data entry for this filepath
+            for hit in self.scan_hits:
+                if hit.get('filepath') == filepath:
+                    selected_hits.append(hit)
+                    break  # Found exact match, no need to continue
+        
+        if selected_hits:
+            self.populate_rule_details_multi(selected_hits)
+            self.populate_similar_files_for_multi_selection(selected_hits)
+            self.populate_match_details_multi(selected_hits)
+            
+            # For similar tags, handle both single and multi-selection
+            if len(selected_hits) == 1:
+                self.populate_similar_tags_for_selection(selected_hits[0])
+            else:
+                # Multiple selection - show combined tags view
+                self.populate_similar_tags_for_multi_selection(selected_hits)
 
     def populate_misses_tab(self):
         """Populate the misses tab with files that had no matches"""
@@ -2287,6 +2632,248 @@ class MainWindow(QMainWindow):
         
         self.misses_loaded = True
 
+    def clear_rule_details(self):
+        """Clear the rule details table"""
+        self.rule_details_model.clear()
+        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
+
+    def clear_similar_files(self):
+        """Clear the similar files tree"""
+        self.ui.tw_similar_files.clear()
+        self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
+
+    def clear_match_details(self):
+        """Clear the match details table"""
+        if hasattr(self, 'tw_yara_match_details'):
+            self.tw_yara_match_details.setRowCount(0)
+
+    def populate_rule_details_multi(self, selected_hits):
+        """Populate rule details for multiple selected files"""
+        self.rule_details_model.clear()
+        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
+        
+        if not selected_hits:
+            return
+        
+        # Summary information for multiple files
+        total_files = len(set(hit['filename'] for hit in selected_hits))
+        total_rules = len(set(rule['identifier'] for hit in selected_hits for rule in hit['matched_rules']))
+        total_matches = sum(len(hit['matched_rules']) for hit in selected_hits)
+        
+        self.add_detail_row('🔍 Total Matches', str(total_matches))
+        self.add_detail_row('🎯 Unique Rules', str(total_rules))
+
+        # Add a separator
+        self.add_detail_row('─' * 20, '─' * 30)
+        
+        # Show details for each selected file
+        for i, hit_data in enumerate(selected_hits):  # Show all selected files
+            filename = hit_data['filename']
+            rules_count = len(hit_data['matched_rules'])
+            matched_rule_names = [rule['identifier'] for rule in hit_data['matched_rules']]
+            
+            self.add_detail_row(f'📄 File {i+1}', filename)
+            self.add_detail_row(f'  📍 Path', hit_data['filepath'])
+            self.add_detail_row(f'  🎯 Rules', f'{rules_count} matches: {", ".join(matched_rule_names)}')
+            self.add_detail_row(f'  🔑 MD5', hit_data['md5'])
+            self.add_detail_row(f'  🔑 SHA1', hit_data['sha1'])
+            self.add_detail_row(f'  🔑 SHA256', hit_data['sha256'])
+            
+            if i < len(selected_hits) - 1:  # Add separator except for last item
+                self.add_detail_row('', '')
+
+    def populate_similar_files_for_multi_selection(self, selected_hits):
+        """Populate similar files tree showing ALL files that match the same rules as selected files"""
+        self.ui.tw_similar_files.clear()
+        self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
+        
+        if not selected_hits:
+            return
+        
+        # Get filepaths of selected files for marking with stars
+        selected_filepaths = {hit['filepath'] for hit in selected_hits}
+        
+        # Collect all unique rules from the selected files
+        selected_rules = set()
+        for hit_data in selected_hits:
+            for rule_match in hit_data['matched_rules']:
+                selected_rules.add(rule_match['identifier'])
+        
+        # Now find ALL files (from entire scan results) that match these rules
+        rules_to_files = {}
+        for rule_name in selected_rules:
+            rules_to_files[rule_name] = []
+            
+            # Search through ALL scan hits for files that match this rule
+            for hit_data in self.scan_hits:
+                hit_rules = {rule['identifier'] for rule in hit_data['matched_rules']}
+                if rule_name in hit_rules:
+                    # This file matches the rule
+                    is_selected = hit_data['filepath'] in selected_filepaths
+                    rules_to_files[rule_name].append({
+                        'filename': hit_data['filename'],
+                        'filepath': hit_data['filepath'],
+                        'is_selected': is_selected
+                    })
+        
+        # Create tree items for each rule, sorted by number of files (most matches first)
+        for rule_name in sorted(rules_to_files.keys(), key=lambda r: len(rules_to_files[r]), reverse=True):
+            file_entries = rules_to_files[rule_name]
+            total_files = len(file_entries)
+            selected_count = sum(1 for f in file_entries if f['is_selected'])
+            
+            # Create rule parent item with visual indicator
+            if total_files == 1:
+                rule_display = f"🎯 {rule_name}"
+            elif total_files <= 5:
+                rule_display = f"� {rule_name}"
+            else:
+                rule_display = f"🚨 {rule_name}"
+            
+            rule_info = f"{total_files} files"
+            if selected_count > 0:
+                rule_info += f" ({selected_count} selected)"
+            
+            rule_item = QTreeWidgetItem([rule_display, rule_info])
+            rule_item.setToolTip(0, f"Rule: {rule_name}")
+            rule_item.setToolTip(1, f"{total_files} total files matched this rule, {selected_count} currently selected")
+            
+            # Add files under each rule - sort selected files first, then by filename
+            file_entries_sorted = sorted(file_entries, key=lambda f: (not f['is_selected'], f['filename']))
+            
+            for file_entry in file_entries_sorted:
+                filename = file_entry['filename']
+                filepath = file_entry['filepath']
+                is_selected = file_entry['is_selected']
+                
+                # Check if there are multiple files with the same name in this rule
+                same_name_count = sum(1 for fe in file_entries if fe['filename'] == filename)
+                
+                if same_name_count > 1:
+                    # Show distinguishing path parts for same-named files
+                    import os
+                    path_parts = filepath.replace('\\', '/').split('/')
+                    if len(path_parts) >= 3:
+                        # Show last 2 directories for better context
+                        distinguishing_path = f".../{path_parts[-3]}/{path_parts[-2]}"
+                    elif len(path_parts) >= 2:
+                        distinguishing_path = f".../{path_parts[-2]}"
+                    else:
+                        distinguishing_path = "root"
+                    display_name = f'{filename} [{distinguishing_path}]'
+                else:
+                    display_name = filename
+                
+                # Mark selected files with star
+                if is_selected:
+                    display_name += " ⭐"
+                
+                file_item = QTreeWidgetItem([f"  📄 {display_name}", ""])
+                # Store the full filepath in the item data for double-click navigation
+                file_item.setData(0, 32, filepath)  # Qt.UserRole = 32
+                
+                # Set tooltip with full path and selection status
+                tooltip = f"File: {filename}\nPath: {filepath}"
+                if is_selected:
+                    tooltip += "\n⭐ Currently selected"
+                file_item.setToolTip(0, tooltip)
+                
+                rule_item.addChild(file_item)
+            
+            self.ui.tw_similar_files.addTopLevelItem(rule_item)
+            rule_item.setExpanded(True)
+        
+        # Resize columns
+        self.ui.tw_similar_files.resizeColumnToContents(0)
+        self.ui.tw_similar_files.resizeColumnToContents(1)
+
+    def populate_match_details_multi(self, selected_hits):
+        """Populate match details table for multiple selected files"""
+        if not hasattr(self, 'tw_yara_match_details'):
+            return
+        
+        # Clear existing data
+        self.tw_yara_match_details.setRowCount(0)
+        
+        if not selected_hits:
+            return
+        
+        row_count = 0
+        
+        # Process each selected file
+        for hit_data in selected_hits:
+            filename = hit_data['filename']
+            
+            # Add each rule match for this file
+            for rule_match in hit_data['matched_rules']:
+                rule_name = rule_match['identifier']
+                
+                # Add each pattern match within the rule
+                for pattern_info in rule_match.get('patterns', []):
+                    pattern_name = pattern_info['identifier']
+                    for match in pattern_info['matches']:
+                        self.tw_yara_match_details.insertRow(row_count)
+                        
+                        # Populate columns: File, Rule, Pattern ID, Offset, Data Preview, Hex Dump, Tag
+                        self.tw_yara_match_details.setItem(row_count, 0, QTableWidgetItem(filename))
+                        self.tw_yara_match_details.setItem(row_count, 1, QTableWidgetItem(rule_name))
+                        self.tw_yara_match_details.setItem(row_count, 2, QTableWidgetItem(pattern_name))
+                        self.tw_yara_match_details.setItem(row_count, 3, QTableWidgetItem(f"0x{match['offset']:08x}"))
+                        
+                        # Extract actual data from file
+                        file_data = hit_data.get('file_data', b'')
+                        offset = match['offset']
+                        length = match['length']
+                        
+                        # Handle placeholder entries for rules with no string matches
+                        if pattern_name in ['No string matches', 'Condition-based match'] or (offset == 0 and length == 0):
+                            data_preview = "Rule matched (no string patterns)"
+                            hex_dump = "N/A - Condition-based match"
+                        else:
+                            # Get the actual matched data
+                            if offset < len(file_data) and offset + length <= len(file_data):
+                                match_data = file_data[offset:offset + length]
+                                
+                                # Data preview (first 50 bytes as string, replacing non-printable with dots)
+                                try:
+                                    data_str = match_data[:50].decode('utf-8', errors='ignore')
+                                    # Replace non-printable characters with dots
+                                    data_preview = ''.join(c if c.isprintable() or c in '\t\n\r' else '.' for c in data_str)
+                                    if length > 50:
+                                        data_preview += f'... ({length} bytes total)'
+                                    else:
+                                        data_preview += f' ({length} bytes)'
+                                except:
+                                    data_preview = f"<binary data> ({length} bytes)"
+                                
+                                # Hex dump (first 32 bytes)
+                                hex_bytes = match_data[:32]
+                                hex_dump = ' '.join(f'{b:02x}' for b in hex_bytes)
+                                if length > 32:
+                                    hex_dump += f'... ({length} bytes total)'
+                            else:
+                                data_preview = f"<offset out of range> ({length} bytes)"
+                                hex_dump = f"Offset: 0x{offset:08x}, Length: {length}"
+                        
+                        self.tw_yara_match_details.setItem(row_count, 4, QTableWidgetItem(data_preview))
+                        self.tw_yara_match_details.setItem(row_count, 5, QTableWidgetItem(hex_dump))
+                        
+                        # Tags (if any)
+                        tags = rule_match.get('tags', [])
+                        tag_text = ', '.join(tags) if tags else ''
+                        self.tw_yara_match_details.setItem(row_count, 6, QTableWidgetItem(tag_text))
+                        
+                        # Apply column colors
+                        for col in range(7):
+                            item = self.tw_yara_match_details.item(row_count, col)
+                            if item:
+                                self._apply_column_color(item, col)
+                        
+                        row_count += 1
+        
+        # Force thin rows
+        self._force_thin_rows(self.tw_yara_match_details)
+
     def populate_rule_details(self, hit_data):
         """Populate comprehensive rule details when a hit is selected"""
         self.rule_details_model.clear()
@@ -2298,11 +2885,14 @@ class MainWindow(QMainWindow):
         
         self.add_detail_row('📄 File', filename)
         self.add_detail_row('📁 Path', filepath)
-        self.add_detail_row('🔑 Hash', hit_data['sha256'])
+        self.add_detail_row('🔑 MD5', hit_data['md5'])
+        self.add_detail_row('🔑 SHA1', hit_data['sha1'])
+        self.add_detail_row('🔑 SHA256', hit_data['sha256'])
         
         # Rule summary
         rules = hit_data['matched_rules']
-        self.add_detail_row('🎯 Rules', str(len(rules)))
+        matched_rule_names = [rule['identifier'] for rule in rules]
+        self.add_detail_row('🎯 Rules', f"{len(rules)} matches: {', '.join(matched_rule_names)}")
         
         # Detailed rule information - simplified without match details
         for i, rule_info in enumerate(rules):
@@ -2414,10 +3004,13 @@ class MainWindow(QMainWindow):
             rule_item.setToolTip(0, f"Rule: {rule_id}")
             rule_item.setToolTip(1, f"{file_count} files matched this rule")
             
-            # Add file children
-            for file_info in files:
+            # Add file children - sort by filename for consistency
+            sorted_files = sorted(files, key=lambda f: f['filename'])
+            for file_info in sorted_files:
                 file_item = QTreeWidgetItem([f"📄 {file_info['filename']}", ""])
                 file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
+                # Store the full filepath in the item data for double-click navigation
+                file_item.setData(0, 32, file_info['filepath'])  # Qt.UserRole = 32
                 rule_item.addChild(file_item)
             
             self.ui.tw_similar_files.addTopLevelItem(rule_item)
@@ -2436,7 +3029,7 @@ class MainWindow(QMainWindow):
                 self.ui.tabWidget_3.setTabText(tab_index, "Similar Files")
 
     def populate_similar_files_for_selection(self, selected_hit_data):
-        """Populate similar files tree based on the selected hit's rules"""
+        """Populate similar files tree showing ALL files that match the same rules as selected file"""
         from PySide6.QtWidgets import QTreeWidgetItem
         
         self.ui.tw_similar_files.clear()
@@ -2444,66 +3037,88 @@ class MainWindow(QMainWindow):
         # Get all rules from the selected file
         selected_rules = {rule['identifier'] for rule in selected_hit_data['matched_rules']}
         selected_filename = selected_hit_data['filename']
+        selected_filepath = selected_hit_data['filepath']
         
-        # Group similar files by shared rules
-        rule_groups = {}
-        
-        for hit in self.scan_hits:
-            # Check if this file shares any rules with the selected file
-            hit_rules = {rule['identifier'] for rule in hit['matched_rules']}
-            shared_rules = selected_rules.intersection(hit_rules)
+        # Now find ALL files (from entire scan results) that match any of these rules
+        rules_to_files = {}
+        for rule_name in selected_rules:
+            rules_to_files[rule_name] = []
             
-            if shared_rules:
-                # Group by the shared rules combination
-                shared_key = tuple(sorted(shared_rules))
-                if shared_key not in rule_groups:
-                    rule_groups[shared_key] = []
-                
-                rule_groups[shared_key].append({
-                    'filename': hit['filename'],
-                    'filepath': hit['filepath'],
-                    'shared_count': len(shared_rules),
-                    'is_selected': hit['filename'] == selected_filename
-                })
+            # Search through ALL scan hits for files that match this rule
+            for hit_data in self.scan_hits:
+                hit_rules = {rule['identifier'] for rule in hit_data['matched_rules']}
+                if rule_name in hit_rules:
+                    # This file matches the rule
+                    is_selected = hit_data['filepath'] == selected_filepath
+                    rules_to_files[rule_name].append({
+                        'filename': hit_data['filename'],
+                        'filepath': hit_data['filepath'],
+                        'is_selected': is_selected
+                    })
         
-        # Sort groups by number of shared rules (most similar first)
-        sorted_groups = sorted(rule_groups.items(), key=lambda x: len(x[0]), reverse=True)
-        
-        # Add to tree grouped by shared rules
-        for shared_rules_tuple, files in sorted_groups:
-            shared_rules = list(shared_rules_tuple)
-            shared_count = len(shared_rules)
+        # Create tree items for each rule, sorted by number of files (most matches first)
+        for rule_name in sorted(rules_to_files.keys(), key=lambda r: len(rules_to_files[r]), reverse=True):
+            file_entries = rules_to_files[rule_name]
+            total_files = len(file_entries)
             
-            # Create rule group parent item
-            if shared_count == len(selected_rules):
-                group_display = f"🎯 Exact Match: {', '.join(shared_rules)}"
-            elif shared_count > 1:
-                group_display = f"🔥 Multiple Rules: {', '.join(shared_rules)}"
+            # Create rule parent item with visual indicator
+            if total_files == 1:
+                rule_display = f"🎯 {rule_name}"
+            elif total_files <= 5:
+                rule_display = f"🔥 {rule_name}"
             else:
-                group_display = f"⚠ Single Rule: {shared_rules[0]}"
+                rule_display = f"🚨 {rule_name}"
             
-            group_item = QTreeWidgetItem([group_display, f"{len(files)} files"])
-            group_item.setToolTip(0, f"Shared rules: {', '.join(shared_rules)}")
-            group_item.setToolTip(1, f"{len(files)} files share these rules with {selected_filename}")
+            rule_info = f"{total_files} files"
             
-            # Add file children
-            for file_info in files:
-                if file_info.get('is_selected', False):
-                    # Mark the selected file with a star
-                    file_display = f"📄 {file_info['filename']} ⭐"
-                    tooltip_text = f"File: {file_info['filename']} (Selected)\nPath: {file_info['filepath']}"
-                else:
-                    file_display = f"📄 {file_info['filename']}"
-                    tooltip_text = f"File: {file_info['filename']}\nPath: {file_info['filepath']}"
+            rule_item = QTreeWidgetItem([rule_display, rule_info])
+            rule_item.setToolTip(0, f"Rule: {rule_name}")
+            rule_item.setToolTip(1, f"{total_files} files matched this rule from selected file")
+            
+            # Add files under each rule - sort selected file first, then by filename
+            file_entries_sorted = sorted(file_entries, key=lambda f: (not f['is_selected'], f['filename']))
+            
+            for file_entry in file_entries_sorted:
+                filename = file_entry['filename']
+                filepath = file_entry['filepath']
+                is_selected = file_entry['is_selected']
                 
-                file_item = QTreeWidgetItem([file_display, ""])
-                file_item.setToolTip(0, tooltip_text)
-                group_item.addChild(file_item)
+                # Check if there are multiple files with the same name in this rule
+                same_name_count = sum(1 for fe in file_entries if fe['filename'] == filename)
+                
+                if same_name_count > 1:
+                    # Show distinguishing path parts for same-named files
+                    import os
+                    path_parts = filepath.replace('\\', '/').split('/')
+                    if len(path_parts) >= 3:
+                        # Show last 2 directories for better context
+                        distinguishing_path = f".../{path_parts[-3]}/{path_parts[-2]}"
+                    elif len(path_parts) >= 2:
+                        distinguishing_path = f".../{path_parts[-2]}"
+                    else:
+                        distinguishing_path = "root"
+                    display_name = f'{filename} [{distinguishing_path}]'
+                else:
+                    display_name = filename
+                
+                # Mark selected file with star
+                if is_selected:
+                    display_name += " ⭐"
+                
+                file_item = QTreeWidgetItem([f"  📄 {display_name}", ""])
+                # Store the full filepath in the item data for double-click navigation
+                file_item.setData(0, 32, filepath)  # Qt.UserRole = 32
+                
+                # Set tooltip with full path and selection status
+                tooltip = f"File: {filename}\nPath: {filepath}"
+                if is_selected:
+                    tooltip += "\n⭐ Currently selected"
+                file_item.setToolTip(0, tooltip)
+                
+                rule_item.addChild(file_item)
             
-            self.ui.tw_similar_files.addTopLevelItem(group_item)
-            
-            # Always expand by default
-            group_item.setExpanded(True)
+            self.ui.tw_similar_files.addTopLevelItem(rule_item)
+            rule_item.setExpanded(True)
         
         # Resize columns
         self.ui.tw_similar_files.resizeColumnToContents(0)
@@ -2513,7 +3128,7 @@ class MainWindow(QMainWindow):
         if hasattr(self.ui, 'tabWidget_3'):
             tab_index = self.ui.tabWidget_3.indexOf(self.ui.tab_2)  # Similar Files tab
             if tab_index >= 0:
-                total_files = sum(len(files) for _, files in sorted_groups)
+                total_files = sum(len(files) for files in rules_to_files.values())
                 self.ui.tabWidget_3.setTabText(tab_index, f"Similar Files ({total_files})")
 
     def populate_similar_tags_for_selection(self, selected_hit_data):
@@ -2526,12 +3141,12 @@ class MainWindow(QMainWindow):
         if not self.scan_hits or not selected_hit_data:
             return
         
-        selected_filename = selected_hit_data.get('filename', '')
+        selected_filepath = selected_hit_data.get('filepath', '')
         
         # Get all tags from the selected file's rules (from scan results only)
         selected_file_tags = set()
         for hit_data in self.scan_hits:
-            if hit_data.get('filename') == selected_filename:
+            if hit_data.get('filepath') == selected_filepath:
                 # Extract tags from matched rules
                 for rule_info in hit_data.get('matched_rules', []):
                     rule_name = rule_info.get('identifier', 'Unknown')
@@ -2563,13 +3178,13 @@ class MainWindow(QMainWindow):
                     
                     # Check if this rule has the current tag
                     if any(t.strip() == tag for t in tags if t and t.strip()):
-                        # Avoid duplicates
-                        if not any(f['filename'] == filename and f['rule_name'] == rule_name for f in files_with_this_tag):
+                        # Avoid duplicates (use filepath for exact matching)
+                        if not any(f['filepath'] == filepath and f['rule_name'] == rule_name for f in files_with_this_tag):
                             files_with_this_tag.append({
                                 'filename': filename,
                                 'filepath': filepath,
                                 'rule_name': rule_name,
-                                'is_selected': filename == selected_filename
+                                'is_selected': filepath == selected_filepath
                             })
             
             # Only show tags that have at least one file match
@@ -2603,9 +3218,8 @@ class MainWindow(QMainWindow):
                 
                 self.ui.tw_similar_tags.addTopLevelItem(tag_item)
                 
-                # Expand if there are few enough files to see clearly
-                if len(files_with_this_tag) <= 5:
-                    tag_item.setExpanded(True)
+                # Expand all tag items by default
+                tag_item.setExpanded(True)
         
         # Resize columns
         self.ui.tw_similar_tags.resizeColumnToContents(0)
@@ -2619,6 +3233,105 @@ class MainWindow(QMainWindow):
                     if hasattr(widget, 'findChild') and widget.findChild(type(self.ui.tw_similar_tags)):
                         total_tags = len(selected_file_tags)
                         break
+
+    def populate_similar_tags_for_multi_selection(self, selected_hits):
+        """Populate similar tags view for multiple selected files"""
+        if not hasattr(self.ui, 'tw_similar_tags'):
+            return  # Widget doesn't exist
+            
+        self.ui.tw_similar_tags.clear()
+        
+        if not self.scan_hits or not selected_hits:
+            return
+        
+        from PySide6.QtWidgets import QTreeWidgetItem
+        
+        # Get filepaths of all selected files
+        selected_filepaths = {hit.get('filepath', '') for hit in selected_hits}
+        
+        # Collect all tags from all selected files
+        all_selected_tags = set()
+        for hit_data in selected_hits:
+            for rule_info in hit_data.get('matched_rules', []):
+                tags = rule_info.get('tags', [])
+                for tag in tags:
+                    if tag and tag.strip():
+                        all_selected_tags.add(tag.strip())
+        
+        if not all_selected_tags:
+            # No tags found for selected files
+            no_tags_item = QTreeWidgetItem(["No tags found in selected files", ""])
+            self.ui.tw_similar_tags.addTopLevelItem(no_tags_item)
+            return
+        
+        # For each tag found in selected files, show all files that have this tag
+        for tag in sorted(all_selected_tags):
+            files_with_this_tag = []
+            
+            # Find all files (including selected ones) that have this tag
+            for hit_data in self.scan_hits:
+                filename = hit_data.get('filename', 'Unknown')
+                filepath = hit_data.get('filepath', '')
+                
+                # Check each rule in this file for the tag
+                for rule_info in hit_data.get('matched_rules', []):
+                    rule_name = rule_info.get('identifier', 'Unknown')
+                    tags = rule_info.get('tags', [])
+                    
+                    # Check if this rule has the current tag
+                    if any(t.strip() == tag for t in tags if t and t.strip()):
+                        # Avoid duplicates (use filepath for exact matching)
+                        if not any(f['filepath'] == filepath and f['rule_name'] == rule_name for f in files_with_this_tag):
+                            files_with_this_tag.append({
+                                'filename': filename,
+                                'filepath': filepath,
+                                'rule_name': rule_name,
+                                'is_selected': filepath in selected_filepaths
+                            })
+            
+            # Only show tags that have at least one file match
+            if files_with_this_tag:
+                # Count selected vs other files
+                selected_count = len([f for f in files_with_this_tag if f['is_selected']])
+                other_files_count = len([f for f in files_with_this_tag if not f['is_selected']])
+                
+                tag_display = f"🏷️ {tag}"
+                if selected_count > 0 and other_files_count > 0:
+                    tag_info = f"{selected_count} selected + {other_files_count} others"
+                elif selected_count > 0:
+                    tag_info = f"{selected_count} selected files only"
+                else:
+                    tag_info = f"{other_files_count} other files"
+                
+                tag_item = QTreeWidgetItem([tag_display, tag_info])
+                tag_item.setToolTip(0, f"Tag: {tag}")
+                tag_item.setToolTip(1, f"Found in {len(files_with_this_tag)} files total ({selected_count} selected)")
+                
+                # Add file children - sort selected files first
+                files_sorted = sorted(files_with_this_tag, key=lambda f: (not f['is_selected'], f['filename']))
+                for file_info in files_sorted:
+                    if file_info['is_selected']:
+                        # Mark selected files with star
+                        file_display = f"📄 {file_info['filename']} ⭐"
+                        file_info_text = f"Rule: {file_info['rule_name']} (Selected)"
+                    else:
+                        file_display = f"📄 {file_info['filename']}"
+                        file_info_text = f"Rule: {file_info['rule_name']}"
+                    
+                    file_item = QTreeWidgetItem([file_display, file_info_text])
+                    file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
+                    file_item.setToolTip(1, f"Rule: {file_info['rule_name']}")
+                    tag_item.addChild(file_item)
+                
+                self.ui.tw_similar_tags.addTopLevelItem(tag_item)
+                
+                # Expand all tag items by default
+                tag_item.setExpanded(True)
+        
+        # Resize columns
+        self.ui.tw_similar_tags.resizeColumnToContents(0)
+        self.ui.tw_similar_tags.resizeColumnToContents(1)
+        
 
     def _initialize_similar_tags_widget(self):
         """Initialize similar tags widget with instruction message"""
@@ -2663,7 +3376,6 @@ class MainWindow(QMainWindow):
                 rule_name = rule_match.get('identifier', f'Rule_{rule_idx}')
                 rule_tags = rule_match.get('tags', [])
                 tags_str = ', '.join(rule_tags) if rule_tags else ''
-                
                 # Process each pattern in the rule
                 patterns = rule_match.get('patterns', [])
                 for pattern_idx, pattern in enumerate(patterns):
@@ -2675,10 +3387,21 @@ class MainWindow(QMainWindow):
                         offset = match.get('offset', 0)
                         length = match.get('length', 0)
                         
-                        # Get data preview for this match
-                        data_preview = self._get_data_preview(filepath, offset, length)
-                        preview_text = data_preview['text'] if data_preview else 'N/A'
-                        hex_dump = data_preview['hex'] if data_preview else 'N/A'
+                        # Handle placeholder entries for rules with no string matches
+                        if pattern_id in ['No string matches', 'Condition-based match'] or (offset == 0 and length == 0):
+                            preview_text = "Rule matched (no string patterns)"
+                            hex_dump = "N/A - Condition-based match"
+                        else:
+                            # Get data preview for this match using stored file data
+                            file_content = file_data.get('file_data', b'')
+                            if file_content:
+                                data_preview = self._get_data_preview_from_memory(file_content, offset, length)
+                            else:
+                                # Fallback to reading from file if data not stored
+                                data_preview = self._get_data_preview(filepath, offset, length)
+                            
+                            preview_text = data_preview['text'] if data_preview else 'N/A'
+                            hex_dump = data_preview['hex'] if data_preview else 'N/A'
                         
                         # Create table row data
                         row_data = [
@@ -2774,35 +3497,57 @@ class MainWindow(QMainWindow):
         if not item:
             return
         
-        # Get the item text and check various formats
-        item_text = item.text(0)
+        try:
+            # Store item information early to avoid accessing deleted objects
+            filepath = item.data(0, 32)  # Qt.UserRole = 32
+            item_text = item.text(0)
+            has_parent = item.parent() is not None
+        except RuntimeError:
+            # Item was deleted, ignore the event
+            return
         
-        filename = None
-        
-        # Check if this is a file item (try different formats)
-        if item_text.startswith('📄 '):
-            # Extract filename from the item text
-            filename = item_text[2:]  # Remove the "📄 " prefix
-        elif item_text.startswith('File: '):
-            # Alternative format
-            filename = item_text[6:]  # Remove the "File: " prefix
-        elif not item.parent():
-            # This might be a top-level item, check if it's a filename directly
-            # Skip if it looks like a rule name or section header
-            if not any(keyword in item_text.lower() for keyword in ['rule', 'condition', 'strings', 'meta']):
-                filename = item_text
-        
-        if filename:
-            # Find this file in the hits list and select it
-            self.select_file_in_hits_list(filename)
+        if filepath:
+            # Use exact filepath matching for precise selection
+            self.select_file_in_hits_list_by_filepath(filepath)
+        else:
+            # Fallback to old method for compatibility
+            filename = None
+            
+            # Check if this is a file item (try different formats)
+            if item_text.startswith('📄 '):
+                # Extract filename from the item text
+                filename = item_text[2:].split(' (')[0]  # Remove "📄 " and any path info in parentheses
+                # Remove star if present
+                filename = filename.replace(' ⭐', '').strip()
+            elif item_text.startswith('File: '):
+                # Alternative format
+                filename = item_text[6:]  # Remove the "File: " prefix
+            elif not has_parent:
+                # This might be a top-level item, check if it's a filename directly
+                # Skip if it looks like a rule name or section header
+                if not any(keyword in item_text.lower() for keyword in ['rule', 'condition', 'strings', 'meta']):
+                    filename = item_text
+            
+            if filename:
+                # Find this file in the hits list and select it (old method)
+                self.select_file_in_hits_list(filename)
 
     def on_similar_tag_double_clicked(self, item, column):
         """Handle double-click of a similar tag item to synchronize with hits list"""
         if not item:
             return
         
-        # Get the item text and check various formats
-        item_text = item.text(0)
+        try:
+            # Store all item information early to avoid accessing deleted objects
+            item_text = item.text(0)
+            parent_item = item.parent()
+            parent_text = parent_item.text(0) if parent_item else None
+            child_count = item.childCount()
+            first_child = item.child(0) if child_count > 0 else None
+            
+        except RuntimeError:
+            # Item was deleted, ignore the event
+            return
         
         filename = None
         tag_name = None
@@ -2811,24 +3556,33 @@ class MainWindow(QMainWindow):
         if item_text.startswith('📄 '):
             # Extract filename from the item text
             filename = item_text[2:]  # Remove the "📄 " prefix
+            # Remove star if present
+            filename = filename.replace(' ⭐', '').strip()
         elif item_text.startswith('🏷️ '):
             # This is a tag item - extract tag name
             tag_name = item_text[3:]  # Remove the "🏷️ " prefix
             
             # If it's a tag with children, select the first file with this tag
-            if item.childCount() > 0:
-                first_child = item.child(0)
-                if first_child and first_child.text(0).startswith('📄 '):
-                    filename = first_child.text(0)[2:]  # Remove "📄 " prefix
+            if first_child:
+                try:
+                    first_child_text = first_child.text(0)
+                    if first_child_text.startswith('📄 '):
+                        filename = first_child_text[2:]  # Remove "📄 " prefix
+                        # Remove star if present
+                        filename = filename.replace(' ⭐', '').strip()
+                except RuntimeError:
+                    # Child item was deleted, skip
+                    pass
         
         if filename:
             # Find this file in the hits list and select it
             self.select_file_in_hits_list(filename)
             
             # If we have a tag, also highlight the tag in the editor
-            if tag_name or (item.parent() and item.parent().text(0).startswith('🏷️ ')):
-                parent_tag = tag_name if tag_name else item.parent().text(0)[3:]
-                self.highlight_tag_in_editor(parent_tag)
+            if tag_name or (parent_text and parent_text.startswith('🏷️ ')):
+                parent_tag = tag_name if tag_name else (parent_text[3:] if parent_text else None)
+                if parent_tag:
+                    self.highlight_tag_in_editor(parent_tag)
 
     def highlight_tag_in_editor(self, tag_name):
         """Highlight the specified tag in the YARA editor"""
@@ -2874,6 +3628,7 @@ class MainWindow(QMainWindow):
                         # Update details for this file
                         self.populate_rule_details(hit_data)
                         self.populate_similar_files_for_selection(hit_data)
+                        self.populate_similar_tags_for_selection(hit_data)
                         self.populate_yara_match_details(hit_data)
                         
                         # Update status bar to show the selection
@@ -2887,29 +3642,90 @@ class MainWindow(QMainWindow):
                     self._updating_selection = False
                 break
 
-    def _get_data_preview(self, filepath, offset, length, preview_length=64):
-        """Get a preview of data at the specified offset"""
+    def select_file_in_hits_list_by_filepath(self, filepath, update_details=True):
+        """Select a specific file in the hits list by exact filepath match"""
+        if self._updating_selection:
+            return  # Prevent recursive calls
+            
+        # Find the file in scan_hits by exact filepath match
+        for row, hit_data in enumerate(self.scan_hits):
+            if hit_data['filepath'] == filepath:
+                self._updating_selection = True
+                try:
+                    # Select the row in the hits table
+                    self.ui.tv_file_hits.selectRow(row)
+                    
+                    if update_details:
+                        # Update details for this file using consistent multi-selection logic
+                        selected_hits = [hit_data]
+                        self.populate_rule_details_multi(selected_hits)
+                        self.populate_similar_files_for_multi_selection(selected_hits)
+                        self.populate_match_details_multi(selected_hits)
+                        self.populate_similar_tags_for_selection(hit_data)
+                        
+                        # Update status bar to show the selection
+                        filename = hit_data['filename']
+                        rule_count = len(hit_data.get('matched_rules', []))
+                        self.statusBar().showMessage(
+                            f"Selected: {filename} | {rule_count} rule(s) matched | Path: {filepath}", 
+                            8000
+                        )
+                finally:
+                    self._updating_selection = False
+                break
+
+    def _get_data_preview(self, filepath, offset, length):
+        """Get a preview of data at the specified offset using exact YARA-X match length"""
         try:
             with open(filepath, 'rb') as f:
                 f.seek(offset)
-                # Read a bit more for context, but limit it
-                read_length = min(preview_length, length + 16)
+                # Use exact YARA-X match length, not extra context
+                read_length = length
                 data = f.read(read_length)
                 
                 if not data:
                     return None
                 
-                # Text preview (printable characters only)
-                text_preview = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in data[:preview_length])
+                # Text preview (printable characters only) - use exact match length
+                text_preview = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in data)
                 
-                # Hex dump
-                hex_dump = ' '.join(f'{b:02X}' for b in data[:preview_length])
+                # Hex dump - use exact match length
+                hex_dump = ' '.join(f'{b:02X}' for b in data)
                 
                 return {
-                    'raw': data[:preview_length],
+                    'raw': data,
                     'text': text_preview,
                     'hex': hex_dump
                 }
+        except Exception:
+            return None
+
+    def _get_data_preview_from_memory(self, file_data, offset, length):
+        """Get a preview of data from memory at the specified offset using exact YARA-X match length"""
+        try:
+            if offset < 0 or offset >= len(file_data):
+                return None
+                
+            # Extract the exact data at the specified offset using YARA-X match length
+            end_offset = min(offset + length, len(file_data))
+            data = file_data[offset:end_offset]
+            
+            if not data:
+                return None
+            
+            # Use exact YARA-X match data (no preview length limit)
+            
+            # Text preview (printable characters only)
+            text_preview = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in data)
+            
+            # Hex dump
+            hex_dump = ' '.join(f'{b:02X}' for b in data)
+            
+            return {
+                'raw': data,
+                'text': text_preview,
+                'hex': hex_dump
+            }
         except Exception:
             return None
 

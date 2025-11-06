@@ -544,8 +544,8 @@ class MainWindow(QMainWindow):
         copy_action.triggered.connect(lambda: QApplication.clipboard().setText(self.ui.tb_compilation_output.toPlainText()))
         menu.addAction(copy_action)
         
-        # Rule Info action (if yaraast is available)
-        if YARAAST_AVAILABLE:
+        # Rule Info action (if yara-x or yaraast is available)
+        if YARA_X_AVAILABLE or YARAAST_AVAILABLE:
             menu.addSeparator()
             rule_info_action = QAction("Show Rule Info", self)
             rule_info_action.triggered.connect(self.show_rule_info)
@@ -1641,39 +1641,105 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("Complete reset - ready for fresh start", 5000)
 
     def on_format_yara(self) -> None:
-        """Format the YARA rule in the editor using yaraast for proper AST-based formatting."""
+        """Format the YARA rule in the editor using yara-x Formatter."""
         text = self.ui.te_yara_editor.toPlainText()
         
         if not text.strip():
             QMessageBox.information(self, "No Content", "No YARA rule to format.")
             return
         
-        # Only format if yaraast is available and can successfully parse the rule
-        if not YARAAST_AVAILABLE:
-            QMessageBox.warning(self, "AST Parser Required", 
-                               "yaraast library is required for formatting. Please install it first.")
-            return
-        
-        try:
-            # Try AST parsing first - if it fails, do NOT format at all
-            formatted_text = self.format_yara_with_ast(text)
-            
-            # Load formatted text via helper to enforce size checks (should be small)
-            self._load_text_to_editor(formatted_text)
-            
-            # Show success message
-            self.statusBar().showMessage("YARA rule formatted with AST parser", 3000)
+        # Try yara-x formatter first, fall back to yaraast if needed
+        if YARA_X_AVAILABLE:
+            try:
+                # Use yara-x Formatter for formatting
+                formatted_text = self.format_yara_with_yara_x(text)
                 
+                # Load formatted text via helper to enforce size checks (should be small)
+                self._load_text_to_editor(formatted_text)
+                
+                # Show success message
+                self.statusBar().showMessage("YARA rule formatted with yara-x", 3000)
+                return
+                    
+            except Exception as e:
+                # If yara-x formatting fails, show error
+                QMessageBox.warning(self, "Cannot Format Rule", 
+                                   f"Unable to format YARA rule with yara-x:\n\n{str(e)}\n\n"
+                                   "Please fix the syntax errors first, then try formatting again.")
+                self.statusBar().showMessage(f"yara-x formatting failed: {str(e)[:50]}...", 5000)
+                return
+        
+        # Fallback to yaraast if yara-x is not available
+        if YARAAST_AVAILABLE:
+            try:
+                # Try AST parsing first - if it fails, do NOT format at all
+                formatted_text = self.format_yara_with_ast(text)
+                
+                # Load formatted text via helper to enforce size checks (should be small)
+                self._load_text_to_editor(formatted_text)
+                
+                # Show success message
+                self.statusBar().showMessage("YARA rule formatted with yaraast fallback", 3000)
+                    
+            except Exception as e:
+                # If AST parsing fails, do NOT format - show error instead
+                QMessageBox.warning(self, "Cannot Format Rule", 
+                                   f"Unable to format YARA rule due to syntax errors:\n\n{str(e)}\n\n"
+                                   "Please fix the syntax errors first, then try formatting again.")
+                self.statusBar().showMessage(f"Formatting failed: {str(e)[:50]}...", 5000)
+        else:
+            # Neither formatter available
+            QMessageBox.warning(self, "No Formatter Available", 
+                               "Neither yara-x nor yaraast is available for formatting. Please install one of them.")
+            return
+
+    def format_yara_with_yara_x(self, text: str) -> str:
+        """
+        Format YARA rules using yara-x Formatter.
+        
+        Args:
+            text: Raw YARA rule text to format
+            
+        Returns:
+            Formatted YARA rule text
+            
+        Raises:
+            Exception: If formatting fails
+        """
+        try:
+            import yara_x
+            from io import StringIO
+            
+            # First, try to compile the rule to validate syntax
+            # This ensures we only format valid YARA rules
+            rules = yara_x.compile(text)
+            
+            # Create formatter and format the source text to StringIO buffer
+            formatter = yara_x.Formatter()
+            output_buffer = StringIO()
+            
+            # Convert text to BytesIO for yara-x input (it needs a file-like object with .read())
+            from io import BytesIO
+            input_buffer = BytesIO(text.encode('utf-8'))
+            
+            # Format the text to the output buffer
+            formatter.format(input_buffer, output_buffer)
+            
+            # Get the formatted result from the buffer
+            formatted = output_buffer.getvalue()
+            
+            # Clean up buffers
+            input_buffer.close()
+            output_buffer.close()
+            
+            return formatted
+            
         except Exception as e:
-            # If AST parsing fails, do NOT format - show error instead
-            QMessageBox.warning(self, "Cannot Format Rule", 
-                               f"Unable to format YARA rule due to syntax errors:\n\n{str(e)}\n\n"
-                               "Please fix the syntax errors first, then try formatting again.")
-            self.statusBar().showMessage(f"Formatting failed: {str(e)[:50]}...", 5000)
+            raise Exception(f"yara-x formatting failed: {str(e)}")
 
     def format_yara_with_ast(self, text: str) -> str:
         """
-        Format YARA rules using yaraast AST parser.
+        Format YARA rules using yaraast AST parser (fallback).
         
         Args:
             text: Raw YARA rule text to format

@@ -120,10 +120,10 @@ class ThemeSettings:
     colors: ThemeColors
     
     # Font settings
-    font_family: str = "Segoe UI"
-    font_size: int = 9
-    editor_font_family: str = "Consolas"
-    editor_font_size: int = 10
+    font_family: str = "Cascadia Code"
+    font_size: int = 7
+    editor_font_family: str = "Cascadia Code"
+    editor_font_size: int = 12  # Increased for better readability
     
     # UI settings
     border_radius: int = 4
@@ -195,7 +195,7 @@ class ThemeSettings:
             font_family=data.get('font_family', 'Segoe UI'),
             font_size=data.get('font_size', 9),
             editor_font_family=data.get('editor_font_family', 'Consolas'),
-            editor_font_size=data.get('editor_font_size', 10),
+            editor_font_size=data.get('editor_font_size', 12),
             border_radius=data.get('border_radius', 4),
             border_width=data.get('border_width', 1),
             padding_small=data.get('padding_small', 4),
@@ -205,194 +205,7 @@ class ThemeSettings:
         )
 
 
-# Predefined themes
-LIGHT_THEME = ThemeSettings(
-    name="Light",
-    colors=ThemeColors(
-        # Base colors
-        background="#ffffff",
-        surface="#f8f9fa",
-        primary="#0078d4",
-        secondary="#6c757d",
-        accent="#dc3545",
-        
-        # Text colors
-        text_primary="#212529",
-        text_secondary="#6c757d",
-        text_disabled="#adb5bd",
-        text_inverse="#ffffff",
-        
-        # Interactive colors
-        button_normal="#e9ecef",
-        button_hover="#dee2e6",
-        button_pressed="#ced4da",
-        
-        # Selection and highlighting
-        selection_background="#dc3545",
-        selection_text="#ffffff",
-        selection_inactive="#dc3545",
-        hover_background="#e9ecef",
-        
-        # Editor colors
-        editor_background="#ffffff",
-        editor_text="#212529",
-        editor_line_number_bg="#f8f9fa",
-        editor_line_number_text="#6c757d",
-        editor_current_line="#fafbfc",
-        editor_selection="#e3f2fd",
-        
-        # Table/Tree colors
-        table_background="#ffffff",
-        table_alternate="#f8f9fa",
-        table_header_bg="#e9ecef",
-        table_header_text="#495057",
-        table_border="#dee2e6",
-        
-        # Status colors
-        success="#28a745",
-        warning="#ffc107",
-        error="#dc3545",
-        info="#17a2b8",
-        
-        # Splitter colors
-        splitter_handle="#dee2e6",
-        splitter_pressed="#ced4da",
-        
-        # Tab colors
-        tab_active_bg="#ffffff",
-        tab_active_text="#495057",
-        tab_inactive_bg="#e9ecef",
-        tab_inactive_text="#6c757d",
-        
-        # Scrollbar colors
-        scrollbar_background="#f1f3f4",
-        scrollbar_handle="#ced4da",
-        scrollbar_handle_hover="#adb5bd",
-        
-        # Checkbox colors
-        checkbox_background="#ffffff",
-        checkbox_border="#dee2e6",
-        checkbox_checked_border="#dc3545",
-        checkbox_checked_mark="#dc3545",
-        checkbox_hover_border="#0078d4",
-        checkbox_indeterminate="#ffc107",
-        
-        # Syntax highlighting colors (optimized for light backgrounds)
-        syntax_keyword="#0066cc",      # Blue - keywords like 'rule', 'condition'
-        syntax_logic="#9900cc",        # Purple - logic operators 'and', 'or', 'not'
-        syntax_builtin="#cc6600",      # Orange-brown - built-ins like 'filesize'
-        syntax_modifier="#996633",     # Brown - string modifiers 'ascii', 'wide'
-        syntax_module="#006666",       # Teal - modules 'pe', 'elf'
-        syntax_symbol="#0066aa",       # Dark blue - symbols $a, #a, @a
-        syntax_number="#009900",       # Green - numbers and hex values
-        syntax_string="#cc0000",       # Red - string literals
-        syntax_regex="#990066",        # Dark pink - regex patterns
-        syntax_hex="#cc9900",          # Gold - hex strings { 6A 40 }
-        syntax_comment="#669900",      # Olive green - comments
-        
-        # Table column colors for better readability (light theme)
-        column_file="#f0f8ff",         # Alice blue - file names
-        column_rule="#f0fff0",         # Honeydew - rule names  
-        column_pattern="#fff8dc",      # Cornsilk - pattern IDs
-        column_offset="#ffe4e1",       # Misty rose - offsets
-        column_data="#f5f5dc",         # Beige - data preview
-        column_hex="#e6e6fa"           # Lavender - hex dump
-    )
-)
-
-DARK_THEME = ThemeSettings(
-    name="Dark",
-    colors=ThemeColors(
-        # Base colors
-        background="#1e1e1e",
-        surface="#252526",
-        primary="#0e639c",
-        secondary="#858585",
-        accent="#f14c4c",
-        
-        # Text colors
-        text_primary="#cccccc",
-        text_secondary="#858585",
-        text_disabled="#5a5a5a",
-        text_inverse="#1e1e1e",
-        
-        # Interactive colors
-        button_normal="#2d2d30",
-        button_hover="#3e3e42",
-        button_pressed="#464647",
-        
-        # Selection and highlighting
-        selection_background="#f14c4c",
-        selection_text="#ffffff",
-        selection_inactive="#f14c4c",
-        hover_background="#2a2d2e",
-        
-        # Editor colors
-        editor_background="#1e1e1e",
-        editor_text="#d4d4d4",
-        editor_line_number_bg="#252526",
-        editor_line_number_text="#858585",
-        editor_current_line="#2a2d2e",
-        editor_selection="#264f78",
-        
-        # Table/Tree colors
-        table_background="#1e1e1e",
-        table_alternate="#252526",
-        table_header_bg="#2d2d30",
-        table_header_text="#cccccc",
-        table_border="#3e3e42",
-        
-        # Status colors
-        success="#4ec9b0",
-        warning="#ffcc02",
-        error="#f14c4c",
-        info="#9cdcfe",
-        
-        # Splitter colors
-        splitter_handle="#3e3e42",
-        splitter_pressed="#464647",
-        
-        # Tab colors
-        tab_active_bg="#1e1e1e",
-        tab_active_text="#cccccc",
-        tab_inactive_bg="#2d2d30",
-        tab_inactive_text="#858585",
-        
-        # Scrollbar colors
-        scrollbar_background="#2e2e2e",
-        scrollbar_handle="#424242",
-        scrollbar_handle_hover="#4e4e4e",
-        
-        # Checkbox colors
-        checkbox_background="#1e1e1e",
-        checkbox_border="#3e3e42",
-        checkbox_checked_border="#f14c4c",
-        checkbox_checked_mark="#f14c4c",
-        checkbox_hover_border="#0e639c",
-        checkbox_indeterminate="#ffcc02",
-        
-        # Syntax highlighting colors (optimized for dark backgrounds)
-        syntax_keyword="#5ba7f7",      # Light blue - keywords like 'rule', 'condition'
-        syntax_logic="#d19ce6",        # Light purple - logic operators 'and', 'or', 'not'
-        syntax_builtin="#4dd0e1",      # Cyan - built-ins like 'filesize', 'uint32'
-        syntax_modifier="#fff176",     # Light yellow - string modifiers 'ascii', 'wide'
-        syntax_module="#81c784",       # Light green - modules 'pe', 'elf'
-        syntax_symbol="#90caf9",       # Pale blue - symbols $a, #a, @a
-        syntax_number="#a5d6a7",       # Mint green - numbers and hex values
-        syntax_string="#ffab91",       # Peach - string literals (much better than red!)
-        syntax_regex="#f8bbd9",        # Pink - regex patterns
-        syntax_hex="#ffe082",          # Light gold - hex strings { 6A 40 }
-        syntax_comment="#81c784",      # Light green - comments
-        
-        # Table column colors for better readability (dark theme)
-        column_file="#2a2d3e",         # Dark blue-gray - file names
-        column_rule="#2d2a3e",         # Dark purple-gray - rule names
-        column_pattern="#3e2d2a",      # Dark brown-gray - pattern IDs
-        column_offset="#3e2a2d",       # Dark red-gray - offsets
-        column_data="#2d3e2a",         # Dark green-gray - data preview
-        column_hex="#2a3e2d"           # Dark teal-gray - hex dump
-    )
-)
+# All themes are now loaded from themes.json
 
 
 class ThemeManager:
@@ -406,59 +219,100 @@ class ThemeManager:
         self.config_dir.mkdir(exist_ok=True)
         self.themes_file = self.config_dir / "themes.json"
         
-        # Built-in themes
-        self.built_in_themes = {
-            "Light": LIGHT_THEME,
-            "Dark": DARK_THEME
-        }
+        # All themes are now loaded from JSON
+        self.all_themes: Dict[str, ThemeSettings] = {}
+        self.current_theme: ThemeSettings = None
         
-        self.custom_themes: Dict[str, ThemeSettings] = {}
-        self.current_theme: ThemeSettings = LIGHT_THEME
-        
-        self.load_custom_themes()
+        self.load_all_themes()
     
     def get_available_themes(self) -> Dict[str, ThemeSettings]:
-        """Get all available themes (built-in + custom)"""
-        all_themes = self.built_in_themes.copy()
-        all_themes.update(self.custom_themes)
-        return all_themes
+        """Get all available themes from JSON"""
+        return self.all_themes.copy()
     
     def get_theme(self, name: str) -> ThemeSettings:
         """Get theme by name"""
-        all_themes = self.get_available_themes()
-        return all_themes.get(name, LIGHT_THEME)
+        # Return the requested theme or fallback to Light theme
+        if name in self.all_themes:
+            return self.all_themes[name]
+        elif "Light" in self.all_themes:
+            return self.all_themes["Light"]
+        elif self.all_themes:
+            # If Light theme doesn't exist, return the first available theme
+            return list(self.all_themes.values())[0]
+        else:
+            # Create a minimal fallback theme if no themes are loaded
+            return self._create_fallback_theme()
     
     def set_current_theme(self, name: str):
         """Set the current active theme"""
         self.current_theme = self.get_theme(name)
     
-    def load_custom_themes(self):
-        """Load custom themes from config file"""
+    def load_all_themes(self):
+        """Load all themes from config file"""
         if self.themes_file.exists():
             try:
                 with open(self.themes_file, 'r', encoding='utf-8') as f:
                     themes_data = json.load(f)
                 
                 for name, theme_data in themes_data.items():
-                    if name not in self.built_in_themes and not name.startswith('_') and isinstance(theme_data, dict):
-                        self.custom_themes[name] = ThemeSettings.from_dict(theme_data)
+                    if not name.startswith('_') and isinstance(theme_data, dict):
+                        self.all_themes[name] = ThemeSettings.from_dict(theme_data)
+                        
+                # Set default theme if current_theme is not set
+                if self.current_theme is None:
+                    if "Light" in self.all_themes:
+                        self.current_theme = self.all_themes["Light"]
+                    elif self.all_themes:
+                        self.current_theme = list(self.all_themes.values())[0]
                         
             except Exception as e:
-                print(f"Error loading custom themes: {e}")
+                print(f"Error loading themes: {e}")
+                self.current_theme = self._create_fallback_theme()
+        else:
+            print(f"Themes file not found: {self.themes_file}")
+            self.current_theme = self._create_fallback_theme()
     
-    def save_custom_theme(self, theme: ThemeSettings):
-        """Save a custom theme"""
-        self.custom_themes[theme.name] = theme
+    def save_theme(self, theme: ThemeSettings):
+        """Save a theme to the JSON file"""
+        self.all_themes[theme.name] = theme
         
-        # Save to file
+        # Save all themes to file
         try:
-            themes_data = {name: theme.to_dict() for name, theme in self.custom_themes.items()}
+            themes_data = {name: theme.to_dict() for name, theme in self.all_themes.items()}
             
             with open(self.themes_file, 'w', encoding='utf-8') as f:
                 json.dump(themes_data, f, indent=2, ensure_ascii=False)
                 
         except Exception as e:
-            print(f"Error saving custom themes: {e}")
+            print(f"Error saving themes: {e}")
+    
+    def _create_fallback_theme(self) -> ThemeSettings:
+        """Create a minimal fallback theme when no themes are available"""
+        return ThemeSettings(
+            name="Fallback Light",
+            colors=ThemeColors(
+                background="#ffffff", surface="#f0f0f0", primary="#0078d4", secondary="#666666", accent="#ff0000",
+                text_primary="#000000", text_secondary="#666666", text_disabled="#cccccc", text_inverse="#ffffff",
+                button_normal="#e0e0e0", button_hover="#d0d0d0", button_pressed="#c0c0c0",
+                selection_background="#0078d4", selection_text="#ffffff", selection_inactive="#cccccc", hover_background="#f0f0f0",
+                editor_background="#ffffff", editor_text="#000000", editor_line_number_bg="#f0f0f0", editor_line_number_text="#666666", 
+                editor_current_line="#f8f8f8", editor_selection="#add8e6",
+                table_background="#ffffff", table_alternate="#f8f8f8", table_header_bg="#e0e0e0", table_header_text="#000000", table_border="#cccccc",
+                success="#008000", warning="#ffa500", error="#ff0000", info="#0000ff",
+                splitter_handle="#cccccc", splitter_pressed="#aaaaaa",
+                tab_active_bg="#ffffff", tab_active_text="#000000", tab_inactive_bg="#f0f0f0", tab_inactive_text="#666666",
+                scrollbar_background="#f0f0f0", scrollbar_handle="#cccccc", scrollbar_handle_hover="#aaaaaa",
+                checkbox_background="#ffffff", checkbox_border="#cccccc", checkbox_checked_border="#0078d4", 
+                checkbox_checked_mark="#0078d4", checkbox_hover_border="#0078d4", checkbox_indeterminate="#ffa500",
+                syntax_keyword="#0000ff", syntax_logic="#800080", syntax_builtin="#008000", syntax_modifier="#ff8000",
+                syntax_module="#008080", syntax_symbol="#000080", syntax_number="#008000", syntax_string="#ff0000",
+                syntax_regex="#800080", syntax_hex="#ff8000", syntax_comment="#008000", syntax_identifier="#000080",
+                syntax_meta_key="#008000", syntax_tag="#ff8000", syntax_condition="#800080", syntax_operator="#000000",
+                syntax_literal="#ff0000", syntax_function="#008080", syntax_section="#0000ff",
+                column_file="#f0f8ff", column_rule="#f0fff0", column_pattern="#fff8dc", column_offset="#ffe4e1", 
+                column_data="#f5f5dc", column_hex="#e6e6fa"
+            )
+        )
     
     def generate_qss_stylesheet(self, theme: ThemeSettings = None) -> str:
         """Generate complete QSS stylesheet from theme"""
@@ -550,6 +404,12 @@ class ThemeManager:
             font-family: {theme.editor_font_family};
             font-size: {theme.editor_font_size}pt;
             selection-background-color: {colors.editor_selection};
+            selection-color: {colors.editor_text};
+        }}
+        
+        QTextEdit::selection, QPlainTextEdit::selection {{
+            background-color: {colors.editor_selection};
+            color: {colors.editor_text};
         }}
         
         /* Text Browser */

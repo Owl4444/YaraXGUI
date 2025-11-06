@@ -262,9 +262,9 @@ class MainWindow(QMainWindow):
             # NoWrap mode generally performs better with very large text
             self.ui.te_yara_editor.setLineWrapMode(self.ui.te_yara_editor.LineWrapMode.NoWrap)
             
-            # Set vertical scroll bar policy to ensure it's always visible
+            # Set scroll bar policies to only show when needed
             from PySide6.QtCore import Qt
-            self.ui.te_yara_editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+            self.ui.te_yara_editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             self.ui.te_yara_editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
             
             # Configure scrollbar for better dragging behavior
@@ -894,14 +894,24 @@ class MainWindow(QMainWindow):
         """Setup consistent monospace fonts across editor and compilation output"""
         from PySide6.QtGui import QFont
         
-        # Create consistent monospace font
-        font = QFont("Consolas", 10)
+        # Get font settings from current theme
+        theme = self.theme_manager.current_theme if hasattr(self, 'theme_manager') else None
+        if theme:
+            font_family = theme.editor_font_family
+            font_size = theme.editor_font_size
+        else:
+            # Fallback values if theme not yet initialized
+            font_family = "Consolas"
+            font_size = 8  # Decreased default size for better readability
+        
+        # Create consistent monospace font with theme settings
+        font = QFont(font_family, font_size)
         if not font.exactMatch():
-            font = QFont("Courier New", 10)
+            font = QFont("Courier New", font_size)
         if not font.exactMatch():
-            font = QFont("Monaco", 10)  # macOS fallback
+            font = QFont("Monaco", font_size)  # macOS fallback
         if not font.exactMatch():
-            font = QFont("monospace", 10)  # Generic fallback
+            font = QFont("monospace", font_size)  # Generic fallback
             
         # Apply to YARA editor
         self.ui.te_yara_editor.setFont(font)
@@ -964,18 +974,18 @@ class MainWindow(QMainWindow):
             editor.setViewportMargins(line_number_area_width(), 0, 0, 0)
 
         def highlight_current_line():
+            """Applies theme-aware background color to the current line."""
             extra_selections = []
             if not editor.isReadOnly():
-                from PySide6.QtWidgets import QApplication
-                palette = QApplication.palette()
-                
                 selection = QTextEdit.ExtraSelection()
                 
-                # Use subtle light gray highlighting instead of yellow
-                if palette.color(palette.ColorRole.Base).lightness() > 128:  # Light theme
-                    line_color = QColor(245, 245, 245)  # Very light gray
-                else:  # Dark theme
-                    line_color = QColor(60, 60, 60)  # Dark gray
+                # Use theme-aware current line color
+                if hasattr(self, 'theme_manager') and self.theme_manager.current_theme:
+                    theme_color = self.theme_manager.current_theme.colors.editor_current_line
+                    line_color = QColor(theme_color)
+                else:
+                    # Fallback to very subtle gray if no theme available
+                    line_color = QColor(250, 250, 250)
                 
                 selection.format.setBackground(line_color)
                 selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
@@ -1053,9 +1063,10 @@ class MainWindow(QMainWindow):
                                 number = str(block_number + 1)
                                 right_margin = max(5, width // 10)
                                 
-                                # Position line number at the TOP of the text line, not baseline
-                                # Use the adjusted_y position directly for top alignment
-                                text_top_y = adjusted_y
+                                # Position line number at the TOP of the text line, accounting for document margin
+                                # The document has a margin that offsets the text, so we need to align with that
+                                document_margin = doc.documentMargin()
+                                text_top_y = adjusted_y + document_margin
                                 
                                 # Draw the line number aligned with the TOP of the text
                                 painter.drawText(0, int(text_top_y), width - right_margin, font_height,
@@ -1067,9 +1078,9 @@ class MainWindow(QMainWindow):
                                     layout = block.layout()
                                     for visual_line_idx in range(1, layout.lineCount()):
                                         line = layout.lineAt(visual_line_idx)
-                                        # Position continuation indicator at top of wrapped line
-                                        continuation_y = adjusted_y + line.y()
-                                        if continuation_y < adjusted_y + block_height:  # Within block bounds
+                                        # Position continuation indicator at top of wrapped line, accounting for document margin
+                                        continuation_y = adjusted_y + line.y() + document_margin
+                                        if continuation_y < adjusted_y + block_height + document_margin:  # Within block bounds
                                             painter.drawText(0, int(continuation_y), width - right_margin, font_height,
                                                            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop, "∙")
                         
@@ -1345,7 +1356,45 @@ class MainWindow(QMainWindow):
         
         # Update checkbox icons with theme colors
         self.update_checkbox_icons(theme)
+        
+        # Update editor fonts with theme font settings
+        self._setup_monospace_fonts()
+        
+        # Force text editor selection colors using palette
+        self._update_text_editor_palette(theme)
 
+    def _update_text_editor_palette(self, theme):
+        """Force text editor selection colors using direct stylesheet"""
+        
+        # Get all text editors in the UI
+        text_editors = []
+        if hasattr(self.ui, 'te_rule_content'):
+            text_editors.append(self.ui.te_rule_content)
+        if hasattr(self.ui, 'te_file_content'):
+            text_editors.append(self.ui.te_file_content)
+        
+        # Create direct stylesheet for text editor selection
+        selection_stylesheet = f"""
+        QTextEdit, QPlainTextEdit {{
+            selection-background-color: {theme.colors.editor_selection};
+            selection-color: {theme.colors.editor_text};
+        }}
+        """
+        
+        for editor in text_editors:
+            # Apply the direct selection stylesheet to each editor
+            editor.setStyleSheet(selection_stylesheet)
+            
+            # Configure scrollbars to only show when needed
+            from PySide6.QtCore import Qt
+            editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            
+            # Refresh current line highlighting with new theme colors
+            if hasattr(editor, 'cursorPositionChanged'):
+                # Trigger current line highlight refresh
+                editor.cursorPositionChanged.emit()
+    
     def create_checkbox_icon(self, size=16, checked=False, theme=None):
         """Create a custom checkbox icon with proper checkmark"""
         if theme is None:
@@ -2503,7 +2552,6 @@ class MainWindow(QMainWindow):
                     widget = self.ui.tabWidget_3.widget(i)
                     if hasattr(widget, 'findChild') and widget.findChild(type(self.ui.tw_similar_tags)):
                         total_tags = len(selected_file_tags)
-                        self.ui.tabWidget_3.setTabText(i, f"Similar Tags ({total_tags})")
                         break
 
     def _initialize_similar_tags_widget(self):
@@ -2516,14 +2564,7 @@ class MainWindow(QMainWindow):
         instruction_item.setToolTip(0, "Click on a file in the hits table to see files with similar tags")
         self.ui.tw_similar_tags.addTopLevelItem(instruction_item)
         
-        # Set initial tab title
-        if hasattr(self.ui, 'tabWidget_3'):
-            for i in range(self.ui.tabWidget_3.count()):
-                if hasattr(self.ui.tabWidget_3.widget(i), 'objectName'):
-                    widget = self.ui.tabWidget_3.widget(i)
-                    if hasattr(widget, 'findChild') and widget.findChild(type(self.ui.tw_similar_tags)):
-                        self.ui.tabWidget_3.setTabText(i, "Similar Tags")
-                        break
+        
 
     def populate_yara_match_details(self, hit_data=None):
         """Populate comprehensive YARA match details table widget for ALL files"""

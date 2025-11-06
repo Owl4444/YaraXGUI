@@ -90,9 +90,6 @@ class Ui_MainWindow(object):
 
         self.te_yara_editor = QTextEdit(self.layoutWidget)
         self.te_yara_editor.setObjectName(u"te_yara_editor")
-        font = QFont()
-        font.setFamilies([u"Cascadia Code"])
-        self.te_yara_editor.setFont(font)
 
         self.horizontalLayout.addWidget(self.te_yara_editor)
 

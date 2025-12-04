@@ -339,11 +339,19 @@ class ThemeManager:
             gridline-color: {colors.table_border};
             selection-background-color: {colors.selection_background};
             selection-color: {colors.selection_text};
+            outline: none;
+        }}
+        
+        QTableView::item, QTreeView::item, QListWidget::item {{
+            border: none;
+            outline: none;
         }}
         
         QTableView::item:selected, QTreeView::item:selected, QListWidget::item:selected {{
             background-color: {colors.selection_background};
             color: {colors.selection_text};
+            border: none;
+            outline: none;
         }}
         
         QTableView::item:selected:!active, QTreeView::item:selected:!active, QListWidget::item:selected:!active {{
@@ -353,6 +361,11 @@ class ThemeManager:
         
         QTableView::item:hover, QTreeView::item:hover, QListWidget::item:hover {{
             background-color: {colors.hover_background};
+        }}
+        
+        QTableView::item:focus, QTreeView::item:focus, QListWidget::item:focus {{
+            border: none;
+            outline: none;
         }}
         
         /* Headers */

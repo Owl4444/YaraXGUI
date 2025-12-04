@@ -344,16 +344,15 @@ class MainWindow(QMainWindow):
 
         # QTreeView
         self.fs_view = QTreeView(self.ui.tab_scan_dir)
-        self.fs_view.setModel(self.fs_model)  # Connect model but don't set root path yet
         self.fs_view.setAlternatingRowColors(True)
         self.fs_view.setUniformRowHeights(True)
         self.fs_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
         self.fs_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self.fs_view.setSortingEnabled(True)
         self.fs_view.sortByColumn(0, Qt.AscendingOrder)
-
-        # Set an invalid root index so tree shows nothing until directory is selected
-        self.fs_view.setRootIndex(QModelIndex())
+        
+        # Don't connect model yet - tree should be empty until directory is selected
+        # self.fs_view.setModel(self.fs_model) will be called in on_select_scan_dir
 
         header = self.fs_view.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
@@ -509,8 +508,50 @@ class MainWindow(QMainWindow):
         self.wrap_shortcut = QShortcut(QKeySequence("Ctrl+W"), self)
         self.wrap_shortcut.activated.connect(self.toggle_word_wrap)
         
+        # Save rule: Ctrl+S
+        self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.save_shortcut.activated.connect(self.on_save_rule)
+        
         # Track current word wrap state
         self.word_wrap_enabled = False  # Start with no wrap (performance mode)
+        
+        # Track document modification for save prompts
+        self._document_modified = False
+        self._last_saved_text = ""
+        self.ui.te_yara_editor.textChanged.connect(self._on_editor_text_changed)
+
+    def _on_editor_text_changed(self):
+        """Track when document is modified"""
+        current_text = self.ui.te_yara_editor.toPlainText()
+        self._document_modified = current_text != self._last_saved_text
+
+    def _has_unsaved_changes(self) -> bool:
+        """Check if there are unsaved changes in the YARA editor"""
+        current_text = self.ui.te_yara_editor.toPlainText().strip()
+        if not current_text:
+            return False  # Empty document doesn't need saving
+        return self._document_modified
+    
+    def closeEvent(self, event):
+        """Handle window close event - prompt for unsaved changes"""
+        if self._has_unsaved_changes():
+            reply = QMessageBox.question(
+                self,
+                "Unsaved Changes",
+                "You have unsaved changes in the YARA editor.\nDo you want to save before closing?",
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save
+            )
+            
+            if reply == QMessageBox.StandardButton.Save:
+                self.on_save_rule()
+                event.accept()
+            elif reply == QMessageBox.StandardButton.Discard:
+                event.accept()
+            else:  # Cancel
+                event.ignore()
+        else:
+            event.accept()
 
     def toggle_word_wrap(self):
         """Toggle word wrap in the YARA editor with responsive line number updates"""
@@ -1804,6 +1845,10 @@ class MainWindow(QMainWindow):
 
             # Finally set the editor text (AST highlighting already disabled for large files)
             self.ui.te_yara_editor.setPlainText(text)
+            
+            # Mark document as not modified (just loaded from file)
+            self._last_saved_text = text
+            self._document_modified = False
 
             if source_path:
                 self.last_dir = str(Path(source_path).parent)
@@ -1836,6 +1881,9 @@ class MainWindow(QMainWindow):
         try:
             Path(path).write_text(text, encoding="utf-8")
             self.last_dir = str(Path(path).parent)
+            # Mark document as saved
+            self._last_saved_text = text
+            self._document_modified = False
             self.statusBar().showMessage(f"YARA rule saved: {path}", 4000)
         except Exception as e:
             QMessageBox.critical(self, "Save failed", f"Could not save file:\n{e}")
@@ -2014,6 +2062,9 @@ class MainWindow(QMainWindow):
             input_buffer.close()
             output_buffer.close()
             
+            # Strip trailing whitespace but preserve the structure
+            formatted = formatted.rstrip()
+            
             return formatted
             
         except Exception as e:
@@ -2040,6 +2091,9 @@ class MainWindow(QMainWindow):
             # Generate properly formatted output using CodeGenerator
             codegen = CodeGenerator()
             formatted = codegen.generate(ast)
+            
+            # Strip trailing whitespace but preserve the structure
+            formatted = formatted.rstrip()
             
             return formatted
             
@@ -2434,8 +2488,20 @@ class MainWindow(QMainWindow):
         self.last_dir = str(self.scan_root)
 
         root_idx = self.fs_model.setRootPath(str(self.scan_root))
+        
+        # Connect model to view if not already connected (first directory selection)
+        if self.fs_view.model() is None:
+            self.fs_view.setModel(self.fs_model)
+        
+        # Process events to allow the file system model to populate
+        QApplication.processEvents()
+        
         self.fs_view.setRootIndex(root_idx)
         self.fs_view.expand(root_idx)
+        
+        # Process events again after expanding
+        QApplication.processEvents()
+        
         self.statusBar().showMessage(f"Selected root: {path} (all files selected by default)", 4000)
         self.update_exclusion_list()
 
@@ -3733,5 +3799,18 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     widget = MainWindow()
+    
+    # Handle command line arguments (file association)
+    # sys.argv[0] is the script name, sys.argv[1:] are the arguments
+    if len(sys.argv) > 1:
+        file_path = sys.argv[1]
+        # Check if it's a valid YARA file
+        if Path(file_path).exists():
+            try:
+                text = Path(file_path).read_text(encoding='utf-8')
+                widget._load_yara_text(text, source_path=file_path)
+            except Exception as e:
+                print(f"Failed to load file from command line: {e}")
+    
     widget.show()
     sys.exit(app.exec())

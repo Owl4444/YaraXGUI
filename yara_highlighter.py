@@ -263,10 +263,11 @@ class YaraHighlighter(QSyntaxHighlighter):
             block_end = block_start + len(block_text)
             
             # Pre-filter tokens for this block (performance optimization)
+            # Include tokens that OVERLAP with this block (not just fit entirely within)
             relevant_tokens = [
                 token_info for token_info in tokens 
-                if (block_start <= token_info['position'] < block_end and 
-                    token_info['position'] + token_info['length'] <= block_end)
+                if (token_info['position'] < block_end and 
+                    token_info['position'] + token_info['length'] > block_start)
             ]
             
             # Apply highlighting only to relevant tokens
@@ -274,14 +275,20 @@ class YaraHighlighter(QSyntaxHighlighter):
                 pos = token_info['position']
                 length = token_info['length']
                 token_type = token_info['type']
+                token_end = pos + length
+                
+                # Calculate the portion of this token that falls within this block
+                highlight_start = max(pos, block_start)
+                highlight_end = min(token_end, block_end)
                 
                 # Calculate relative position within block
-                rel_pos = pos - block_start
+                rel_pos = highlight_start - block_start
+                rel_length = highlight_end - highlight_start
                 
                 # Choose format based on token type
                 fmt = self._get_format_for_token_type(token_type)
-                if fmt:
-                    self.setFormat(rel_pos, length, fmt)
+                if fmt and rel_length > 0:
+                    self.setFormat(rel_pos, rel_length, fmt)
             
             return True
             

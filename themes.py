@@ -408,7 +408,22 @@ class ThemeManager:
             background-color: {colors.surface};
             color: {colors.text_disabled};
         }}
-        
+
+        /* Search/Filter Input */
+        QLineEdit {{
+            background-color: {colors.editor_background};
+            color: {colors.editor_text};
+            border: {theme.border_width}px solid {colors.table_border};
+            border-radius: {theme.border_radius}px;
+            padding: 2px {theme.padding_small}px;
+            font-size: {max(theme.font_size - 1, 7)}pt;
+            selection-background-color: {colors.selection_background};
+            selection-color: {colors.selection_text};
+        }}
+        QLineEdit:focus {{
+            border: {theme.border_width}px solid {colors.primary};
+        }}
+
         /* Text Editor */
         QTextEdit, QPlainTextEdit {{
             background-color: {colors.editor_background};

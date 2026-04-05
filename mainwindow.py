@@ -8,213 +8,28 @@ Usage:
 """
 
 # Standard library imports
-import hashlib
 import os
 import sys
 from pathlib import Path
-from typing import Dict, List, Optional, Set, Union
+from typing import Dict, List
 
 # Third-party imports
-from PySide6.QtCore import QDir, QModelIndex, QTimer, Qt, Signal
+from PySide6.QtCore import QDir, QModelIndex, QTimer, Qt
 from PySide6.QtGui import (QIcon, QPainter, QPen, QPixmap, QStandardItem,
-                           QStandardItemModel, QTextCursor)
+                           QTextCursor)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog,
-                               QFileSystemModel, QHeaderView, QListWidgetItem,
-                               QMainWindow, QMessageBox, QTableWidgetItem,
-                               QTreeView, QTreeWidgetItem)
+                               QHeaderView, QListWidgetItem,
+                               QMainWindow, QMessageBox,
+                               QTreeView)
 
 # Local imports
+from checkable_fs_model import CheckableFsModel
+from scan_results import ScanResultsManager
+from scanner import YaraScanner, YARA_X_AVAILABLE, YARAAST_AVAILABLE
 from themes import theme_manager
 from ui_form import Ui_MainWindow
+from yara_editor import YaraTextEdit
 from yara_highlighter import YaraHighlighter
-
-# Check if yara_x is available
-try:
-    import yara_x
-    YARA_X_AVAILABLE = True
-except ImportError:
-    YARA_X_AVAILABLE = False
-
-# Check if yaraast is available
-try:
-    import yaraast
-    from yaraast.parser.better_parser import Parser
-    from yaraast.codegen import CodeGenerator
-    YARAAST_AVAILABLE = True
-except ImportError:
-    YARAAST_AVAILABLE = False
-
-
-class CheckableFsModel(QFileSystemModel):
-    """
-    QFileSystemModel with exclusion-based checking.
-
-    INTUITIVE BEHAVIOR:
-    1. Everything starts CHECKED by default (ready to scan)
-    2. UNCHECK a folder → folder + all children become unchecked
-       - Adds only the folder to exclusion list (instant, no filesystem walk)
-       - Children inherit the unchecked state from parent
-       - During scan: entire folder tree is skipped
-    3. CHECK a folder → folder + all children become checked
-       - Removes folder and any previously unchecked children from exclusion list
-       - User can still individually uncheck specific children after this
-       - During scan: folder is scanned, but individually unchecked children are skipped
-
-    MEMORY EFFICIENT:
-    - Only stores explicitly unchecked items (exceptions to the rule)
-    - Children inherit parent's state automatically
-    - Fast even for huge directories like C:\
-    """
-    exclusionsChanged = Signal()
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self._unchecked: set[str] = set()  # Paths that are explicitly UNCHECKED
-        try:
-            self.setOption(QFileSystemModel.DontWatchForChanges, False)
-        except Exception:
-            pass
-
-    def _normalize_path(self, path: str) -> str:
-        """Normalize path for consistent comparison (resolve symlinks, fix separators)"""
-        try:
-            return str(Path(path).resolve())
-        except:
-            return path
-
-    def flags(self, index: QModelIndex):
-        f = super().flags(index)
-        if index.column() == 0:
-            f |= Qt.ItemIsUserCheckable
-        return f
-
-    def data(self, index: QModelIndex, role: int = Qt.DisplayRole):
-        if role == Qt.CheckStateRole and index.column() == 0:
-            path = self._normalize_path(self.filePath(index))
-
-            # Check if this item itself is explicitly unchecked
-            if path in self._unchecked:
-                return Qt.Unchecked
-
-            # Check if any parent directory is unchecked
-            # If parent is unchecked, children should be unchecked too
-            try:
-                p = Path(path)
-                for parent in p.parents:
-                    parent_str = self._normalize_path(str(parent))
-                    if parent_str in self._unchecked:
-                        return Qt.Unchecked
-            except (ValueError, OSError):
-                pass
-
-            # Default is CHECKED
-            return Qt.Checked
-        return super().data(index, role)
-
-    def setData(self, index: QModelIndex, value, role: int = Qt.EditRole):
-        if role == Qt.CheckStateRole and index.column() == 0:
-            path = self._normalize_path(self.filePath(index))
-            if not path:
-                return False
-
-            state = Qt.CheckState(value)
-
-            if state == Qt.Unchecked:
-                # User UNCHECKED this item
-                self._unchecked.add(path)
-
-                # If it's a folder, update visible children for immediate visual feedback
-                if self.isDir(index):
-                    self._update_visible_children(index)
-
-            else:
-                # User CHECKED this item
-                self._unchecked.discard(path)
-
-                # If it's a folder, remove any descendants from exclusion list
-                # This allows children to be checked when parent is checked
-                if self.isDir(index):
-                    self._remove_descendants_from_exclusions(path)
-                    self._update_visible_children(index)
-
-            # Emit signals to update UI
-            self.dataChanged.emit(index, index, [Qt.CheckStateRole])
-            self.exclusionsChanged.emit()
-
-            return True
-        return super().setData(index, value, role)
-
-    def _remove_descendants_from_exclusions(self, dir_path: str):
-        """
-        Remove all descendants of dir_path from the exclusion list.
-        When you check a folder, all children should be checked too.
-        """
-        dir_p = Path(dir_path)
-        to_remove = set()
-
-        # Find all exclusions that are children of this directory
-        for excluded_path in self._unchecked:
-            try:
-                p = Path(excluded_path)
-                # Check if this excluded path is under the directory we just checked
-                if p != dir_p and p.is_relative_to(dir_p):
-                    to_remove.add(excluded_path)
-            except (ValueError, OSError):
-                pass
-
-        # Remove them all
-        self._unchecked -= to_remove
-
-    def _update_visible_children(self, parent_index: QModelIndex):
-        """
-        Update visual checkstate of all loaded children recursively.
-        Forces a visual refresh so children immediately show the inherited state.
-        """
-        if not parent_index.isValid():
-            return
-
-        row_count = self.rowCount(parent_index)
-
-        for row in range(row_count):
-            child_index = self.index(row, 0, parent_index)
-            if not child_index.isValid():
-                continue
-
-            # Emit dataChanged to trigger visual update
-            self.dataChanged.emit(child_index, child_index, [Qt.CheckStateRole])
-
-            # Recursively update all loaded descendants
-            if self.isDir(child_index) and self.hasChildren(child_index):
-                # Only recurse if children are loaded
-                if self.rowCount(child_index) > 0:
-                    self._update_visible_children(child_index)
-
-    def get_exclusion_list(self) -> list[str]:
-        """Get list of excluded paths (what NOT to scan)"""
-        return sorted(self._unchecked)
-
-    def is_excluded(self, file_path: Path) -> bool:
-        """
-        Check if a file should be excluded from scanning.
-        Returns True if the file or any of its parents are in the exclusion list.
-        """
-        file_str = self._normalize_path(str(file_path))
-
-        # Check if file itself is excluded
-        if file_str in self._unchecked:
-            return True
-
-        # Check if any parent directory is excluded
-        for parent in file_path.parents:
-            parent_str = self._normalize_path(str(parent))
-            if parent_str in self._unchecked:
-                return True
-
-        return False
-
-    def has_exclusions(self) -> bool:
-        """Check if any items are excluded"""
-        return bool(self._unchecked)
 
 
 class MainWindow(QMainWindow):
@@ -243,95 +58,40 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("YaraXGUI - YARA Rule Scanner & Analyzer")
         self.setup_application_icon()
 
-        # Syntax highlighter (will be updated with theme later)
-        self.highlighter = YaraHighlighter(self.ui.te_yara_editor.document())
-        
-        # Optimize text editor for better performance with large files
-        self.optimize_text_editor()
-        
-        # Enable line numbers in YARA editor
-        self.setup_line_numbers()
+        # Scanner (pure logic, no UI)
+        self.scanner = YaraScanner()
 
-    def optimize_text_editor(self):
-        """Optimize the text editor for better performance with large files."""
-        try:
-            # Optimize document layout for better scrolling performance
-            document = self.ui.te_yara_editor.document()
-            
-            # Enable document layout optimization for large documents
-            # This helps with scrollbar performance when dealing with lots of text
-            document.setDocumentMargin(4)  # Smaller margin for better performance
-            
-            # Set line wrap mode for better performance with large files
-            # NoWrap mode generally performs better with very large text
-            self.ui.te_yara_editor.setLineWrapMode(self.ui.te_yara_editor.LineWrapMode.NoWrap)
-            
-            # Set scroll bar policies to only show when needed
-            from PySide6.QtCore import Qt
-            self.ui.te_yara_editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            self.ui.te_yara_editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-            
-            # Configure scrollbar for better dragging behavior
-            vertical_scrollbar = self.ui.te_yara_editor.verticalScrollBar()
-            if vertical_scrollbar:
-                # Set single step (arrow click) to 3 lines
-                vertical_scrollbar.setSingleStep(3)
-                # Set page step (page up/down or clicking in scrollbar track) to visible area
-                vertical_scrollbar.setPageStep(20)
-                # Enable tracking for smooth dragging
-                vertical_scrollbar.setTracking(True)
-            
-            # Configure horizontal scrollbar similarly
-            horizontal_scrollbar = self.ui.te_yara_editor.horizontalScrollBar()
-            if horizontal_scrollbar:
-                horizontal_scrollbar.setSingleStep(10)
-                horizontal_scrollbar.setPageStep(50)
-                horizontal_scrollbar.setTracking(True)
-            
-            # Make scrollbars more visible and draggable
-            # Use a simpler style that ensures drag functionality works
-            self.ui.te_yara_editor.setStyleSheet("""
-                QTextEdit {
-                    border: 1px solid #3d3d3d;
-                }
-                QScrollBar:vertical {
-                    background-color: #2d2d2d;
-                    width: 18px;
-                    border: none;
-                }
-                QScrollBar::handle:vertical {
-                    background-color: #606060;
-                    min-height: 30px;
-                    border-radius: 9px;
-                    margin: 2px;
-                }
-                QScrollBar::handle:vertical:hover {
-                    background-color: #707070;
-                }
-                QScrollBar::handle:vertical:pressed {
-                    background-color: #808080;
-                }
-                QScrollBar::add-line:vertical {
-                    height: 0px;
-                }
-                QScrollBar::sub-line:vertical {
-                    height: 0px;
-                }
-            """)
-            
-            # Force refresh of scrollbar geometry
-            self.ui.te_yara_editor.verticalScrollBar().update()
-            
-            # Ensure the scrollbar is enabled and interactive
-            vertical_scrollbar = self.ui.te_yara_editor.verticalScrollBar()
-            if vertical_scrollbar:
-                vertical_scrollbar.setEnabled(True)
-                vertical_scrollbar.show()
-                # Make sure mouse tracking is enabled for proper interaction
-                vertical_scrollbar.setMouseTracking(True)
-            
-        except Exception as e:
-            print(f"Warning: Could not optimize text editor: {e}")
+        # Scan results manager
+        self.results = ScanResultsManager(self.ui, theme_manager, parent=self)
+
+        # Replace the placeholder editor with YaraTextEdit (line numbers built in)
+        new_editor = YaraTextEdit(self.ui.layoutWidget)
+        self.ui.horizontalLayout.replaceWidget(self.ui.te_yara_editor, new_editor)
+        self.ui.te_yara_editor.deleteLater()
+        self.ui.te_yara_editor = new_editor
+
+        # Syntax highlighter (must come after editor replacement)
+        self.highlighter = YaraHighlighter(self.ui.te_yara_editor.document())
+
+        # Set default template so the editor isn't blank on first launch
+        self.ui.te_yara_editor.setPlainText(
+            'rule example_rule {\n'
+            '    meta:\n'
+            '        author = ""\n'
+            '        description = ""\n'
+            '\n'
+            '    strings:\n'
+            '        $s1 = ""\n'
+            '\n'
+            '    condition:\n'
+            '        any of them\n'
+            '}\n'
+        )
+
+        # Connect cursor info to status bar
+        self.ui.te_yara_editor.cursor_info_changed.connect(
+            lambda msg: self.statusBar().showMessage(msg)
+        )
 
         # Invalidate compiled rules when editor text changes
         self.ui.te_yara_editor.textChanged.connect(self.on_yara_text_changed)
@@ -384,10 +144,20 @@ class MainWindow(QMainWindow):
         # Scan results data
         self.scan_hits = []  # List of hit file data
         self.scan_misses = []  # List of miss file data
-        self.misses_loaded = False  # Track if misses are loaded
         
         # Setup scan results UI
-        self.setup_scan_results_ui()
+        self.results.setup_scan_results_ui()
+
+        # Connect hits selection to our handler (must be after model is set)
+        self.ui.tv_file_hits.selectionModel().selectionChanged.connect(self.on_hits_selection_changed)
+
+        # Connect results manager signals
+        self.results.file_selection_requested.connect(self._on_file_selection_requested)
+        self.results.tag_highlight_requested.connect(self.highlight_tag_in_editor)
+        self.results.status_message_requested.connect(lambda msg, timeout: self.statusBar().showMessage(msg, timeout))
+
+        # Lazy load misses when tab changes
+        self.ui.tabWidget_2.currentChanged.connect(self.on_results_tab_changed)
         
         # Configure built-in splitters from UI form
         self.configure_builtin_splitters()
@@ -454,7 +224,7 @@ class MainWindow(QMainWindow):
             self.ui.tabWidget_4.setCurrentIndex(0)
         
         # Initialize similar tags widget with instruction message
-        self._initialize_similar_tags_widget()
+        self.results.initialize_similar_tags_widget()
         
         # Set status message
         self.statusBar().showMessage("Application ready - select directory and YARA rules to begin", 4000)
@@ -512,12 +282,9 @@ class MainWindow(QMainWindow):
         self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         self.save_shortcut.activated.connect(self.on_save_rule)
         
-        # Track current word wrap state
-        self.word_wrap_enabled = False  # Start with no wrap (performance mode)
-        
         # Track document modification for save prompts
         self._document_modified = False
-        self._last_saved_text = ""
+        self._last_saved_text = self.ui.te_yara_editor.toPlainText()
         self.ui.te_yara_editor.textChanged.connect(self._on_editor_text_changed)
 
     def _on_editor_text_changed(self):
@@ -554,81 +321,20 @@ class MainWindow(QMainWindow):
             event.accept()
 
     def toggle_word_wrap(self):
-        """Toggle word wrap in the YARA editor with responsive line number updates"""
-        from PySide6.QtWidgets import QTextEdit
-        from PySide6.QtCore import QTimer
-        from PySide6.QtGui import QTextCursor
-        
-        # Store current cursor position to restore it
-        cursor = self.ui.te_yara_editor.textCursor()
-        cursor_position = cursor.position()
-        
-        if self.word_wrap_enabled:
-            # Disable word wrap
-            self.ui.te_yara_editor.setLineWrapMode(QTextEdit.LineWrapMode.NoWrap)
-            self.word_wrap_enabled = False
-            self.statusBar().showMessage("Word wrap disabled", 2000)
-        else:
-            # Enable word wrap
-            self.ui.te_yara_editor.setLineWrapMode(QTextEdit.LineWrapMode.WidgetWidth)
-            self.word_wrap_enabled = True
-            self.statusBar().showMessage("Word wrap enabled", 2000)
-        
-        # Force immediate and responsive updates
-        if hasattr(self.ui.te_yara_editor, 'line_number_area'):
-            # Update viewport margins
-            self.ui.te_yara_editor.setViewportMargins(
-                self.ui.te_yara_editor.line_number_area_width(), 0, 0, 0
-            )
-            
-            # Force document layout update by triggering a relayout
-            doc = self.ui.te_yara_editor.document()
-            doc.setModified(doc.isModified())  # Trigger layout recalculation
-            
-            # Restore cursor position
-            cursor.setPosition(cursor_position)
-            self.ui.te_yara_editor.setTextCursor(cursor)
-            
-            # Multiple update passes for responsiveness
-            def update_sequence():
-                self.ui.te_yara_editor.line_number_area.update()
-                self.ui.te_yara_editor.viewport().update()
-                
-            # Immediate update
-            update_sequence()
-            
-            # Follow-up updates to ensure everything is synchronized
-            QTimer.singleShot(10, update_sequence)
-            QTimer.singleShot(50, update_sequence)
-            QTimer.singleShot(100, lambda: self.ui.te_yara_editor.ensureCursorVisible())
+        """Toggle word wrap in the YARA editor."""
+        enabled = self.ui.te_yara_editor.toggle_word_wrap()
+        self.statusBar().showMessage(
+            "Word wrap enabled" if enabled else "Word wrap disabled", 2000
+        )
 
     def refresh_word_wrap_display(self):
-        """Force refresh of word wrap display and line numbers - can be called externally"""
-        if hasattr(self.ui.te_yara_editor, 'line_number_area'):
-            # Force document layout update by triggering a relayout
-            doc = self.ui.te_yara_editor.document()
-            doc.setModified(doc.isModified())  # Trigger layout recalculation
-            
-            # Update line number area
-            self.ui.te_yara_editor.setViewportMargins(
-                self.ui.te_yara_editor.line_number_area_width(), 0, 0, 0
-            )
-            
-            # Multiple update passes for smooth transitions
-            self.ui.te_yara_editor.line_number_area.update()
-            self.ui.te_yara_editor.viewport().update()
-            
-            # Ensure cursor stays visible
-            self.ui.te_yara_editor.ensureCursorVisible()
+        """Force refresh of word wrap display and line numbers."""
+        self.ui.te_yara_editor.refresh_word_wrap_display()
 
     def resizeEvent(self, event):
-        """Handle main window resize to improve word wrap responsiveness"""
+        """Handle main window resize to improve word wrap responsiveness."""
         super().resizeEvent(event)
-        
-        # If word wrap is enabled, refresh the display for better responsiveness
-        if hasattr(self, 'word_wrap_enabled') and self.word_wrap_enabled:
-            from PySide6.QtCore import QTimer
-            # Small delay to let resize complete before refreshing
+        if self.ui.te_yara_editor.word_wrap_enabled:
             QTimer.singleShot(10, self.refresh_word_wrap_display)
 
     def setup_compilation_output_context_menu(self):
@@ -685,7 +391,7 @@ class MainWindow(QMainWindow):
             return
         
         try:
-            rule_info = self.get_yara_rule_info(text)
+            rule_info = self.scanner.get_rule_info(text)
             
             # Display in compilation output with consistent monospace formatting
             formatted_code = self._format_code_html(rule_info, "gray")
@@ -701,159 +407,6 @@ class MainWindow(QMainWindow):
                 f'<span style="color: red;">Error: {str(e)}</span>'
             )
 
-    def setup_scan_results_ui(self):
-        """Setup models and connections for scan results"""
-        from PySide6.QtWidgets import QHeaderView
-        
-        # Setup hits table model with compact styling
-        self.hits_model = QStandardItemModel()
-        self.hits_model.setHorizontalHeaderLabels(['File', 'Path'])
-        self.ui.tv_file_hits.setModel(self.hits_model)
-        
-        # Enable multi-selection for hits table
-        self.ui.tv_file_hits.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
-        self.ui.tv_file_hits.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        
-        # Connect to selection changed instead of current row changed for multi-select
-        self.ui.tv_file_hits.selectionModel().selectionChanged.connect(self.on_hits_selection_changed)
-        
-        # Enable sorting for hits table
-        self.ui.tv_file_hits.setSortingEnabled(True)
-        
-        # Selection highlighting will be applied by theme system
-        
-        self._make_table_compact(self.ui.tv_file_hits)
-        
-        # Configure hits table columns for full filename display
-        hits_header = self.ui.tv_file_hits.horizontalHeader()
-        hits_header.setStretchLastSection(True)  # Last column stretches to fill space
-        hits_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # File column user-adjustable
-        hits_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Path column user-adjustable
-        hits_header.setDefaultSectionSize(150)  # Default column width
-        hits_header.setMinimumSectionSize(80)  # Minimum column width
-        # Enable word wrapping and better text handling
-        self.ui.tv_file_hits.setWordWrap(False)  # Disable word wrap for better performance
-        self.ui.tv_file_hits.setTextElideMode(Qt.TextElideMode.ElideMiddle)  # Elide in middle to show file extension
-        
-        # Setup misses table model (will be populated lazily)
-        self.misses_model = QStandardItemModel()
-        self.misses_model.setHorizontalHeaderLabels(['File', 'Path'])
-        self.ui.tv_file_misses.setModel(self.misses_model)
-        self._make_table_compact(self.ui.tv_file_misses)
-        
-        # Enable sorting for misses table
-        self.ui.tv_file_misses.setSortingEnabled(True)
-        
-        # Configure misses table columns for full filename display
-        misses_header = self.ui.tv_file_misses.horizontalHeader()
-        misses_header.setStretchLastSection(True)  # Last column stretches to fill space
-        misses_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # File column user-adjustable
-        misses_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)  # Path column user-adjustable
-        misses_header.setDefaultSectionSize(150)  # Default column width
-        misses_header.setMinimumSectionSize(80)  # Minimum column width
-        # Enable word wrapping and better text handling
-        self.ui.tv_file_misses.setWordWrap(False)  # Disable word wrap for better performance
-        self.ui.tv_file_misses.setTextElideMode(Qt.TextElideMode.ElideMiddle)  # Elide in middle to show file extension
-        
-        # Setup rule details model
-        self.rule_details_model = QStandardItemModel()
-        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
-        self.ui.tv_rule_details.setModel(self.rule_details_model)
-        self._make_table_compact(self.ui.tv_rule_details)
-        
-        # Configure rule details table columns
-        rule_details_header = self.ui.tv_rule_details.horizontalHeader()
-        rule_details_header.setStretchLastSection(True)  # Last column stretches to fill space
-        rule_details_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)  # Property column user-resizable
-        rule_details_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Value column stretches
-        rule_details_header.setDefaultSectionSize(150)  # Default column width
-        rule_details_header.setMinimumSectionSize(80)  # Minimum column width
-        # Set initial column widths
-        self.ui.tv_rule_details.setColumnWidth(0, 150)  # Property column initial width
-        
-        # Setup similar files tree widget
-        self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
-        self.ui.tw_similar_files.setAlternatingRowColors(True)
-        self.ui.tw_similar_files.setRootIsDecorated(True)  # Show expand/collapse arrows
-        self.ui.tw_similar_files.setItemsExpandable(True)
-        
-        # Enable sorting for similar files tree widget
-        self.ui.tw_similar_files.setSortingEnabled(True)
-        
-        # Connect double-click handler for cross-widget synchronization
-        self.ui.tw_similar_files.itemDoubleClicked.connect(self.on_similar_file_double_clicked)
-        
-        # Make tree widget compact
-        self._make_tree_compact(self.ui.tw_similar_files)
-        
-        # Setup similar tags tree widget (if it exists)
-        if hasattr(self.ui, 'tw_similar_tags'):
-            self.ui.tw_similar_tags.setHeaderLabels(['Tag/File', 'Details'])
-            self.ui.tw_similar_tags.setAlternatingRowColors(True)
-            self.ui.tw_similar_tags.setRootIsDecorated(True)  # Show expand/collapse arrows
-            self.ui.tw_similar_tags.setItemsExpandable(True)
-            
-            # Enable sorting for similar tags tree widget
-            self.ui.tw_similar_tags.setSortingEnabled(True)
-            
-            # Connect double-click handler for cross-widget synchronization
-            self.ui.tw_similar_tags.itemDoubleClicked.connect(self.on_similar_tag_double_clicked)
-            
-            # Make tree widget compact
-            self._make_tree_compact(self.ui.tw_similar_tags)
-        
-        # Setup YARA match details tree widget in tabWidget_4 "All" tab
-        self.setup_match_details_widget()
-        
-        # Connect tab change to lazy load misses
-        self.ui.tabWidget_2.currentChanged.connect(self.on_results_tab_changed)
-
-    def setup_match_details_widget(self):
-        """Setup the YARA match details table widget in tabWidget_4"""
-        from PySide6.QtWidgets import QHeaderView
-        
-        # Use the existing QTableWidget from the UI form and configure it
-        self.tw_yara_match_details = self.ui.tw_yara_match_details
-        
-        # Set up table headers for comprehensive match details
-        headers = ['File', 'Rule', 'Pattern ID', 'Offset', 'Data Preview', 'Hex Dump', 'Tag']
-        self.tw_yara_match_details.setColumnCount(len(headers))
-        self.tw_yara_match_details.setHorizontalHeaderLabels(headers)
-        
-        # Configure table appearance
-        from PySide6.QtWidgets import QAbstractItemView
-        self.tw_yara_match_details.setAlternatingRowColors(True)
-        self.tw_yara_match_details.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
-        self.tw_yara_match_details.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        self.tw_yara_match_details.setSortingEnabled(True)
-        
-        # Configure column widths - make all headers adjustable
-        header = self.tw_yara_match_details.horizontalHeader()
-        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)  # All columns user-adjustable
-        header.setStretchLastSection(True)  # Last column stretches to fill space
-        
-        # Set initial column widths
-        self.tw_yara_match_details.setColumnWidth(0, 200)  # File
-        self.tw_yara_match_details.setColumnWidth(1, 150)  # Rule
-        self.tw_yara_match_details.setColumnWidth(2, 100)  # Pattern ID
-        self.tw_yara_match_details.setColumnWidth(3, 100)  # Offset
-        self.tw_yara_match_details.setColumnWidth(4, 250)  # Data Preview
-        self.tw_yara_match_details.setColumnWidth(5, 200)  # Hex Dump
-        self.tw_yara_match_details.setColumnWidth(6, 100)  # Tag
-        
-        # Make table compact
-        self._make_table_compact(self.tw_yara_match_details)
-        
-        # Set minimum height to make the table taller by default
-        #self.tw_yara_match_details.setMinimumHeight(300)  # Adjust this value as needed
-        
-        # Connect double-click to show detailed info
-        self.tw_yara_match_details.cellDoubleClicked.connect(self.on_match_detail_double_clicked)
-        
-        # Update the tab text to be more descriptive
-        all_tab_index = self.ui.tabWidget_4.indexOf(self.ui.tab)
-        if all_tab_index >= 0:
-            self.ui.tabWidget_4.setTabText(all_tab_index, "Match Details")
 
 
     def configure_builtin_splitters(self):
@@ -885,73 +438,6 @@ class MainWindow(QMainWindow):
             
             # Remove the restrictive maximum height on listWidget to allow more splitter movement
             self.ui.listWidget.setMaximumSize(16777215, 16777215)  # Remove height restriction
-
-    def _make_table_compact(self, table_view):
-        """Make table rows thin and compact without affecting layout"""
-        from PySide6.QtWidgets import QHeaderView
-        
-        # ONLY set row heights - nothing else that might affect layout
-        table_view.verticalHeader().setDefaultSectionSize(18)  # Thin rows
-        table_view.verticalHeader().setMinimumSectionSize(16)
-        table_view.verticalHeader().setMaximumSectionSize(20)  # Prevent fat rows
-        
-        # Hide row numbers to save space
-        table_view.verticalHeader().setVisible(False)
-    
-        # Force uniform thin rows
-        table_view.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
-        
-        # Keep default behavior for everything else - no size policies or restrictions
-
-    def _make_tree_compact(self, tree_widget):
-        """Make tree widget compact with thin items"""
-        
-        # Set compact item height
-        tree_widget.setUniformRowHeights(True)
-        tree_widget.header().setDefaultSectionSize(100)
-        tree_widget.header().setMinimumSectionSize(50)
-        
-        # Make items smaller
-        font = tree_widget.font()
-        font.setPointSize(max(8, font.pointSize() - 1))
-        tree_widget.setFont(font)
-        
-        # Set compact indentation
-        tree_widget.setIndentation(15)  # Smaller indent for child items
-
-    def _apply_column_color(self, item, col_idx):
-        """Apply column-specific background colors to table items"""
-        from PySide6.QtGui import QColor
-        
-        # Get current theme colors
-        theme = self.theme_manager.current_theme
-        if not hasattr(theme.colors, 'column_file'):
-            return  # Theme doesn't have column colors
-            
-        colors = theme.colors
-        
-        # Define column color mapping
-        column_colors = [
-            colors.column_file,      # 0: File
-            colors.column_rule,      # 1: Rule  
-            colors.column_pattern,   # 2: Pattern ID
-            colors.column_offset,    # 3: Offset
-            colors.column_data,      # 4: Data Preview
-            colors.column_hex,       # 5: Hex Dump
-            colors.table_background  # 6: Tags (fallback to normal)
-        ]
-        
-        # Apply background color based on column
-        if col_idx < len(column_colors):
-            bg_color = QColor(column_colors[col_idx])
-            item.setBackground(bg_color)
-
-    def _force_thin_rows(self, table_view) -> None:
-        """Force all existing rows to be thin"""
-        if not table_view.model():
-            return
-        for row in range(table_view.model().rowCount()):
-            table_view.setRowHeight(row, 20)
 
     # Utility Methods
     def _handle_error(self, error: Exception, context: str = "Operation") -> None:
@@ -1186,368 +672,99 @@ class MainWindow(QMainWindow):
         )
 
     def _setup_monospace_fonts(self) -> None:
-        """Setup consistent monospace fonts across editor and compilation output"""
+        """Setup consistent monospace fonts across editor and compilation output."""
         from PySide6.QtGui import QFont
-        
-        # Get font settings from current theme
+
         theme = self.theme_manager.current_theme if hasattr(self, 'theme_manager') else None
         if theme:
             font_family = theme.editor_font_family
             font_size = theme.editor_font_size
         else:
-            # Fallback values if theme not yet initialized
             font_family = "Consolas"
-            font_size = 8  # Decreased default size for better readability
-        
-        # Create consistent monospace font with theme settings
+            font_size = 8
+
+        # Apply to YARA editor via its helper
+        self.ui.te_yara_editor.setup_font(font_family, font_size)
+
+        # Apply to compilation output
         font = QFont(font_family, font_size)
         if not font.exactMatch():
             font = QFont("Courier New", font_size)
-        if not font.exactMatch():
-            font = QFont("Monaco", font_size)  # macOS fallback
-        if not font.exactMatch():
-            font = QFont("monospace", font_size)  # Generic fallback
-            
-        # Apply to YARA editor
-        self.ui.te_yara_editor.setFont(font)
-        
-        # Apply to compilation output for consistent formatting
         self.ui.tb_compilation_output.setFont(font)
-
-    def setup_line_numbers(self) -> None:
-        """Setup proper line numbers for YARA editor like classic code editors"""
-        from PySide6.QtWidgets import QWidget, QTextEdit
-        from PySide6.QtCore import QRect, Qt, QSize
-        from PySide6.QtGui import QColor, QPainter, QTextFormat, QFont
-        
-        # Setup fonts first
-        self._setup_monospace_fonts()
-        
-        editor = self.ui.te_yara_editor
-        
-        # Configure tab settings for 2 spaces
-        font_metrics = editor.fontMetrics()
-        tab_width = 4 * font_metrics.horizontalAdvance(' ')  # 2 spaces worth of width
-        editor.setTabStopDistance(tab_width)
-        
-        # Make sure cursor is visible
-        editor.setCursorWidth(2)  # Make cursor thicker and more visible
-        editor.ensureCursorVisible()
-        
-        class LineNumberArea(QWidget):
-            def __init__(self, editor):
-                super().__init__(editor)
-                self.code_editor = editor
-
-            def sizeHint(self):
-                return QSize(self.code_editor.line_number_area_width(), 0)
-
-            def paintEvent(self, event):
-                self.code_editor.line_number_area_paint_event(event)
-
-        def line_number_area_width():
-            digits = 1
-            count = max(1, editor.document().blockCount())
-            while count >= 10:
-                count //= 10  # Use integer division for cleaner calculation
-                digits += 1
-            
-            # Dynamic padding based on font size for better scaling
-            font_metrics = editor.fontMetrics()
-            digit_width = font_metrics.horizontalAdvance('9')
-            
-            # Scale padding with font size: base padding + extra for larger fonts
-            base_padding = 12
-            font_size_padding = max(4, font_metrics.height() // 4)
-            left_padding = base_padding + font_size_padding
-            right_padding = 8 + font_size_padding // 2
-            
-            space = left_padding + (digit_width * digits) + right_padding
-            return space
-
-        def update_line_number_area_width():
-            editor.setViewportMargins(line_number_area_width(), 0, 0, 0)
-
-        def highlight_current_line():
-            """Applies theme-aware background color to the current line."""
-            extra_selections = []
-            if not editor.isReadOnly():
-                selection = QTextEdit.ExtraSelection()
-                
-                # Use theme-aware current line color
-                if hasattr(self, 'theme_manager') and self.theme_manager.current_theme:
-                    theme_color = self.theme_manager.current_theme.colors.editor_current_line
-                    line_color = QColor(theme_color)
-                else:
-                    # Fallback to very subtle gray if no theme available
-                    line_color = QColor(250, 250, 250)
-                
-                selection.format.setBackground(line_color)
-                selection.format.setProperty(QTextFormat.Property.FullWidthSelection, True)
-                selection.cursor = editor.textCursor()
-                selection.cursor.clearSelection()
-                extra_selections.append(selection)
-            editor.setExtraSelections(extra_selections)
-
-        def update_line_number_area():
-            # Simple update for QTextEdit
-            editor.line_number_area.update()
-
-        def line_number_area_paint_event(event):
-            painter = QPainter(editor.line_number_area)
-            try:
-                # Use theme-aware colors
-                from PySide6.QtWidgets import QApplication
-                palette = QApplication.palette()
-                
-                # Background: slightly darker than base for contrast
-                bg_color = palette.color(palette.ColorRole.Base)
-                if bg_color.lightness() > 128:  # Light theme
-                    # Make it slightly darker for light themes
-                    line_bg = bg_color.darker(105)  # 5% darker
-                    text_color = palette.color(palette.ColorRole.Text).lighter(150)  # Lighter text
-                    current_line_color = QColor(240, 240, 240, 120)  # Very light gray with transparency
-                else:  # Dark theme
-                    # Make it slightly lighter for dark themes  
-                    line_bg = bg_color.lighter(115)  # 15% lighter
-                    text_color = palette.color(palette.ColorRole.Text).darker(150)  # Darker text
-                    current_line_color = QColor(80, 80, 80, 120)  # Dark gray with transparency
-                
-                painter.fillRect(event.rect(), line_bg)
-
-                # Simplified approach for QTextEdit - works reliably with word wrap
-                doc = editor.document()
-                width = editor.line_number_area.width()
-                font_height = editor.fontMetrics().height()
-                current_cursor_line = editor.textCursor().blockNumber()
-                
-                # Calculate visible area
-                viewport_top = editor.verticalScrollBar().value()
-                viewport_bottom = viewport_top + editor.viewport().height()
-                
-                # Start from the first block
-                block = doc.firstBlock()
-                block_number = 0
-                y_position = 0
-                
-                while block.isValid():
-                    if block.isVisible():
-                        # Calculate block height - use document layout for accurate positioning
-                        block_height = int(doc.documentLayout().blockBoundingRect(block).height())
-                        
-                        # Only paint if block is in visible area
-                        if y_position + block_height >= viewport_top and y_position <= viewport_bottom:
-                            # Calculate adjusted y position relative to viewport
-                            adjusted_y = y_position - viewport_top
-                            
-                            # Check if this intersects with the paint event area
-                            if (adjusted_y + block_height >= event.rect().top() and 
-                                adjusted_y <= event.rect().bottom()):
-                                
-                                # Highlight current line block
-                                if block_number == current_cursor_line:
-                                    painter.fillRect(0, adjusted_y, width, block_height, current_line_color)
-                                    painter.setPen(palette.color(palette.ColorRole.Text))
-                                else:
-                                    painter.setPen(text_color)
-                                
-                                # Check if word wrap is enabled
-                                word_wrap_enabled = (hasattr(self, 'word_wrap_enabled') and 
-                                                   getattr(self, 'word_wrap_enabled', False))
-                                
-                                number = str(block_number + 1)
-                                right_margin = max(5, width // 10)
-                                
-                                # Position line number at the TOP of the text line, accounting for document margin
-                                # The document has a margin that offsets the text, so we need to align with that
-                                document_margin = doc.documentMargin()
-                                text_top_y = adjusted_y + document_margin
-                                
-                                # Draw the line number aligned with the TOP of the text
-                                painter.drawText(0, int(text_top_y), width - right_margin, font_height,
-                                               Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop, number)
-                                
-                                # If word wrap is enabled and block spans multiple lines, add continuation indicators
-                                if (word_wrap_enabled and block.layout() and block.layout().lineCount() > 1):
-                                    painter.setPen(text_color.darker(150))  # Dimmer color for continuation
-                                    layout = block.layout()
-                                    for visual_line_idx in range(1, layout.lineCount()):
-                                        line = layout.lineAt(visual_line_idx)
-                                        # Position continuation indicator at top of wrapped line, accounting for document margin
-                                        continuation_y = adjusted_y + line.y() + document_margin
-                                        if continuation_y < adjusted_y + block_height + document_margin:  # Within block bounds
-                                            painter.drawText(0, int(continuation_y), width - right_margin, font_height,
-                                                           Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop, "∙")
-                        
-                        y_position += block_height
-                        
-                        # Early exit if we're past visible area
-                        if y_position > viewport_bottom:
-                            break
-                    
-                    block = block.next()
-                    block_number += 1
-            
-            finally:
-                # Ensure painter is properly ended
-                painter.end()
-
-        def resizeEvent(event):
-            # Handle resize of editor to update line number area
-            cr = editor.contentsRect()
-            editor.line_number_area.setGeometry(QRect(cr.left(), cr.top(),
-                                                    line_number_area_width(), cr.height()))
-
-        def show_line_column():
-            # Show line/column in status bar - word wrap aware
-            cursor = editor.textCursor()
-            
-            # Get logical line (document block)
-            logical_line = cursor.blockNumber() + 1
-            col = cursor.columnNumber() + 1
-            
-            # Check if word wrap is enabled
-            if hasattr(self, 'word_wrap_enabled') and self.word_wrap_enabled:
-                # Calculate visual line when word wrap is enabled
-                try:
-                    block = cursor.block()
-                    if block.isValid() and block.layout():
-                        layout = block.layout()
-                        # Find which line within the block the cursor is on
-                        relative_pos = cursor.positionInBlock()
-                        visual_line_in_block = layout.lineForTextPosition(relative_pos).lineNumber()
-                        
-                        # Count total visual lines up to current block
-                        total_visual_lines = 0
-                        current_block = editor.document().firstBlock()
-                        
-                        while current_block.isValid() and current_block.blockNumber() < logical_line - 1:
-                            if current_block.layout():
-                                total_visual_lines += current_block.layout().lineCount()
-                            else:
-                                total_visual_lines += 1  # Fallback for blocks without layout
-                            current_block = current_block.next()
-                        
-                        # Add the line within current block
-                        visual_line = total_visual_lines + visual_line_in_block + 1
-                        
-                        self.statusBar().showMessage(f"Line: {visual_line} (Block: {logical_line}), Column: {col}")
-                    else:
-                        # Fallback to logical line if layout is not available
-                        self.statusBar().showMessage(f"Line: {logical_line}, Column: {col}")
-                except Exception:
-                    # Fallback to logical line on any error
-                    self.statusBar().showMessage(f"Line: {logical_line}, Column: {col}")
-            else:
-                # Word wrap disabled - show logical line
-                self.statusBar().showMessage(f"Line: {logical_line}, Column: {col}")
-
-        # Add methods and properties to editor
-        editor.line_number_area_width = line_number_area_width
-        editor.line_number_area_paint_event = line_number_area_paint_event
-
-        # Create line number area
-        editor.line_number_area = LineNumberArea(editor)
-
-        # Connect signals for dynamic updates
-        editor.textChanged.connect(update_line_number_area_width)
-        editor.textChanged.connect(update_line_number_area)
-        editor.verticalScrollBar().valueChanged.connect(lambda: editor.line_number_area.update())
-        editor.horizontalScrollBar().valueChanged.connect(lambda: editor.line_number_area.update())
-        editor.cursorPositionChanged.connect(highlight_current_line)
-        editor.cursorPositionChanged.connect(show_line_column)
-        editor.cursorPositionChanged.connect(lambda: editor.line_number_area.update())  # Update for current line highlight
-        
-        # Additional responsive connections for word wrap changes
-        def responsive_update():
-            """More responsive update that handles layout changes"""
-            update_line_number_area_width()
-            update_line_number_area()
-            # Force layout recalculation by triggering modification state
-            doc = editor.document()
-            doc.setModified(doc.isModified())
-        
-        # Update on font changes and theme changes
-        def on_font_or_theme_change():
-            update_line_number_area_width()
-            editor.line_number_area.update()
-        
-        # Connect to application palette changes (theme switching)
-        QApplication.instance().paletteChanged.connect(on_font_or_theme_change)
-        
-        # Connect to document layout changes for better word wrap responsiveness
-        if hasattr(editor.document(), 'documentLayoutChanged'):
-            editor.document().documentLayoutChanged.connect(responsive_update)
-        
-        # Override resize event
-        original_resize = editor.resizeEvent
-        def new_resize_event(event):
-            if original_resize:
-                original_resize(event)
-            resizeEvent(event)
-        editor.resizeEvent = new_resize_event
-
-        # Initial setup
-        update_line_number_area_width()
-        highlight_current_line()
-        show_line_column()
-        
-        # Make sure cursor blinks and is visible
-        editor.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-        editor.setTextInteractionFlags(Qt.TextInteractionFlag.TextEditorInteraction)
 
     def setup_theming(self):
         """Setup theming system and add theme selector to UI"""
-        from PySide6.QtWidgets import QComboBox, QLabel, QHBoxLayout, QWidget, QSpacerItem, QSizePolicy
-        
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QHBoxLayout, QWidget, QSpacerItem, QSizePolicy
+
         # Create theme selector widget
         theme_widget = QWidget()
         theme_layout = QHBoxLayout(theme_widget)
         theme_layout.setContentsMargins(0, 0, 0, 0)
-        
-        # Add spacer to push theme selector to the right
+
+        # Add spacer to push controls to the right
         spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
         theme_layout.addItem(spacer)
-        
+
+        # Vim checkbox
+        self.vim_checkbox = QCheckBox("Vim")
+        self.vim_checkbox.setToolTip("Enable vim-style keybindings in the editor")
+        self.vim_checkbox.toggled.connect(self._on_vim_toggled)
+        theme_layout.addWidget(self.vim_checkbox)
+
+        # Vim mode indicator label
+        self.vim_mode_label = QLabel("")
+        self.vim_mode_label.setStyleSheet("font-weight: bold; margin-left: 4px; margin-right: 8px;")
+        theme_layout.addWidget(self.vim_mode_label)
+
         # Theme label
         theme_label = QLabel("Theme:")
         theme_layout.addWidget(theme_label)
-        
+
         # Theme selector combo box
         self.theme_combo = QComboBox()
         available_themes = self.theme_manager.get_available_themes()
         for theme_name in available_themes.keys():
             self.theme_combo.addItem(theme_name)
-        
+
         # Connect theme change
         self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
         theme_layout.addWidget(self.theme_combo)
-        
+
         # Add theme selector to status bar
         self.statusBar().addPermanentWidget(theme_widget)
+
+        # Connect vim mode display and save/quit signals
+        self.ui.te_yara_editor.vim_mode_changed.connect(self._update_vim_mode_display)
+        self.ui.te_yara_editor._vim_handler.save_requested.connect(self.on_save_rule)
+        self.ui.te_yara_editor._vim_handler.quit_requested.connect(self.close)
     
     def load_theme_settings(self):
         """Load saved theme settings or apply default theme"""
         config_path = Path(__file__).parent / "config" / "settings.json"
-        
+
         # Default to light theme
         current_theme = "Light"
-        
-        # Try to load saved theme preference
+        vim_enabled = False
+
+        # Try to load saved preferences
         try:
             if config_path.exists():
                 import json
                 with open(config_path, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
                 current_theme = settings.get('theme', 'Light')
+                vim_enabled = settings.get('vim_mode', False)
         except Exception as e:
             print(f"Error loading theme settings: {e}")
-        
+
         # Set theme in combo box and apply
         if current_theme in [self.theme_combo.itemText(i) for i in range(self.theme_combo.count())]:
             self.theme_combo.setCurrentText(current_theme)
-        
+
         self.apply_theme(current_theme)
+
+        # Restore vim mode setting (after theme is applied)
+        self.vim_checkbox.setChecked(vim_enabled)
     
     def save_theme_settings(self, theme_name):
         """Save theme preference to config file"""
@@ -1577,23 +794,47 @@ class MainWindow(QMainWindow):
         if theme_name:
             self.apply_theme(theme_name)
             self.save_theme_settings(theme_name)
+
+    # ─── Vim integration ─────────────────────────────────────────────
+
+    def _on_vim_toggled(self, enabled):
+        """Handle vim checkbox toggle."""
+        self.ui.te_yara_editor.set_vim_mode(enabled)
+        self._save_vim_setting(enabled)
+
+    def _update_vim_mode_display(self, text):
+        """Update vim mode indicator label."""
+        self.vim_mode_label.setText(text)
+
+    def _save_vim_setting(self, enabled):
+        """Persist vim_mode to config/settings.json."""
+        config_path = Path(__file__).parent / "config" / "settings.json"
+        try:
+            settings = {}
+            if config_path.exists():
+                import json
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+            settings['vim_mode'] = enabled
+            import json
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
+        except Exception as e:
+            print(f"Error saving vim setting: {e}")
     
     def apply_theme(self, theme_name):
-        """Apply the selected theme to the entire application"""
-        # Get theme
+        """Apply the selected theme to the entire application."""
         theme = self.theme_manager.get_theme(theme_name)
         self.theme_manager.set_current_theme(theme_name)
-        
-        # Generate and apply stylesheet
+
         stylesheet = self.theme_manager.generate_qss_stylesheet(theme)
-        
-        # Apply to application
         self.setStyleSheet(stylesheet)
-        
-        # Update specific widget styles that need theme-aware CSS
+
+        # Pass theme manager to editor for current-line colour etc.
+        self.ui.te_yara_editor.set_theme_manager(self.theme_manager)
+
         self.update_themed_widgets(theme)
-        
-        # Update syntax highlighter if needed
+
         if hasattr(self, 'highlighter') and self.highlighter:
             self.highlighter.update_theme(theme)
     
@@ -1900,31 +1141,10 @@ class MainWindow(QMainWindow):
             # Clear all scan data
             self.scan_hits = []
             self.scan_misses = []
-            self.misses_loaded = False
             self.scan_root = None
-            
-            # Clear all table models
-            self.hits_model.clear()
-            self.hits_model.setHorizontalHeaderLabels(['File', 'Path'])
-            
-            self.misses_model.clear()
-            self.misses_model.setHorizontalHeaderLabels(['File', 'Path'])
-            
-            self.rule_details_model.clear()
-            self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
-            
-            # Clear similar files tree
-            self.ui.tw_similar_files.clear()
-            self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
-            
-            # Clear similar tags tree (if it exists)
-            if hasattr(self.ui, 'tw_similar_tags'):
-                self.ui.tw_similar_tags.clear()
-                self.ui.tw_similar_tags.setHeaderLabels(['Tag/File', 'Details'])
-            
-            # Clear YARA match details table
-            if hasattr(self, 'tw_yara_match_details'):
-                self.tw_yara_match_details.setRowCount(0)
+
+            # Clear all results views
+            self.results.clear_all()
             
             # Clear exclusion list
             self.ui.listWidget.clear()
@@ -1981,198 +1201,32 @@ class MainWindow(QMainWindow):
         # Try yara-x formatter first, fall back to yaraast if needed
         if YARA_X_AVAILABLE:
             try:
-                # Use yara-x Formatter for formatting
-                formatted_text = self.format_yara_with_yara_x(text)
-                
-                # Load formatted text via helper to enforce size checks (should be small)
+                formatted_text = self.scanner.format_with_yara_x(text)
                 self._load_text_to_editor(formatted_text)
-                
-                # Show success message
                 self.statusBar().showMessage("YARA rule formatted with yara-x", 3000)
                 return
-                    
             except Exception as e:
-                # If yara-x formatting fails, show error
-                QMessageBox.warning(self, "Cannot Format Rule", 
+                QMessageBox.warning(self, "Cannot Format Rule",
                                    f"Unable to format YARA rule with yara-x:\n\n{str(e)}\n\n"
                                    "Please fix the syntax errors first, then try formatting again.")
                 self.statusBar().showMessage(f"yara-x formatting failed: {str(e)[:50]}...", 5000)
                 return
-        
+
         # Fallback to yaraast if yara-x is not available
         if YARAAST_AVAILABLE:
             try:
-                # Try AST parsing first - if it fails, do NOT format at all
-                formatted_text = self.format_yara_with_ast(text)
-                
-                # Load formatted text via helper to enforce size checks (should be small)
+                formatted_text = self.scanner.format_with_ast(text)
                 self._load_text_to_editor(formatted_text)
-                
-                # Show success message
                 self.statusBar().showMessage("YARA rule formatted with yaraast fallback", 3000)
-                    
             except Exception as e:
-                # If AST parsing fails, do NOT format - show error instead
-                QMessageBox.warning(self, "Cannot Format Rule", 
+                QMessageBox.warning(self, "Cannot Format Rule",
                                    f"Unable to format YARA rule due to syntax errors:\n\n{str(e)}\n\n"
                                    "Please fix the syntax errors first, then try formatting again.")
                 self.statusBar().showMessage(f"Formatting failed: {str(e)[:50]}...", 5000)
         else:
-            # Neither formatter available
-            QMessageBox.warning(self, "No Formatter Available", 
+            QMessageBox.warning(self, "No Formatter Available",
                                "Neither yara-x nor yaraast is available for formatting. Please install one of them.")
             return
-
-    def format_yara_with_yara_x(self, text: str) -> str:
-        """
-        Format YARA rules using yara-x Formatter.
-        
-        Args:
-            text: Raw YARA rule text to format
-            
-        Returns:
-            Formatted YARA rule text
-            
-        Raises:
-            Exception: If formatting fails
-        """
-        try:
-            import yara_x
-            from io import StringIO
-            
-            # First, try to compile the rule to validate syntax
-            # This ensures we only format valid YARA rules
-            rules = yara_x.compile(text)
-            
-            # Create formatter and format the source text to StringIO buffer
-            formatter = yara_x.Formatter()
-            output_buffer = StringIO()
-            
-            # Convert text to BytesIO for yara-x input (it needs a file-like object with .read())
-            from io import BytesIO
-            input_buffer = BytesIO(text.encode('utf-8'))
-            
-            # Format the text to the output buffer
-            formatter.format(input_buffer, output_buffer)
-            
-            # Get the formatted result from the buffer
-            formatted = output_buffer.getvalue()
-            
-            # Clean up buffers
-            input_buffer.close()
-            output_buffer.close()
-            
-            # Strip trailing whitespace but preserve the structure
-            formatted = formatted.rstrip()
-            
-            return formatted
-            
-        except Exception as e:
-            raise Exception(f"yara-x formatting failed: {str(e)}")
-
-    def format_yara_with_ast(self, text: str) -> str:
-        """
-        Format YARA rules using yaraast AST parser (fallback).
-        
-        Args:
-            text: Raw YARA rule text to format
-            
-        Returns:
-            Formatted YARA rule text
-            
-        Raises:
-            Exception: If AST parsing fails
-        """
-        try:
-            # Parse the YARA rule text using the correct API
-            parser = Parser()
-            ast = parser.parse(text)
-            
-            # Generate properly formatted output using CodeGenerator
-            codegen = CodeGenerator()
-            formatted = codegen.generate(ast)
-            
-            # Strip trailing whitespace but preserve the structure
-            formatted = formatted.rstrip()
-            
-            return formatted
-            
-        except Exception as e:
-            raise Exception(f"yaraast parsing failed: {str(e)}")
-
-    def validate_yara_syntax(self, text):
-        """Validate YARA syntax using yaraast and provide detailed feedback"""
-        if not YARAAST_AVAILABLE:
-            return {"valid": None, "message": "yaraast not available for syntax validation"}
-        
-        try:
-            # Parse using the correct API
-            parser = Parser()
-            ast = parser.parse(text)
-            
-            # Collect validation info
-            rules_info = []
-            total_strings = 0
-            total_tags = 0
-            
-            for rule in ast.rules:
-                rule_info = {
-                    'name': rule.name,
-                    'tags': list(rule.tags) if hasattr(rule, 'tags') and rule.tags else [],
-                    'strings': len(rule.strings) if hasattr(rule, 'strings') and rule.strings else 0,
-                    'meta': len(rule.meta) if hasattr(rule, 'meta') and rule.meta else 0,
-                    'has_condition': hasattr(rule, 'condition') and rule.condition is not None
-                }
-                rules_info.append(rule_info)
-                total_strings += rule_info['strings']
-                total_tags += len(rule_info['tags'])
-            
-            return {
-                "valid": True,
-                "rules_count": len(rules_info),
-                "total_strings": total_strings,
-                "total_tags": total_tags,
-                "rules_info": rules_info,
-                "message": f"✓ Syntax valid: {len(rules_info)} rules, {total_strings} strings, {total_tags} tags"
-            }
-            
-        except Exception as e:
-            return {
-                "valid": False,
-                "message": f"✗ Syntax error: {str(e)}",
-                "error": str(e)
-            }
-
-    def get_yara_rule_info(self, text):
-        """Get detailed information about YARA rules using AST analysis"""
-        if not YARAAST_AVAILABLE:
-            return "yaraast not available - install with: pip install yaraast[all]"
-        
-        try:
-            validation = self.validate_yara_syntax(text)
-            if not validation["valid"]:
-                return f"Syntax Error: {validation['message']}"
-            
-            info_lines = [
-                f"📊 YARA Rule Analysis:",
-                f"  Rules: {validation['rules_count']}",
-                f"  Total Strings: {validation['total_strings']}",
-                f"  Total Tags: {validation['total_tags']}",
-                ""
-            ]
-            
-            for i, rule in enumerate(validation['rules_info'], 1):
-                info_lines.append(f"Rule {i}: {rule['name']}")
-                info_lines.append(f"  📄 Strings: {rule['strings']}")
-                info_lines.append(f"  🏷️  Tags: {', '.join(rule['tags']) if rule['tags'] else 'None'}")
-                info_lines.append(f"  📊 Meta: {rule['meta']} entries")
-                info_lines.append(f"  ✅ Condition: {'Yes' if rule['has_condition'] else 'No'}")
-                info_lines.append("")
-            
-            return '\n'.join(info_lines)
-            
-        except Exception as e:
-            return f"Analysis failed: {str(e)}"
 
     def on_scan(self) -> None:
         """Scan selected files with compiled YARA rules and populate results tabs."""
@@ -2234,8 +1288,7 @@ class MainWindow(QMainWindow):
             )
             QApplication.processEvents()
             
-            import yara_x
-            rules = yara_x.compile(rule_text)
+            rules = self.scanner.compile_rules(rule_text)
             
             # Format success message nicely with theme-aware colors
             theme_colors = self._get_theme_colors_for_output()
@@ -2270,16 +1323,7 @@ class MainWindow(QMainWindow):
         # Clear previous results
         self.scan_hits.clear()
         self.scan_misses.clear()
-        self.misses_loaded = False
-        
-        self.hits_model.clear()
-        self.hits_model.setHorizontalHeaderLabels(['Filename', 'Full Path'])
-        
-        self.misses_model.clear()
-        self.misses_model.setHorizontalHeaderLabels(['Filename', 'Full Path'])
-        
-        self.rule_details_model.clear()
-        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
+        self.results.clear_all()
     
     def _perform_file_scanning(self, rules, files_to_scan: List[Path]) -> Dict[str, int]:
         """Perform the actual file scanning and return statistics."""
@@ -2287,125 +1331,25 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Scanning {len(files_to_scan)} files...", 0)
         QApplication.processEvents()
 
-        # Initialize counters
-        stats = {'scanned': 0, 'matches': 0, 'errors': 0}
+        def progress_callback(scanned, total):
+            self.statusBar().showMessage(f"Scanning... {scanned}/{total} files", 0)
+            QApplication.processEvents()
 
-        for file_path in files_to_scan:
-            stats['scanned'] += 1
+        result = self.scanner.scan_files(rules, files_to_scan, progress_callback=progress_callback)
 
-            # Update progress every 10 files
-            if stats['scanned'] % 10 == 0:
-                self.statusBar().showMessage(
-                    f"Scanning... {stats['scanned']}/{len(files_to_scan)} files", 0
-                )
-                QApplication.processEvents()
+        # Process results into UI
+        for hit in result['hits']:
+            self.scan_hits.append(hit)
+            self._add_hit_to_table(hit['filename'], hit['filepath'], hit['matched_rules'])
 
-            try:
-                if self._scan_single_file(rules, file_path):
-                    stats['matches'] += 1
-            except PermissionError:
-                stats['errors'] += 1
-            except Exception as e:
-                stats['errors'] += 1
-                self.ui.tb_compilation_output.append(f"\n✗ Error scanning {file_path}: {e}")
-                QApplication.processEvents()
+        for miss in result['misses']:
+            self.scan_misses.append(miss)
 
-        return stats
-    
-    def _scan_single_file(self, rules, file_path: Path) -> bool:
-        """
-        Scan a single file and add results to appropriate collections.
-        
-        Returns:
-            True if file had matches, False otherwise
-        """
-        # Read file and calculate hashes
-        data = file_path.read_bytes()
-        md5_hash = hashlib.md5(data).hexdigest()
-        sha1_hash = hashlib.sha1(data).hexdigest()
-        sha256_hash = hashlib.sha256(data).hexdigest()
-        
-        # Scan with YARA
-        results = rules.scan(data)
+        for msg in result['error_messages']:
+            self.ui.tb_compilation_output.append(f"\n{msg}")
+            QApplication.processEvents()
 
-        filename = file_path.name
-        filepath = str(file_path)
-
-        if results.matching_rules:
-            # Process matches
-            matched_rules = self._extract_match_details(results.matching_rules)
-            
-            hit_data = {
-                'filename': filename,
-                'filepath': filepath,
-                'md5': md5_hash,
-                'sha1': sha1_hash,
-                'sha256': sha256_hash,
-                'file_data': data,  # Store file content for hex dumps
-                'matched_rules': matched_rules
-            }
-            self.scan_hits.append(hit_data)
-            
-            # Add to hits table
-            self._add_hit_to_table(filename, filepath, matched_rules)
-            return True
-        else:
-            # Add to misses (lazy loading)
-            miss_data = {
-                'filename': filename,
-                'filepath': filepath,
-                'md5': md5_hash,
-                'sha1': sha1_hash,
-                'sha256': sha256_hash
-            }
-            self.scan_misses.append(miss_data)
-            return False
-    
-    def _extract_match_details(self, matching_rules) -> List[Dict]:
-        """Extract detailed information from matching rules."""
-        matched_rules = []
-        
-        for rule in matching_rules:
-            rule_info = {
-                'identifier': rule.identifier,
-                'namespace': rule.namespace,
-                'tags': list(rule.tags) if hasattr(rule, 'tags') else [],
-                'metadata': dict(rule.metadata) if hasattr(rule, 'metadata') else {},
-                'patterns': []
-            }
-            
-            # Extract pattern matches
-            has_string_matches = False
-            for pattern in rule.patterns:
-                if pattern.matches:
-                    has_string_matches = True
-                    pattern_info = {
-                        'identifier': pattern.identifier,
-                        'matches': [
-                            {
-                                'offset': match.offset,
-                                'length': match.length
-                            } for match in pattern.matches
-                        ]
-                    }
-                    rule_info['patterns'].append(pattern_info)
-            
-            # If rule matched but has no string pattern matches (condition-based match)
-            if not has_string_matches:
-                # Create a placeholder entry for condition-based matches
-                rule_info['patterns'].append({
-                    'identifier': 'Condition-based match',
-                    'matches': [
-                        {
-                            'offset': 0,
-                            'length': 0
-                        }
-                    ]
-                })
-            
-            matched_rules.append(rule_info)
-        
-        return matched_rules
+        return result['stats']
     
     def _add_hit_to_table(self, filename: str, filepath: str, matched_rules: List[Dict]) -> None:
         """Add a hit to the hits table with appropriate styling."""
@@ -2427,23 +1371,22 @@ class MainWindow(QMainWindow):
         filepath_item = QStandardItem(filepath)
         filepath_item.setToolTip(filepath)
         
-        self.hits_model.appendRow([filename_item, filepath_item])
+        self.results.hits_model.appendRow([filename_item, filepath_item])
     
     def _finalize_scan_results(self, stats: Dict[str, int]) -> None:
         """Finalize scan results and update UI."""
         # Format table
-        self._force_thin_rows(self.ui.tv_file_hits)
+        self.results._force_thin_rows(self.ui.tv_file_hits)
         self.ui.tv_file_hits.resizeColumnToContents(0)
-        
+
         # Switch to results tab
         self.ui.tabWidget.setCurrentIndex(1)
         self.ui.tabWidget_2.setCurrentIndex(0)
-        
+
         # Populate additional views
-        self.populate_similar_files()
-        # Similar tags will be populated when user selects a file
-        self._initialize_similar_tags_widget()
-        self.populate_yara_match_details()
+        self.results.populate_similar_files(self.scan_hits)
+        self.results.initialize_similar_tags_widget()
+        self.results.populate_match_details(self.scan_hits)
 
         # Show summary
         self._display_scan_summary(stats)
@@ -2462,12 +1405,12 @@ class MainWindow(QMainWindow):
             self.ui.tb_compilation_output.append(f"\n✓ Results populated in Scan Results tab")
             
             # Populate all views immediately after scan completion
-            # This shows all results without requiring user to select anything
             if self.scan_hits:
-                self.populate_rule_details_multi(self.scan_hits)
-                self.populate_similar_files_for_multi_selection(self.scan_hits) 
-                self.populate_similar_tags_for_multi_selection(self.scan_hits)
-                self.populate_match_details_multi(self.scan_hits)
+                all_filepaths = {h['filepath'] for h in self.scan_hits}
+                self.results.populate_rule_details(self.scan_hits)
+                self.results.populate_similar_files(self.scan_hits, all_filepaths)
+                self.results.populate_similar_tags(self.scan_hits, all_filepaths)
+                self.results.populate_match_details(self.scan_hits)
         else:
             self.ui.tb_compilation_output.append(f"\n✓ No threats detected - all files clean")
 
@@ -2604,1054 +1547,95 @@ class MainWindow(QMainWindow):
                     yield file_path
 
     def on_results_tab_changed(self, index):
-        """Handle tab changes in scan results - lazy load misses when needed"""
-        if index == 1 and not self.misses_loaded:  # Misses tab (index 1)
-            self.populate_misses_tab()
+        """Handle tab changes in scan results - lazy load misses when needed."""
+        if index == 1 and not self.results.misses_loaded:
+            self.results.populate_misses_tab(self.scan_misses)
 
     def on_hits_selection_changed(self, selected, deselected):
-        """Handle selection changes in hits table to show details for all selected files"""
+        """Handle selection changes in hits table to show details for all selected files."""
         if self._updating_selection:
             return
-            
-        # Get all currently selected rows
+
         selection_model = self.ui.tv_file_hits.selectionModel()
         selected_indexes = selection_model.selectedRows()
-        
+
         if not selected_indexes:
-            # No selection - show all available data instead of clearing
             if self.scan_hits:
-                # Show summary rule details for all scan results
-                self.populate_rule_details_multi(self.scan_hits)
-                # Show complete list for similar files and tags using all scan hits
-                self.populate_similar_files_for_multi_selection(self.scan_hits)
-                self.populate_similar_tags_for_multi_selection(self.scan_hits)
-                # Show all match details
-                self.populate_match_details_multi(self.scan_hits)
+                all_filepaths = {h['filepath'] for h in self.scan_hits}
+                self.results.populate_rule_details(self.scan_hits)
+                self.results.populate_similar_files(self.scan_hits, all_filepaths)
+                self.results.populate_similar_tags(self.scan_hits, all_filepaths)
+                self.results.populate_match_details(self.scan_hits)
             else:
-                self.clear_rule_details()
-                self.clear_similar_files()
-                self.clear_match_details()
+                self.results.clear_rule_details()
+                self.results.clear_similar_files()
+                self.results.clear_match_details()
             return
-        
-        # Collect all selected hit data
+
         selected_hits = []
-        
         for index in selected_indexes:
-            row = index.row()
-            filepath_item = self.hits_model.item(row, 1)  # Second column has filepath
+            source_index = self.results.hits_proxy.mapToSource(index)
+            row = source_index.row()
+            filepath_item = self.results.hits_model.item(row, 1)
             if not filepath_item:
                 continue
-            
-            # Get the exact filepath from the table
             filepath = filepath_item.text()
-            
-            # Find the exact hit data entry for this filepath
             for hit in self.scan_hits:
                 if hit.get('filepath') == filepath:
                     selected_hits.append(hit)
-                    break  # Found exact match, no need to continue
-        
+                    break
+
         if selected_hits:
-            self.populate_rule_details_multi(selected_hits)
-            self.populate_similar_files_for_multi_selection(selected_hits)
-            self.populate_match_details_multi(selected_hits)
-            
-            # For similar tags, handle both single and multi-selection
-            if len(selected_hits) == 1:
-                self.populate_similar_tags_for_selection(selected_hits[0])
-            else:
-                # Multiple selection - show combined tags view
-                self.populate_similar_tags_for_multi_selection(selected_hits)
+            selected_filepaths = {h['filepath'] for h in selected_hits}
+            self.results.populate_rule_details(selected_hits)
+            self.results.populate_similar_files(self.scan_hits, selected_filepaths)
+            self.results.populate_match_details(selected_hits)
+            self.results.populate_similar_tags(self.scan_hits, selected_filepaths)
 
-    def populate_misses_tab(self):
-        """Populate the misses tab with files that had no matches"""
-        if self.misses_loaded:
+
+    def _on_file_selection_requested(self, identifier: str):
+        """Handle file selection request from results manager (filepath or filename)."""
+        if self._updating_selection:
             return
-            
-        self.misses_model.clear()
-        self.misses_model.setHorizontalHeaderLabels(['File', 'Path'])
-        
-        for miss_data in self.scan_misses:
-            # Clean file with checkmark
-            filename_display = f"🤡 {miss_data['filename']}"
-            filename_item = QStandardItem(filename_display)
-            filename_item.setToolTip(f"File: {miss_data['filename']}\nStatus: Clean (no threats)")
-            
-            # Compact path display
-            filepath = miss_data['filepath']
-            if len(filepath) > 50:
-                path_display = f"...{filepath[-47:]}"
-            else:
-                path_display = filepath
-            filepath_item = QStandardItem(path_display)
-            filepath_item.setToolTip(filepath)
-            
-            self.misses_model.appendRow([filename_item, filepath_item])
-        
-        # Configure table view with thin rows
-        header = self.ui.tv_file_misses.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
-        
-        # Force thin rows
-        self._force_thin_rows(self.ui.tv_file_misses)
-        
-        self.misses_loaded = True
-
-    def clear_rule_details(self):
-        """Clear the rule details table"""
-        self.rule_details_model.clear()
-        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
-
-    def clear_similar_files(self):
-        """Clear the similar files tree"""
-        self.ui.tw_similar_files.clear()
-        self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
-
-    def clear_match_details(self):
-        """Clear the match details table"""
-        if hasattr(self, 'tw_yara_match_details'):
-            self.tw_yara_match_details.setRowCount(0)
-
-    def populate_rule_details_multi(self, selected_hits):
-        """Populate rule details for multiple selected files"""
-        self.rule_details_model.clear()
-        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
-        
-        if not selected_hits:
-            return
-        
-        # Summary information for multiple files
-        total_files = len(set(hit['filename'] for hit in selected_hits))
-        total_rules = len(set(rule['identifier'] for hit in selected_hits for rule in hit['matched_rules']))
-        total_matches = sum(len(hit['matched_rules']) for hit in selected_hits)
-        
-        self.add_detail_row('🔍 Total Matches', str(total_matches))
-        self.add_detail_row('🎯 Unique Rules', str(total_rules))
-
-        # Add a separator
-        self.add_detail_row('─' * 20, '─' * 30)
-        
-        # Show details for each selected file
-        for i, hit_data in enumerate(selected_hits):  # Show all selected files
-            filename = hit_data['filename']
-            rules_count = len(hit_data['matched_rules'])
-            matched_rule_names = [rule['identifier'] for rule in hit_data['matched_rules']]
-            
-            self.add_detail_row(f'📄 File {i+1}', filename)
-            self.add_detail_row(f'  📍 Path', hit_data['filepath'])
-            self.add_detail_row(f'  🎯 Rules', f'{rules_count} matches: {", ".join(matched_rule_names)}')
-            self.add_detail_row(f'  🔑 MD5', hit_data['md5'])
-            self.add_detail_row(f'  🔑 SHA1', hit_data['sha1'])
-            self.add_detail_row(f'  🔑 SHA256', hit_data['sha256'])
-            
-            if i < len(selected_hits) - 1:  # Add separator except for last item
-                self.add_detail_row('', '')
-
-    def populate_similar_files_for_multi_selection(self, selected_hits):
-        """Populate similar files tree showing ALL files that match the same rules as selected files"""
-        self.ui.tw_similar_files.clear()
-        self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
-        
-        if not selected_hits:
-            return
-        
-        # Get filepaths of selected files for marking with stars
-        selected_filepaths = {hit['filepath'] for hit in selected_hits}
-        
-        # Collect all unique rules from the selected files
-        selected_rules = set()
-        for hit_data in selected_hits:
-            for rule_match in hit_data['matched_rules']:
-                selected_rules.add(rule_match['identifier'])
-        
-        # Now find ALL files (from entire scan results) that match these rules
-        rules_to_files = {}
-        for rule_name in selected_rules:
-            rules_to_files[rule_name] = []
-            
-            # Search through ALL scan hits for files that match this rule
-            for hit_data in self.scan_hits:
-                hit_rules = {rule['identifier'] for rule in hit_data['matched_rules']}
-                if rule_name in hit_rules:
-                    # This file matches the rule
-                    is_selected = hit_data['filepath'] in selected_filepaths
-                    rules_to_files[rule_name].append({
-                        'filename': hit_data['filename'],
-                        'filepath': hit_data['filepath'],
-                        'is_selected': is_selected
-                    })
-        
-        # Create tree items for each rule, sorted by number of files (most matches first)
-        for rule_name in sorted(rules_to_files.keys(), key=lambda r: len(rules_to_files[r]), reverse=True):
-            file_entries = rules_to_files[rule_name]
-            total_files = len(file_entries)
-            selected_count = sum(1 for f in file_entries if f['is_selected'])
-            
-            # Create rule parent item with visual indicator
-            if total_files == 1:
-                rule_display = f"🎯 {rule_name}"
-            elif total_files <= 5:
-                rule_display = f"� {rule_name}"
-            else:
-                rule_display = f"🚨 {rule_name}"
-            
-            rule_info = f"{total_files} files"
-            if selected_count > 0:
-                rule_info += f" ({selected_count} selected)"
-            
-            rule_item = QTreeWidgetItem([rule_display, rule_info])
-            rule_item.setToolTip(0, f"Rule: {rule_name}")
-            rule_item.setToolTip(1, f"{total_files} total files matched this rule, {selected_count} currently selected")
-            
-            # Add files under each rule - sort selected files first, then by filename
-            file_entries_sorted = sorted(file_entries, key=lambda f: (not f['is_selected'], f['filename']))
-            
-            for file_entry in file_entries_sorted:
-                filename = file_entry['filename']
-                filepath = file_entry['filepath']
-                is_selected = file_entry['is_selected']
-                
-                # Check if there are multiple files with the same name in this rule
-                same_name_count = sum(1 for fe in file_entries if fe['filename'] == filename)
-                
-                if same_name_count > 1:
-                    # Show distinguishing path parts for same-named files
-                    import os
-                    path_parts = filepath.replace('\\', '/').split('/')
-                    if len(path_parts) >= 3:
-                        # Show last 2 directories for better context
-                        distinguishing_path = f".../{path_parts[-3]}/{path_parts[-2]}"
-                    elif len(path_parts) >= 2:
-                        distinguishing_path = f".../{path_parts[-2]}"
-                    else:
-                        distinguishing_path = "root"
-                    display_name = f'{filename} [{distinguishing_path}]'
-                else:
-                    display_name = filename
-                
-                # Mark selected files with star
-                if is_selected:
-                    display_name += " ⭐"
-                
-                file_item = QTreeWidgetItem([f"  📄 {display_name}", ""])
-                # Store the full filepath in the item data for double-click navigation
-                file_item.setData(0, 32, filepath)  # Qt.UserRole = 32
-                
-                # Set tooltip with full path and selection status
-                tooltip = f"File: {filename}\nPath: {filepath}"
-                if is_selected:
-                    tooltip += "\n⭐ Currently selected"
-                file_item.setToolTip(0, tooltip)
-                
-                rule_item.addChild(file_item)
-            
-            self.ui.tw_similar_files.addTopLevelItem(rule_item)
-            rule_item.setExpanded(True)
-        
-        # Resize columns
-        self.ui.tw_similar_files.resizeColumnToContents(0)
-        self.ui.tw_similar_files.resizeColumnToContents(1)
-
-    def populate_match_details_multi(self, selected_hits):
-        """Populate match details table for multiple selected files"""
-        if not hasattr(self, 'tw_yara_match_details'):
-            return
-        
-        # Clear existing data
-        self.tw_yara_match_details.setRowCount(0)
-        
-        if not selected_hits:
-            return
-        
-        row_count = 0
-        
-        # Process each selected file
-        for hit_data in selected_hits:
-            filename = hit_data['filename']
-            
-            # Add each rule match for this file
-            for rule_match in hit_data['matched_rules']:
-                rule_name = rule_match['identifier']
-                
-                # Add each pattern match within the rule
-                for pattern_info in rule_match.get('patterns', []):
-                    pattern_name = pattern_info['identifier']
-                    for match in pattern_info['matches']:
-                        self.tw_yara_match_details.insertRow(row_count)
-                        
-                        # Populate columns: File, Rule, Pattern ID, Offset, Data Preview, Hex Dump, Tag
-                        self.tw_yara_match_details.setItem(row_count, 0, QTableWidgetItem(filename))
-                        self.tw_yara_match_details.setItem(row_count, 1, QTableWidgetItem(rule_name))
-                        self.tw_yara_match_details.setItem(row_count, 2, QTableWidgetItem(pattern_name))
-                        self.tw_yara_match_details.setItem(row_count, 3, QTableWidgetItem(f"0x{match['offset']:08x}"))
-                        
-                        # Extract actual data from file
-                        file_data = hit_data.get('file_data', b'')
-                        offset = match['offset']
-                        length = match['length']
-                        
-                        # Handle placeholder entries for rules with no string matches
-                        if pattern_name in ['No string matches', 'Condition-based match'] or (offset == 0 and length == 0):
-                            data_preview = "Rule matched (no string patterns)"
-                            hex_dump = "N/A - Condition-based match"
-                        else:
-                            # Get the actual matched data
-                            if offset < len(file_data) and offset + length <= len(file_data):
-                                match_data = file_data[offset:offset + length]
-                                
-                                # Data preview (first 50 bytes as string, replacing non-printable with dots)
-                                try:
-                                    data_str = match_data[:50].decode('utf-8', errors='ignore')
-                                    # Replace non-printable characters with dots
-                                    data_preview = ''.join(c if c.isprintable() or c in '\t\n\r' else '.' for c in data_str)
-                                    if length > 50:
-                                        data_preview += f'... ({length} bytes total)'
-                                    else:
-                                        data_preview += f' ({length} bytes)'
-                                except:
-                                    data_preview = f"<binary data> ({length} bytes)"
-                                
-                                # Hex dump (first 32 bytes)
-                                hex_bytes = match_data[:32]
-                                hex_dump = ' '.join(f'{b:02x}' for b in hex_bytes)
-                                if length > 32:
-                                    hex_dump += f'... ({length} bytes total)'
-                            else:
-                                data_preview = f"<offset out of range> ({length} bytes)"
-                                hex_dump = f"Offset: 0x{offset:08x}, Length: {length}"
-                        
-                        self.tw_yara_match_details.setItem(row_count, 4, QTableWidgetItem(data_preview))
-                        self.tw_yara_match_details.setItem(row_count, 5, QTableWidgetItem(hex_dump))
-                        
-                        # Tags (if any)
-                        tags = rule_match.get('tags', [])
-                        tag_text = ', '.join(tags) if tags else ''
-                        self.tw_yara_match_details.setItem(row_count, 6, QTableWidgetItem(tag_text))
-                        
-                        # Apply column colors
-                        for col in range(7):
-                            item = self.tw_yara_match_details.item(row_count, col)
-                            if item:
-                                self._apply_column_color(item, col)
-                        
-                        row_count += 1
-        
-        # Force thin rows
-        self._force_thin_rows(self.tw_yara_match_details)
-
-    def populate_rule_details(self, hit_data):
-        """Populate comprehensive rule details when a hit is selected"""
-        self.rule_details_model.clear()
-        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
-        
-        # File information - use short property names
-        filename = hit_data['filename']
-        filepath = hit_data['filepath']
-        
-        self.add_detail_row('📄 File', filename)
-        self.add_detail_row('📁 Path', filepath)
-        self.add_detail_row('🔑 MD5', hit_data['md5'])
-        self.add_detail_row('🔑 SHA1', hit_data['sha1'])
-        self.add_detail_row('🔑 SHA256', hit_data['sha256'])
-        
-        # Rule summary
-        rules = hit_data['matched_rules']
-        matched_rule_names = [rule['identifier'] for rule in rules]
-        self.add_detail_row('🎯 Rules', f"{len(rules)} matches: {', '.join(matched_rule_names)}")
-        
-        # Detailed rule information - simplified without match details
-        for i, rule_info in enumerate(rules):
-            prefix = f"R{i+1}" if len(rules) > 1 else "Rule"
-            
-            # Rule header with separator
-            self.add_detail_row('──────────', '────────────────────────────────────────────')
-            self.add_detail_row(f"📋 {prefix}", rule_info['identifier'])
-            
-            # Basic rule properties
-            if rule_info.get('namespace', 'default') != 'default':
-                self.add_detail_row('🗂️ NS', rule_info['namespace'])
-            
-            # Tags - show all tags prominently
-            if 'tags' in rule_info and rule_info['tags']:
-                tags_str = ', '.join(rule_info['tags'])
-                self.add_detail_row('🏷️ Tags', tags_str)
-            else:
-                self.add_detail_row('🏷️ Tags', 'None')
-            
-            # Metadata section - show all metadata with short keys
-            if 'metadata' in rule_info and rule_info['metadata']:
-                meta_count = len(rule_info['metadata'])
-                self.add_detail_row('📊 Meta', f"{meta_count} entries")
-                for meta_key, meta_value in rule_info['metadata'].items():
-                    # Format metadata nicely
-                    if isinstance(meta_value, str):
-                        display_value = meta_value
-                    elif isinstance(meta_value, (int, float, bool)):
-                        display_value = str(meta_value)
-                    elif isinstance(meta_value, (list, tuple)):
-                        display_value = ', '.join(str(v) for v in meta_value)
-                    else:
-                        display_value = str(meta_value)
-                    
-                    # Use shorter property name for metadata
-                    short_key = meta_key[:12] + '...' if len(meta_key) > 15 else meta_key
-                    self.add_detail_row(f"📌 {short_key}", display_value)
-            
-            # Simple pattern count without detailed match info
-            patterns = rule_info.get('patterns', [])
-            if patterns:
-                pattern_count = len(patterns)
-                self.add_detail_row('🎯 Patterns', f"{pattern_count} defined")
-        
-        # Ensure thin rows in rule details
-        self._force_thin_rows(self.ui.tv_rule_details)
-        
-        # Configure columns - Property column fixed width, Value column gets remaining space
-        header = self.ui.tv_rule_details.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)  # Fixed width for Property
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)  # Value gets all remaining space
-        
-        # Set Property column to reasonable fixed width (shorter names now)
-        self.ui.tv_rule_details.setColumnWidth(0, 120)  # 120px for property names
-        
-        # Enable word wrap in the table to handle long values
-        self.ui.tv_rule_details.setWordWrap(True)
-
-    def add_detail_row(self, property_name, value):
-        """Helper to add a row to rule details with proper value handling"""
-        property_item = QStandardItem(property_name)
-        
-        # Convert value to string and handle long values
-        value_str = str(value)
-        value_item = QStandardItem(value_str)
-        
-        # Always show full text in tooltips
-        property_item.setToolTip(property_name)
-        value_item.setToolTip(value_str)
-        
-        # Allow text wrapping for long values
-        value_item.setData(value_str, Qt.ItemDataRole.DisplayRole)
-        
-        self.rule_details_model.appendRow([property_item, value_item])
-        self.ui.tv_rule_details.horizontalHeader().setStretchLastSection(True)
-
-    def populate_similar_files(self):
-        """Populate similar files tree based on rule matches"""
-        from PySide6.QtWidgets import QTreeWidgetItem
-        
-        self.ui.tw_similar_files.clear()
-        
-        # Group hits by rule
-        rule_files = {}
-        for hit in self.scan_hits:
-            for rule_info in hit['matched_rules']:
-                rule_id = rule_info['identifier']
-                if rule_id not in rule_files:
-                    rule_files[rule_id] = []
-                rule_files[rule_id].append({
-                    'filename': hit['filename'],
-                    'filepath': hit['filepath']
-                })
-        
-        # Add to tree with hierarchical structure
-        for rule_id, files in sorted(rule_files.items(), key=lambda x: len(x[1]), reverse=True):
-            file_count = len(files)
-            
-            # Create rule parent item with visual indicator
-            if file_count == 1:
-                rule_display = f"🎯 {rule_id}"
-            elif file_count <= 5:
-                rule_display = f"🔥 {rule_id}"
-            else:
-                rule_display = f"🚨 {rule_id}"
-            
-            rule_item = QTreeWidgetItem([rule_display, f"{file_count} files"])
-            rule_item.setToolTip(0, f"Rule: {rule_id}")
-            rule_item.setToolTip(1, f"{file_count} files matched this rule")
-            
-            # Add file children - sort by filename for consistency
-            sorted_files = sorted(files, key=lambda f: f['filename'])
-            for file_info in sorted_files:
-                file_item = QTreeWidgetItem([f"📄 {file_info['filename']}", ""])
-                file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
-                # Store the full filepath in the item data for double-click navigation
-                file_item.setData(0, 32, file_info['filepath'])  # Qt.UserRole = 32
-                rule_item.addChild(file_item)
-            
-            self.ui.tw_similar_files.addTopLevelItem(rule_item)
-            
-            # Always expand by default
-            rule_item.setExpanded(True)
-        
-        # Resize columns
-        self.ui.tw_similar_files.resizeColumnToContents(0)
-        self.ui.tw_similar_files.resizeColumnToContents(1)
-        
-        # Reset tab title to default
-        if hasattr(self.ui, 'tabWidget_3'):
-            tab_index = self.ui.tabWidget_3.indexOf(self.ui.tab_2)  # Similar Files tab
-            if tab_index >= 0:
-                self.ui.tabWidget_3.setTabText(tab_index, "Similar Files")
-
-    def populate_similar_files_for_selection(self, selected_hit_data):
-        """Populate similar files tree showing ALL files that match the same rules as selected file"""
-        from PySide6.QtWidgets import QTreeWidgetItem
-        
-        self.ui.tw_similar_files.clear()
-        
-        # Get all rules from the selected file
-        selected_rules = {rule['identifier'] for rule in selected_hit_data['matched_rules']}
-        selected_filename = selected_hit_data['filename']
-        selected_filepath = selected_hit_data['filepath']
-        
-        # Now find ALL files (from entire scan results) that match any of these rules
-        rules_to_files = {}
-        for rule_name in selected_rules:
-            rules_to_files[rule_name] = []
-            
-            # Search through ALL scan hits for files that match this rule
-            for hit_data in self.scan_hits:
-                hit_rules = {rule['identifier'] for rule in hit_data['matched_rules']}
-                if rule_name in hit_rules:
-                    # This file matches the rule
-                    is_selected = hit_data['filepath'] == selected_filepath
-                    rules_to_files[rule_name].append({
-                        'filename': hit_data['filename'],
-                        'filepath': hit_data['filepath'],
-                        'is_selected': is_selected
-                    })
-        
-        # Create tree items for each rule, sorted by number of files (most matches first)
-        for rule_name in sorted(rules_to_files.keys(), key=lambda r: len(rules_to_files[r]), reverse=True):
-            file_entries = rules_to_files[rule_name]
-            total_files = len(file_entries)
-            
-            # Create rule parent item with visual indicator
-            if total_files == 1:
-                rule_display = f"🎯 {rule_name}"
-            elif total_files <= 5:
-                rule_display = f"🔥 {rule_name}"
-            else:
-                rule_display = f"🚨 {rule_name}"
-            
-            rule_info = f"{total_files} files"
-            
-            rule_item = QTreeWidgetItem([rule_display, rule_info])
-            rule_item.setToolTip(0, f"Rule: {rule_name}")
-            rule_item.setToolTip(1, f"{total_files} files matched this rule from selected file")
-            
-            # Add files under each rule - sort selected file first, then by filename
-            file_entries_sorted = sorted(file_entries, key=lambda f: (not f['is_selected'], f['filename']))
-            
-            for file_entry in file_entries_sorted:
-                filename = file_entry['filename']
-                filepath = file_entry['filepath']
-                is_selected = file_entry['is_selected']
-                
-                # Check if there are multiple files with the same name in this rule
-                same_name_count = sum(1 for fe in file_entries if fe['filename'] == filename)
-                
-                if same_name_count > 1:
-                    # Show distinguishing path parts for same-named files
-                    import os
-                    path_parts = filepath.replace('\\', '/').split('/')
-                    if len(path_parts) >= 3:
-                        # Show last 2 directories for better context
-                        distinguishing_path = f".../{path_parts[-3]}/{path_parts[-2]}"
-                    elif len(path_parts) >= 2:
-                        distinguishing_path = f".../{path_parts[-2]}"
-                    else:
-                        distinguishing_path = "root"
-                    display_name = f'{filename} [{distinguishing_path}]'
-                else:
-                    display_name = filename
-                
-                # Mark selected file with star
-                if is_selected:
-                    display_name += " ⭐"
-                
-                file_item = QTreeWidgetItem([f"  📄 {display_name}", ""])
-                # Store the full filepath in the item data for double-click navigation
-                file_item.setData(0, 32, filepath)  # Qt.UserRole = 32
-                
-                # Set tooltip with full path and selection status
-                tooltip = f"File: {filename}\nPath: {filepath}"
-                if is_selected:
-                    tooltip += "\n⭐ Currently selected"
-                file_item.setToolTip(0, tooltip)
-                
-                rule_item.addChild(file_item)
-            
-            self.ui.tw_similar_files.addTopLevelItem(rule_item)
-            rule_item.setExpanded(True)
-        
-        # Resize columns
-        self.ui.tw_similar_files.resizeColumnToContents(0)
-        self.ui.tw_similar_files.resizeColumnToContents(1)
-        
-        # Update tab title to show it's based on selection
-        if hasattr(self.ui, 'tabWidget_3'):
-            tab_index = self.ui.tabWidget_3.indexOf(self.ui.tab_2)  # Similar Files tab
-            if tab_index >= 0:
-                total_files = sum(len(files) for files in rules_to_files.values())
-                self.ui.tabWidget_3.setTabText(tab_index, f"Similar Files ({total_files})")
-
-    def populate_similar_tags_for_selection(self, selected_hit_data):
-        """Populate similar tags view based on the selected file's tags"""
-        if not hasattr(self.ui, 'tw_similar_tags'):
-            return  # Widget doesn't exist
-            
-        self.ui.tw_similar_tags.clear()
-        
-        if not self.scan_hits or not selected_hit_data:
-            return
-        
-        selected_filepath = selected_hit_data.get('filepath', '')
-        
-        # Get all tags from the selected file's rules (from scan results only)
-        selected_file_tags = set()
-        for hit_data in self.scan_hits:
-            if hit_data.get('filepath') == selected_filepath:
-                # Extract tags from matched rules
-                for rule_info in hit_data.get('matched_rules', []):
-                    rule_name = rule_info.get('identifier', 'Unknown')
-                    tags = rule_info.get('tags', [])
-                    
-                    for tag in tags:
-                        if tag and tag.strip():
-                            selected_file_tags.add(tag.strip())
-        
-        if not selected_file_tags:
-            # No tags found for selected file
-            no_tags_item = QTreeWidgetItem(["No tags found", ""])
-            self.ui.tw_similar_tags.addTopLevelItem(no_tags_item)
-            return
-        
-        # For each tag from the selected file, find other files with the same tag
-        for tag in sorted(selected_file_tags):
-            files_with_this_tag = []
-            
-            # Find all files (including the selected one) that have this tag
-            for hit_data in self.scan_hits:
-                filename = hit_data.get('filename', 'Unknown')
-                filepath = hit_data.get('filepath', '')
-                
-                # Check each rule in this file for the tag
-                for rule_info in hit_data.get('matched_rules', []):
-                    rule_name = rule_info.get('identifier', 'Unknown')
-                    tags = rule_info.get('tags', [])
-                    
-                    # Check if this rule has the current tag
-                    if any(t.strip() == tag for t in tags if t and t.strip()):
-                        # Avoid duplicates (use filepath for exact matching)
-                        if not any(f['filepath'] == filepath and f['rule_name'] == rule_name for f in files_with_this_tag):
-                            files_with_this_tag.append({
-                                'filename': filename,
-                                'filepath': filepath,
-                                'rule_name': rule_name,
-                                'is_selected': filepath == selected_filepath
-                            })
-            
-            # Only show tags that have at least one file match
-            if files_with_this_tag:
-                # Create tag item
-                other_files_count = len([f for f in files_with_this_tag if not f['is_selected']])
-                tag_display = f"🏷️ {tag}"
-                if other_files_count > 0:
-                    tag_info = f"Selected + {other_files_count} others"
-                else:
-                    tag_info = "Only in selected file"
-                
-                tag_item = QTreeWidgetItem([tag_display, tag_info])
-                tag_item.setToolTip(0, f"Tag: {tag}")
-                tag_item.setToolTip(1, f"Found in {len(files_with_this_tag)} files total")
-                
-                # Add file children
-                for file_info in files_with_this_tag:
-                    if file_info['is_selected']:
-                        # Mark the selected file
-                        file_display = f"📄 {file_info['filename']} ⭐"
-                        file_info_text = f"Rule: {file_info['rule_name']} (Selected)"
-                    else:
-                        file_display = f"📄 {file_info['filename']}"
-                        file_info_text = f"Rule: {file_info['rule_name']}"
-                    
-                    file_item = QTreeWidgetItem([file_display, file_info_text])
-                    file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
-                    file_item.setToolTip(1, f"Rule: {file_info['rule_name']}")
-                    tag_item.addChild(file_item)
-                
-                self.ui.tw_similar_tags.addTopLevelItem(tag_item)
-                
-                # Expand all tag items by default
-                tag_item.setExpanded(True)
-        
-        # Resize columns
-        self.ui.tw_similar_tags.resizeColumnToContents(0)
-        self.ui.tw_similar_tags.resizeColumnToContents(1)
-        
-        # Update tab title
-        if hasattr(self.ui, 'tabWidget_3'):
-            for i in range(self.ui.tabWidget_3.count()):
-                if hasattr(self.ui.tabWidget_3.widget(i), 'objectName'):
-                    widget = self.ui.tabWidget_3.widget(i)
-                    if hasattr(widget, 'findChild') and widget.findChild(type(self.ui.tw_similar_tags)):
-                        total_tags = len(selected_file_tags)
-                        break
-
-    def populate_similar_tags_for_multi_selection(self, selected_hits):
-        """Populate similar tags view for multiple selected files"""
-        if not hasattr(self.ui, 'tw_similar_tags'):
-            return  # Widget doesn't exist
-            
-        self.ui.tw_similar_tags.clear()
-        
-        if not self.scan_hits or not selected_hits:
-            return
-        
-        from PySide6.QtWidgets import QTreeWidgetItem
-        
-        # Get filepaths of all selected files
-        selected_filepaths = {hit.get('filepath', '') for hit in selected_hits}
-        
-        # Collect all tags from all selected files
-        all_selected_tags = set()
-        for hit_data in selected_hits:
-            for rule_info in hit_data.get('matched_rules', []):
-                tags = rule_info.get('tags', [])
-                for tag in tags:
-                    if tag and tag.strip():
-                        all_selected_tags.add(tag.strip())
-        
-        if not all_selected_tags:
-            # No tags found for selected files
-            no_tags_item = QTreeWidgetItem(["No tags found in selected files", ""])
-            self.ui.tw_similar_tags.addTopLevelItem(no_tags_item)
-            return
-        
-        # For each tag found in selected files, show all files that have this tag
-        for tag in sorted(all_selected_tags):
-            files_with_this_tag = []
-            
-            # Find all files (including selected ones) that have this tag
-            for hit_data in self.scan_hits:
-                filename = hit_data.get('filename', 'Unknown')
-                filepath = hit_data.get('filepath', '')
-                
-                # Check each rule in this file for the tag
-                for rule_info in hit_data.get('matched_rules', []):
-                    rule_name = rule_info.get('identifier', 'Unknown')
-                    tags = rule_info.get('tags', [])
-                    
-                    # Check if this rule has the current tag
-                    if any(t.strip() == tag for t in tags if t and t.strip()):
-                        # Avoid duplicates (use filepath for exact matching)
-                        if not any(f['filepath'] == filepath and f['rule_name'] == rule_name for f in files_with_this_tag):
-                            files_with_this_tag.append({
-                                'filename': filename,
-                                'filepath': filepath,
-                                'rule_name': rule_name,
-                                'is_selected': filepath in selected_filepaths
-                            })
-            
-            # Only show tags that have at least one file match
-            if files_with_this_tag:
-                # Count selected vs other files
-                selected_count = len([f for f in files_with_this_tag if f['is_selected']])
-                other_files_count = len([f for f in files_with_this_tag if not f['is_selected']])
-                
-                tag_display = f"🏷️ {tag}"
-                if selected_count > 0 and other_files_count > 0:
-                    tag_info = f"{selected_count} selected + {other_files_count} others"
-                elif selected_count > 0:
-                    tag_info = f"{selected_count} selected files only"
-                else:
-                    tag_info = f"{other_files_count} other files"
-                
-                tag_item = QTreeWidgetItem([tag_display, tag_info])
-                tag_item.setToolTip(0, f"Tag: {tag}")
-                tag_item.setToolTip(1, f"Found in {len(files_with_this_tag)} files total ({selected_count} selected)")
-                
-                # Add file children - sort selected files first
-                files_sorted = sorted(files_with_this_tag, key=lambda f: (not f['is_selected'], f['filename']))
-                for file_info in files_sorted:
-                    if file_info['is_selected']:
-                        # Mark selected files with star
-                        file_display = f"📄 {file_info['filename']} ⭐"
-                        file_info_text = f"Rule: {file_info['rule_name']} (Selected)"
-                    else:
-                        file_display = f"📄 {file_info['filename']}"
-                        file_info_text = f"Rule: {file_info['rule_name']}"
-                    
-                    file_item = QTreeWidgetItem([file_display, file_info_text])
-                    file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
-                    file_item.setToolTip(1, f"Rule: {file_info['rule_name']}")
-                    tag_item.addChild(file_item)
-                
-                self.ui.tw_similar_tags.addTopLevelItem(tag_item)
-                
-                # Expand all tag items by default
-                tag_item.setExpanded(True)
-        
-        # Resize columns
-        self.ui.tw_similar_tags.resizeColumnToContents(0)
-        self.ui.tw_similar_tags.resizeColumnToContents(1)
-        
-
-    def _initialize_similar_tags_widget(self):
-        """Initialize similar tags widget with instruction message"""
-        if not hasattr(self.ui, 'tw_similar_tags'):
-            return
-            
-        self.ui.tw_similar_tags.clear()
-        instruction_item = QTreeWidgetItem(["Select a file to see similar tags", ""])
-        instruction_item.setToolTip(0, "Click on a file in the hits table to see files with similar tags")
-        self.ui.tw_similar_tags.addTopLevelItem(instruction_item)
-        
-        
-
-    def populate_yara_match_details(self, hit_data=None):
-        """Populate comprehensive YARA match details table widget for ALL files"""
-        # Check if the match details table widget exists
-        if not hasattr(self, 'tw_yara_match_details'):
-            return
-            
-        from PySide6.QtWidgets import QTableWidgetItem
-        from PySide6.QtCore import Qt
-        
-        # Clear existing data
-        self.tw_yara_match_details.setRowCount(0)
-        
-        # If hit_data is provided, show only that file's matches (for compatibility)
-        # Otherwise show ALL files with matches
-        if hit_data:
-            files_to_process = [hit_data]
-        else:
-            files_to_process = self.scan_hits
-        
-        # Collect all matches for the table from all files
-        table_rows = []
-        
-        for file_data in files_to_process:
-            filename = file_data['filename']
-            filepath = file_data['filepath']
-            matched_rules = file_data.get('matched_rules', [])
-            
-            for rule_idx, rule_match in enumerate(matched_rules):
-                rule_name = rule_match.get('identifier', f'Rule_{rule_idx}')
-                rule_tags = rule_match.get('tags', [])
-                tags_str = ', '.join(rule_tags) if rule_tags else ''
-                # Process each pattern in the rule
-                patterns = rule_match.get('patterns', [])
-                for pattern_idx, pattern in enumerate(patterns):
-                    pattern_id = pattern.get('identifier', f'Pattern_{pattern_idx}')
-                    matches = pattern.get('matches', [])
-                    
-                    # Add each match occurrence as a table row
-                    for match_idx, match in enumerate(matches):
-                        offset = match.get('offset', 0)
-                        length = match.get('length', 0)
-                        
-                        # Handle placeholder entries for rules with no string matches
-                        if pattern_id in ['No string matches', 'Condition-based match'] or (offset == 0 and length == 0):
-                            preview_text = "Rule matched (no string patterns)"
-                            hex_dump = "N/A - Condition-based match"
-                        else:
-                            # Get data preview for this match using stored file data
-                            file_content = file_data.get('file_data', b'')
-                            if file_content:
-                                data_preview = self._get_data_preview_from_memory(file_content, offset, length)
-                            else:
-                                # Fallback to reading from file if data not stored
-                                data_preview = self._get_data_preview(filepath, offset, length)
-                            
-                            preview_text = data_preview['text'] if data_preview else 'N/A'
-                            hex_dump = data_preview['hex'] if data_preview else 'N/A'
-                        
-                        # Create table row data
-                        row_data = [
-                            filename,                           # File
-                            rule_name,                         # Rule
-                            pattern_id,                        # Pattern ID
-                            f'0x{offset:08X}',                # Offset (hex)
-                            preview_text,                      # Data Preview
-                            hex_dump,                          # Hex Dump
-                            tags_str                           # Tag
-                        ]
-                        
-                        table_rows.append(row_data)
-        
-        # Populate the table
-        self.tw_yara_match_details.setRowCount(len(table_rows))
-        
-        for row_idx, row_data in enumerate(table_rows):
-            for col_idx, cell_data in enumerate(row_data):
-                item = QTableWidgetItem(str(cell_data))
-                # Make cells read-only but selectable
-                item.setFlags(item.flags() & ~Qt.ItemIsEditable)
-                
-                # Apply column-specific background colors
-                self._apply_column_color(item, col_idx)
-                
-                self.tw_yara_match_details.setItem(row_idx, col_idx, item)
-        
-        # Make table compact with thin rows
-        self._make_table_compact(self.tw_yara_match_details)
-        
-        # Resize columns to fit content initially
-        self.tw_yara_match_details.resizeColumnsToContents()
-        
-        # Apply our configured column widths
-        self.tw_yara_match_details.setColumnWidth(0, 200)  # File
-        self.tw_yara_match_details.setColumnWidth(1, 150)  # Rule
-        self.tw_yara_match_details.setColumnWidth(2, 100)  # Pattern ID
-        self.tw_yara_match_details.setColumnWidth(3, 100)  # Offset
-        self.tw_yara_match_details.setColumnWidth(4, 250)  # Data Preview
-        self.tw_yara_match_details.setColumnWidth(5, 200)  # Hex Dump
-        self.tw_yara_match_details.setColumnWidth(6, 100)  # Tag
-
-    def on_match_detail_double_clicked(self, row, column):
-        """Handle double-click of a match detail row to show more information"""
-        if row < 0:
-            return
-        
-        # Get data from the double-clicked row
-        filename_item = self.tw_yara_match_details.item(row, 0)  # File
-        rule_item = self.tw_yara_match_details.item(row, 1)      # Rule
-        pattern_item = self.tw_yara_match_details.item(row, 2)   # Pattern ID
-        offset_item = self.tw_yara_match_details.item(row, 3)    # Offset
-        
-        if not all([filename_item, rule_item, pattern_item, offset_item]):
-            return
-            
-        filename = filename_item.text()
-        rule_name = rule_item.text()
-        pattern_id = pattern_item.text()
-        offset_hex = offset_item.text()
-        
-        # Find the corresponding file data
-        hit_data = None
-        for scan_hit in self.scan_hits:
-            if scan_hit['filename'] == filename:
-                hit_data = scan_hit
-                break
-        
-        if hit_data:
-            # Show detailed info in a status message or tooltip
-            filepath = hit_data['filepath']
-            
-            # Extract offset as integer
-            try:
-                offset = int(offset_hex, 16) if offset_hex.startswith('0x') else int(offset_hex)
-                
-                # Show expanded information in status bar
-                msg = f"Selected: {filename} | Rule: {rule_name} | Pattern: {pattern_id} | Offset: {offset_hex} ({offset:,} dec) | Path: {filepath}"
-                self.statusBar().showMessage(msg, 10000)
-                
-                # Update rule details to show info for this specific file
-                self.populate_rule_details(hit_data)
-                
-                # Synchronize selection with hits list (without updating details to avoid recursion)
-                self.select_file_in_hits_list(filename, update_details=False)
-                
-            except ValueError:
-                self.statusBar().showMessage(f"Selected: {filename} | Rule: {rule_name} | Pattern: {pattern_id}", 5000)
-
-    def on_similar_file_double_clicked(self, item, column):
-        """Handle double-click of a similar file to synchronize with hits list"""
-        if not item:
-            return
-        
+        self._updating_selection = True
         try:
-            # Store item information early to avoid accessing deleted objects
-            filepath = item.data(0, 32)  # Qt.UserRole = 32
-            item_text = item.text(0)
-            has_parent = item.parent() is not None
-        except RuntimeError:
-            # Item was deleted, ignore the event
-            return
-        
-        if filepath:
-            # Use exact filepath matching for precise selection
-            self.select_file_in_hits_list_by_filepath(filepath)
-        else:
-            # Fallback to old method for compatibility
-            filename = None
-            
-            # Check if this is a file item (try different formats)
-            if item_text.startswith('📄 '):
-                # Extract filename from the item text
-                filename = item_text[2:].split(' (')[0]  # Remove "📄 " and any path info in parentheses
-                # Remove star if present
-                filename = filename.replace(' ⭐', '').strip()
-            elif item_text.startswith('File: '):
-                # Alternative format
-                filename = item_text[6:]  # Remove the "File: " prefix
-            elif not has_parent:
-                # This might be a top-level item, check if it's a filename directly
-                # Skip if it looks like a rule name or section header
-                if not any(keyword in item_text.lower() for keyword in ['rule', 'condition', 'strings', 'meta']):
-                    filename = item_text
-            
-            if filename:
-                # Find this file in the hits list and select it (old method)
-                self.select_file_in_hits_list(filename)
-
-    def on_similar_tag_double_clicked(self, item, column):
-        """Handle double-click of a similar tag item to synchronize with hits list"""
-        if not item:
-            return
-        
-        try:
-            # Store all item information early to avoid accessing deleted objects
-            item_text = item.text(0)
-            parent_item = item.parent()
-            parent_text = parent_item.text(0) if parent_item else None
-            child_count = item.childCount()
-            first_child = item.child(0) if child_count > 0 else None
-            
-        except RuntimeError:
-            # Item was deleted, ignore the event
-            return
-        
-        filename = None
-        tag_name = None
-        
-        # Check if this is a file item under a tag
-        if item_text.startswith('📄 '):
-            # Extract filename from the item text
-            filename = item_text[2:]  # Remove the "📄 " prefix
-            # Remove star if present
-            filename = filename.replace(' ⭐', '').strip()
-        elif item_text.startswith('🏷️ '):
-            # This is a tag item - extract tag name
-            tag_name = item_text[3:]  # Remove the "🏷️ " prefix
-            
-            # If it's a tag with children, select the first file with this tag
-            if first_child:
-                try:
-                    first_child_text = first_child.text(0)
-                    if first_child_text.startswith('📄 '):
-                        filename = first_child_text[2:]  # Remove "📄 " prefix
-                        # Remove star if present
-                        filename = filename.replace(' ⭐', '').strip()
-                except RuntimeError:
-                    # Child item was deleted, skip
-                    pass
-        
-        if filename:
-            # Find this file in the hits list and select it
-            self.select_file_in_hits_list(filename)
-            
-            # If we have a tag, also highlight the tag in the editor
-            if tag_name or (parent_text and parent_text.startswith('🏷️ ')):
-                parent_tag = tag_name if tag_name else (parent_text[3:] if parent_text else None)
-                if parent_tag:
-                    self.highlight_tag_in_editor(parent_tag)
+            # Try exact filepath match first
+            for source_row, hit_data in enumerate(self.scan_hits):
+                if hit_data['filepath'] == identifier:
+                    source_index = self.results.hits_model.index(source_row, 0)
+                    proxy_index = self.results.hits_proxy.mapFromSource(source_index)
+                    if proxy_index.isValid():
+                        self.ui.tv_file_hits.selectRow(proxy_index.row())
+                    selected_hits = [hit_data]
+                    selected_filepaths = {hit_data['filepath']}
+                    self.results.populate_rule_details(selected_hits)
+                    self.results.populate_similar_files(self.scan_hits, selected_filepaths)
+                    self.results.populate_match_details(selected_hits)
+                    self.results.populate_similar_tags(self.scan_hits, selected_filepaths)
+                    self.statusBar().showMessage(
+                        f"Selected: {hit_data['filename']} | {len(hit_data.get('matched_rules', []))} rule(s) | Path: {identifier}",
+                        8000
+                    )
+                    return
+            # Fallback: try filename match
+            for source_row, hit_data in enumerate(self.scan_hits):
+                if hit_data['filename'] == identifier:
+                    source_index = self.results.hits_model.index(source_row, 0)
+                    proxy_index = self.results.hits_proxy.mapFromSource(source_index)
+                    if proxy_index.isValid():
+                        self.ui.tv_file_hits.selectRow(proxy_index.row())
+                    selected_hits = [hit_data]
+                    selected_filepaths = {hit_data['filepath']}
+                    self.results.populate_rule_details(selected_hits)
+                    self.results.populate_similar_files(self.scan_hits, selected_filepaths)
+                    self.results.populate_match_details(selected_hits)
+                    self.results.populate_similar_tags(self.scan_hits, selected_filepaths)
+                    return
+        finally:
+            self._updating_selection = False
 
     def highlight_tag_in_editor(self, tag_name):
-        """Highlight the specified tag in the YARA editor"""
+        """Highlight the specified tag in the YARA editor."""
         if not tag_name:
             return
             
@@ -3677,124 +1661,6 @@ class MainWindow(QMainWindow):
         else:
             self.statusBar().showMessage(f"Tag '{tag_name}' not found in current YARA rule", 3000)
     
-    def select_file_in_hits_list(self, filename, update_details=True):
-        """Select a specific file in the hits list and optionally update details"""
-        if self._updating_selection:
-            return  # Prevent recursive calls
-            
-        # Find the file in scan_hits and select it in the hits table
-        for row, hit_data in enumerate(self.scan_hits):
-            if hit_data['filename'] == filename:
-                self._updating_selection = True
-                try:
-                    # Select the row in the hits table
-                    self.ui.tv_file_hits.selectRow(row)
-                    
-                    if update_details:
-                        # Update details for this file
-                        self.populate_rule_details(hit_data)
-                        self.populate_similar_files_for_selection(hit_data)
-                        self.populate_similar_tags_for_selection(hit_data)
-                        self.populate_yara_match_details(hit_data)
-                        
-                        # Update status bar to show the selection
-                        filepath = hit_data['filepath']
-                        rule_count = len(hit_data.get('matched_rules', []))
-                        self.statusBar().showMessage(
-                            f"Selected: {filename} | {rule_count} rule(s) matched | Path: {filepath}", 
-                            8000
-                        )
-                finally:
-                    self._updating_selection = False
-                break
-
-    def select_file_in_hits_list_by_filepath(self, filepath, update_details=True):
-        """Select a specific file in the hits list by exact filepath match"""
-        if self._updating_selection:
-            return  # Prevent recursive calls
-            
-        # Find the file in scan_hits by exact filepath match
-        for row, hit_data in enumerate(self.scan_hits):
-            if hit_data['filepath'] == filepath:
-                self._updating_selection = True
-                try:
-                    # Select the row in the hits table
-                    self.ui.tv_file_hits.selectRow(row)
-                    
-                    if update_details:
-                        # Update details for this file using consistent multi-selection logic
-                        selected_hits = [hit_data]
-                        self.populate_rule_details_multi(selected_hits)
-                        self.populate_similar_files_for_multi_selection(selected_hits)
-                        self.populate_match_details_multi(selected_hits)
-                        self.populate_similar_tags_for_selection(hit_data)
-                        
-                        # Update status bar to show the selection
-                        filename = hit_data['filename']
-                        rule_count = len(hit_data.get('matched_rules', []))
-                        self.statusBar().showMessage(
-                            f"Selected: {filename} | {rule_count} rule(s) matched | Path: {filepath}", 
-                            8000
-                        )
-                finally:
-                    self._updating_selection = False
-                break
-
-    def _get_data_preview(self, filepath, offset, length):
-        """Get a preview of data at the specified offset using exact YARA-X match length"""
-        try:
-            with open(filepath, 'rb') as f:
-                f.seek(offset)
-                # Use exact YARA-X match length, not extra context
-                read_length = length
-                data = f.read(read_length)
-                
-                if not data:
-                    return None
-                
-                # Text preview (printable characters only) - use exact match length
-                text_preview = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in data)
-                
-                # Hex dump - use exact match length
-                hex_dump = ' '.join(f'{b:02X}' for b in data)
-                
-                return {
-                    'raw': data,
-                    'text': text_preview,
-                    'hex': hex_dump
-                }
-        except Exception:
-            return None
-
-    def _get_data_preview_from_memory(self, file_data, offset, length):
-        """Get a preview of data from memory at the specified offset using exact YARA-X match length"""
-        try:
-            if offset < 0 or offset >= len(file_data):
-                return None
-                
-            # Extract the exact data at the specified offset using YARA-X match length
-            end_offset = min(offset + length, len(file_data))
-            data = file_data[offset:end_offset]
-            
-            if not data:
-                return None
-            
-            # Use exact YARA-X match data (no preview length limit)
-            
-            # Text preview (printable characters only)
-            text_preview = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in data)
-            
-            # Hex dump
-            hex_dump = ' '.join(f'{b:02X}' for b in data)
-            
-            return {
-                'raw': data,
-                'text': text_preview,
-                'hex': hex_dump
-            }
-        except Exception:
-            return None
-
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
@@ -3808,7 +1674,7 @@ if __name__ == "__main__":
         if Path(file_path).exists():
             try:
                 text = Path(file_path).read_text(encoding='utf-8')
-                widget._load_yara_text(text, source_path=file_path)
+                widget._load_text_to_editor(text, source_path=file_path)
             except Exception as e:
                 print(f"Failed to load file from command line: {e}")
     

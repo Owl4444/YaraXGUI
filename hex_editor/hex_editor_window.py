@@ -130,6 +130,15 @@ class HexEditorWindow(QMainWindow):
 
         # View menu
         view_menu = menubar.addMenu("&View")
+
+        self._toggle_view_action = QAction("&Text View", self)
+        self._toggle_view_action.setShortcut(QKeySequence("Ctrl+T"))
+        self._toggle_view_action.setCheckable(True)
+        self._toggle_view_action.setChecked(False)
+        self._toggle_view_action.toggled.connect(self._on_toggle_view_mode)
+        view_menu.addAction(self._toggle_view_action)
+        view_menu.addSeparator()
+
         view_menu.addAction(self._format_dock.toggleViewAction())
         view_menu.addAction(self._inspector_dock.toggleViewAction())
         view_menu.addAction(self._strings_dock.toggleViewAction())
@@ -169,6 +178,14 @@ class HexEditorWindow(QMainWindow):
         format_action.triggered.connect(lambda: self._format_dock.setVisible(not self._format_dock.isVisible()))
         toolbar.addAction(format_action)
 
+        toolbar.addSeparator()
+
+        self._view_toggle_btn = QAction("Text", self)
+        self._view_toggle_btn.setToolTip("Switch to text view (Ctrl+T)")
+        self._view_toggle_btn.setCheckable(True)
+        self._view_toggle_btn.toggled.connect(self._toggle_view_action.setChecked)
+        toolbar.addAction(self._view_toggle_btn)
+
     def _setup_statusbar(self):
         self._status_offset = QLabel("Offset: 0x00000000")
         self._status_size = QLabel("Size: 0")
@@ -185,6 +202,15 @@ class HexEditorWindow(QMainWindow):
             self, "Open File", "", "All Files (*)")
         if filepath:
             self.open_file(filepath)
+
+    def _on_toggle_view_mode(self, text_mode: bool):
+        self._hex_widget.set_text_mode(text_mode)
+        self._view_toggle_btn.setChecked(text_mode)
+        label = "Hex" if text_mode else "Text"
+        tooltip = f"Switch to {'hex' if text_mode else 'text'} view (Ctrl+T)"
+        self._view_toggle_btn.setText(label)
+        self._view_toggle_btn.setToolTip(tooltip)
+        self._toggle_view_action.setText("&Hex View" if text_mode else "&Text View")
 
     def _on_goto(self):
         if self._buffer.size() == 0:

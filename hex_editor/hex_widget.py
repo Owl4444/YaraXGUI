@@ -30,6 +30,10 @@ class HexWidget(QAbstractScrollArea):
         self._selection_end = -1
         self._selecting = False  # mouse drag in progress
         self._focus_ascii = False  # Tab toggles hex/ascii focus
+        self._text_mode = False   # False=hex view, True=text view
+
+        # Text-mode layout
+        self._text_cols = 64  # characters per line in text mode
 
         # Persistent selection markers
         self._marker_start: int = -1
@@ -94,10 +98,22 @@ class HexWidget(QAbstractScrollArea):
         self.viewport().update()
         self.cursor_moved.emit(0)
 
+    def _bytes_per_line(self) -> int:
+        return self._text_cols if self._text_mode else BYTES_PER_LINE
+
     def _total_lines(self) -> int:
         if not self._buffer:
             return 0
-        return (self._buffer.size() + BYTES_PER_LINE - 1) // BYTES_PER_LINE
+        bpl = self._bytes_per_line()
+        return (self._buffer.size() + bpl - 1) // bpl
+
+    def set_text_mode(self, enabled: bool):
+        """Toggle between hex view and text view."""
+        if self._text_mode == enabled:
+            return
+        self._text_mode = enabled
+        self._update_scrollbar()
+        self.viewport().update()
 
     def _visible_lines(self) -> int:
         return max(1, self.viewport().height() // self._line_h)
@@ -172,13 +188,18 @@ class HexWidget(QAbstractScrollArea):
             painter.end()
             return
 
+        if self._text_mode:
+            self._paint_text_mode(event)
+        else:
+            self._paint_hex_mode(event)
+
+    def _paint_hex_mode(self, event):
         painter = QPainter(self.viewport())
         painter.setFont(self._font)
         painter.fillRect(self.viewport().rect(), self._bg)
 
         first_line = self.verticalScrollBar().value()
         visible = self._visible_lines() + 1
-        vp_width = self.viewport().width()
 
         sel_min, sel_max = self._ordered_selection()
 
@@ -277,6 +298,87 @@ class HexWidget(QAbstractScrollArea):
 
         painter.end()
 
+    def _paint_text_mode(self, event):
+        painter = QPainter(self.viewport())
+        painter.setFont(self._font)
+        painter.fillRect(self.viewport().rect(), self._bg)
+
+        first_line = self.verticalScrollBar().value()
+        visible = self._visible_lines() + 1
+        bpl = self._text_cols
+        text_start = self._offset_width + self._char_w
+
+        sel_min, sel_max = self._ordered_selection()
+
+        for i in range(visible):
+            line_idx = first_line + i
+            offset = line_idx * bpl
+            if offset >= self._buffer.size():
+                break
+
+            y = i * self._line_h
+            data = self._buffer.read(offset, bpl)
+            data_len = len(data)
+
+            # Offset gutter
+            painter.fillRect(QRect(0, y, self._offset_width, self._line_h), self._offset_bg)
+            painter.setPen(self._offset_text)
+            painter.drawText(
+                QRect(0, y, self._offset_width - self._char_w, self._line_h),
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+                f"{offset:08X}"
+            )
+
+            # Marker triangles
+            line_end = offset + data_len - 1
+            tri_x = 2
+            tri_size = self._line_h // 3
+            tri_cy = y + self._line_h // 2
+            if self._marker_start >= 0 and offset <= self._marker_start <= line_end:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor("#22bb45"))
+                painter.drawPolygon(QPolygon([
+                    QPoint(tri_x, tri_cy - tri_size),
+                    QPoint(tri_x + tri_size, tri_cy),
+                    QPoint(tri_x, tri_cy + tri_size),
+                ]))
+            if self._marker_end >= 0 and offset <= self._marker_end <= line_end:
+                painter.setPen(Qt.PenStyle.NoPen)
+                painter.setBrush(QColor("#dd3333"))
+                painter.drawPolygon(QPolygon([
+                    QPoint(tri_x, tri_cy - tri_size),
+                    QPoint(tri_x + tri_size, tri_cy),
+                    QPoint(tri_x, tri_cy + tri_size),
+                ]))
+
+            # Separator
+            painter.setPen(QPen(self._separator, 1))
+            painter.drawLine(self._offset_width, y, self._offset_width, y + self._line_h)
+
+            # Text characters
+            for j in range(data_len):
+                byte_offset = offset + j
+                ch = data[j]
+                x = text_start + j * self._char_w
+                char_rect = QRect(x, y, self._char_w, self._line_h)
+
+                # Selection highlight
+                if sel_min <= byte_offset <= sel_max:
+                    painter.fillRect(char_rect, self._selection_bg)
+                # Cursor highlight
+                if byte_offset == self._cursor_offset:
+                    painter.fillRect(char_rect, self._cursor_bg)
+                    painter.setPen(QColor("#ffffff"))
+                elif 32 <= ch <= 126:
+                    painter.setPen(self._ascii_text)
+                else:
+                    painter.setPen(self._ascii_nonprint)
+
+                display = chr(ch) if 32 <= ch <= 126 else "\u00b7"
+                painter.drawText(char_rect, Qt.AlignmentFlag.AlignCenter, display)
+
+        painter.end()
+
     # ── Selection helpers ───────────────────────────────────────────
 
     def _ordered_selection(self):
@@ -300,11 +402,23 @@ class HexWidget(QAbstractScrollArea):
         """Map viewport (x, y) to byte offset, or -1."""
         if not self._buffer:
             return -1
+
+        bpl = self._bytes_per_line()
         line = self.verticalScrollBar().value() + pos.y() // self._line_h
-        offset_base = line * BYTES_PER_LINE
+        offset_base = line * bpl
         x = pos.x()
 
-        # Check hex column
+        if self._text_mode:
+            # Text mode: single text column after offset gutter
+            text_start = self._offset_width + self._char_w
+            if x >= text_start:
+                col = int((x - text_start) // self._char_w)
+                col = max(0, min(col, bpl - 1))
+                off = offset_base + col
+                return min(off, self._buffer.size() - 1)
+            return -1
+
+        # Hex mode: check hex column
         if self._hex_start <= x < self._ascii_start - self._char_w // 2:
             rel = x - self._hex_start
             # Account for mid gap
@@ -335,8 +449,11 @@ class HexWidget(QAbstractScrollArea):
             off = self._offset_from_point(event.position().toPoint())
             if off >= 0:
                 # Determine if click is in ASCII area
-                x = event.position().toPoint().x()
-                self._focus_ascii = x >= self._ascii_start
+                if self._text_mode:
+                    self._focus_ascii = True
+                else:
+                    x = event.position().toPoint().x()
+                    self._focus_ascii = x >= self._ascii_start
 
                 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
                     self._selection_end = off
@@ -384,28 +501,30 @@ class HexWidget(QAbstractScrollArea):
         key = event.key()
         new_off = self._cursor_offset
 
+        bpl = self._bytes_per_line()
+
         if key == Qt.Key.Key_Right:
             new_off = min(self._cursor_offset + 1, max_off)
         elif key == Qt.Key.Key_Left:
             new_off = max(self._cursor_offset - 1, 0)
         elif key == Qt.Key.Key_Down:
-            new_off = min(self._cursor_offset + BYTES_PER_LINE, max_off)
+            new_off = min(self._cursor_offset + bpl, max_off)
         elif key == Qt.Key.Key_Up:
-            new_off = max(self._cursor_offset - BYTES_PER_LINE, 0)
+            new_off = max(self._cursor_offset - bpl, 0)
         elif key == Qt.Key.Key_PageDown:
-            new_off = min(self._cursor_offset + self._visible_lines() * BYTES_PER_LINE, max_off)
+            new_off = min(self._cursor_offset + self._visible_lines() * bpl, max_off)
         elif key == Qt.Key.Key_PageUp:
-            new_off = max(self._cursor_offset - self._visible_lines() * BYTES_PER_LINE, 0)
+            new_off = max(self._cursor_offset - self._visible_lines() * bpl, 0)
         elif key == Qt.Key.Key_Home:
             if ctrl:
                 new_off = 0
             else:
-                new_off = (self._cursor_offset // BYTES_PER_LINE) * BYTES_PER_LINE
+                new_off = (self._cursor_offset // bpl) * bpl
         elif key == Qt.Key.Key_End:
             if ctrl:
                 new_off = max_off
             else:
-                new_off = min((self._cursor_offset // BYTES_PER_LINE) * BYTES_PER_LINE + BYTES_PER_LINE - 1, max_off)
+                new_off = min((self._cursor_offset // bpl) * bpl + bpl - 1, max_off)
         elif key == Qt.Key.Key_Tab:
             self._focus_ascii = not self._focus_ascii
             self.viewport().update()
@@ -495,6 +614,46 @@ class HexWidget(QAbstractScrollArea):
             text = "".join(chr(b) if 32 <= b <= 126 else "." for b in data)
             QApplication.clipboard().setText(text)
 
+    def copy_as_hex_compact(self):
+        """Copy as compact hex (no spaces): 4D5A9000"""
+        data = self._get_active_bytes()
+        if data:
+            QApplication.clipboard().setText("".join(f"{b:02X}" for b in data))
+
+    def copy_hex_to_text(self):
+        r"""Copy bytes decoded as UTF-8 text with escapes for non-printable: MZ\x90\x00"""
+        data = self._get_active_bytes()
+        if data:
+            parts = []
+            for b in data:
+                if 32 <= b <= 126:
+                    parts.append(chr(b))
+                elif b == 0x0a:
+                    parts.append("\\n")
+                elif b == 0x0d:
+                    parts.append("\\r")
+                elif b == 0x09:
+                    parts.append("\\t")
+                elif b == 0x00:
+                    parts.append("\\0")
+                else:
+                    parts.append(f"\\x{b:02x}")
+            QApplication.clipboard().setText("".join(parts))
+
+    def copy_text_to_hex(self):
+        """Copy the ASCII text of selected bytes as hex pairs: 4D5A2E2E"""
+        data = self._get_active_bytes()
+        if data:
+            # Represent each byte as hex — same as compact, labelled for text→hex workflow
+            QApplication.clipboard().setText(" ".join(f"0x{b:02X}" for b in data))
+
+    def copy_as_base64(self):
+        """Copy selected bytes as Base64 encoded string."""
+        import base64
+        data = self._get_active_bytes()
+        if data:
+            QApplication.clipboard().setText(base64.b64encode(data).decode("ascii"))
+
     def generate_yara_pattern(self) -> str:
         """Generate a YARA hex pattern string like: $hex_1 = { 4D 5A 90 00 }  // 0x00000000, 4 bytes"""
         data = self._get_active_bytes()
@@ -552,13 +711,24 @@ class HexWidget(QAbstractScrollArea):
     def contextMenuEvent(self, event):
         menu = QMenu(self)
 
-        act_hex = menu.addAction("Copy as Hex")
-        act_hex.setShortcut(QKeySequence("Ctrl+C"))
+        act_hex = menu.addAction("Copy as Hex                Ctrl+C")
         act_hex.triggered.connect(self.copy_as_hex)
 
-        act_yara = menu.addAction("Copy as YARA Hex")
-        act_yara.setShortcut(QKeySequence("Ctrl+Y"))
+        act_hex_compact = menu.addAction("Copy as Hex (compact)")
+        act_hex_compact.triggered.connect(self.copy_as_hex_compact)
+
+        act_yara = menu.addAction("Copy as YARA Hex        Ctrl+Y")
         act_yara.triggered.connect(self.copy_as_yara_hex)
+
+        menu.addSeparator()
+
+        act_h2t = menu.addAction("Hex \u2192 Text (decoded)")
+        act_h2t.triggered.connect(self.copy_hex_to_text)
+
+        act_t2h = menu.addAction("Text \u2192 Hex (0x pairs)")
+        act_t2h.triggered.connect(self.copy_text_to_hex)
+
+        menu.addSeparator()
 
         act_c = menu.addAction("Copy as C Escape")
         act_c.triggered.connect(self.copy_as_c_escape)
@@ -568,6 +738,9 @@ class HexWidget(QAbstractScrollArea):
 
         act_ascii = menu.addAction("Copy as ASCII")
         act_ascii.triggered.connect(self.copy_as_ascii)
+
+        act_b64 = menu.addAction("Copy as Base64")
+        act_b64.triggered.connect(self.copy_as_base64)
 
         menu.addSeparator()
 
@@ -582,13 +755,14 @@ class HexWidget(QAbstractScrollArea):
 
         menu.addSeparator()
 
-        act_send = menu.addAction("Send to YARA Editor")
-        act_send.setShortcut(QKeySequence("Ctrl+Shift+Y"))
+        act_send = menu.addAction("Send to YARA Editor    Ctrl+Shift+Y")
         act_send.triggered.connect(self.send_to_yara_editor)
 
         # Disable actions if no data loaded
         has_data = self._buffer is not None and self._buffer.size() > 0
-        for act in (act_hex, act_yara, act_c, act_py, act_ascii, act_send):
+        copy_acts = (act_hex, act_hex_compact, act_yara, act_h2t, act_t2h,
+                     act_c, act_py, act_ascii, act_b64, act_send)
+        for act in copy_acts:
             act.setEnabled(has_data)
         for act in (act_start, act_end):
             act.setEnabled(has_data)
@@ -600,17 +774,18 @@ class HexWidget(QAbstractScrollArea):
 
     def _ensure_visible(self, offset: int):
         """Scroll so *offset* is visible — keeps it near the top third for keyboard nav."""
-        line = offset // BYTES_PER_LINE
+        bpl = self._bytes_per_line()
+        line = offset // bpl
         first = self.verticalScrollBar().value()
         visible = self._visible_lines()
         if line < first or line >= first + visible:
-            # Place the target line ~1/3 from the top
             target = max(0, line - visible // 3)
             self.verticalScrollBar().setValue(target)
 
     def _scroll_to_center(self, offset: int):
         """Scroll so *offset* line is centred vertically (used by navigate_to_offset)."""
-        line = offset // BYTES_PER_LINE
+        bpl = self._bytes_per_line()
+        line = offset // bpl
         visible = self._visible_lines()
         target = max(0, line - visible // 3)
         self.verticalScrollBar().setValue(target)

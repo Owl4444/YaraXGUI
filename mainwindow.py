@@ -18,7 +18,7 @@ from PySide6.QtCore import QDir, QModelIndex, QTimer, Qt
 from PySide6.QtGui import (QIcon, QPainter, QPen, QPixmap, QStandardItem,
                            QTextCursor)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog,
-                               QHeaderView, QListWidgetItem,
+                               QHeaderView, QListWidgetItem, QMenu,
                                QMainWindow, QMessageBox,
                                QTreeView)
 
@@ -30,6 +30,7 @@ from themes import theme_manager
 from ui_form import Ui_MainWindow
 from yara_editor import YaraTextEdit
 from yara_highlighter import YaraHighlighter
+from hex_editor import HexEditorWindow
 
 
 class MainWindow(QMainWindow):
@@ -133,6 +134,10 @@ class MainWindow(QMainWindow):
         # Connect to expansion events to update children's checkboxes on-demand
         self.fs_view.expanded.connect(self.on_tree_expanded)
 
+        # Context menu for file system tree: "Open in Hex Editor"
+        self.fs_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.fs_view.customContextMenuRequested.connect(self._show_fs_context_menu)
+
         # Setup
         self.last_dir = str(Path.home())
         self.scan_root: Path | None = None
@@ -144,6 +149,9 @@ class MainWindow(QMainWindow):
         # Scan results data
         self.scan_hits = []  # List of hit file data
         self.scan_misses = []  # List of miss file data
+
+        # Hex editor windows
+        self._hex_editor_windows: list = []
         
         # Setup scan results UI
         self.results.setup_scan_results_ui()
@@ -151,10 +159,15 @@ class MainWindow(QMainWindow):
         # Connect hits selection to our handler (must be after model is set)
         self.ui.tv_file_hits.selectionModel().selectionChanged.connect(self.on_hits_selection_changed)
 
+        # Context menu for hits table: "Open in Hex Editor"
+        self.ui.tv_file_hits.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ui.tv_file_hits.customContextMenuRequested.connect(self._show_hits_context_menu)
+
         # Connect results manager signals
         self.results.file_selection_requested.connect(self._on_file_selection_requested)
         self.results.tag_highlight_requested.connect(self.highlight_tag_in_editor)
         self.results.status_message_requested.connect(lambda msg, timeout: self.statusBar().showMessage(msg, timeout))
+        self.results.hex_editor_requested.connect(self.open_hex_editor)
 
         # Lazy load misses when tab changes
         self.ui.tabWidget_2.currentChanged.connect(self.on_results_tab_changed)
@@ -281,7 +294,11 @@ class MainWindow(QMainWindow):
         # Save rule: Ctrl+S
         self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
         self.save_shortcut.activated.connect(self.on_save_rule)
-        
+
+        # Hex editor: Ctrl+H
+        self.hex_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
+        self.hex_shortcut.activated.connect(lambda: self.open_hex_editor())
+
         # Track document modification for save prompts
         self._document_modified = False
         self._last_saved_text = self.ui.te_yara_editor.toPlainText()
@@ -837,6 +854,15 @@ class MainWindow(QMainWindow):
 
         if hasattr(self, 'highlighter') and self.highlighter:
             self.highlighter.update_theme(theme)
+
+        # Propagate theme to open hex editor windows
+        if hasattr(self, '_hex_editor_windows'):
+            for win in self._hex_editor_windows:
+                try:
+                    if win.isVisible():
+                        win.apply_theme()
+                except RuntimeError:
+                    pass
     
     def update_themed_widgets(self, theme):
         """Update widgets that need specific theme-aware styling"""
@@ -1633,6 +1659,93 @@ class MainWindow(QMainWindow):
                     return
         finally:
             self._updating_selection = False
+
+    # ─── Hex editor ───────────────────────────────────────────────────
+
+    def open_hex_editor(self, filepath: str = None, offset: int = 0, length: int = 0):
+        """Open a hex editor window.
+
+        *filepath* can be a full path or just a filename.  When called from
+        the match-details context menu it is a filename, so we resolve it
+        against scan_hits.  *length* selects that many bytes at *offset*.
+        """
+        # Clean up closed/deleted windows
+        def _alive(w):
+            try:
+                return w.isVisible()
+            except RuntimeError:
+                return False
+        self._hex_editor_windows = [w for w in self._hex_editor_windows if _alive(w)]
+
+        # Resolve filename -> filepath via scan_hits and misses
+        if filepath and not Path(filepath).exists():
+            for hit in self.scan_hits:
+                if hit.get('filename') == filepath or hit.get('filepath') == filepath:
+                    filepath = hit['filepath']
+                    break
+            else:
+                for miss in self.scan_misses:
+                    if miss.get('filename') == filepath or miss.get('filepath') == filepath:
+                        filepath = miss['filepath']
+                        break
+
+        win = HexEditorWindow(theme_manager=self.theme_manager, parent=None)
+        win.yara_pattern_generated.connect(self._insert_yara_pattern)
+        self._hex_editor_windows.append(win)
+
+        if filepath and Path(filepath).exists():
+            win.show()
+            win.open_file(filepath, offset, length)
+        else:
+            win.show()
+            win._on_open()
+            return
+
+        win.show()
+
+    def _insert_yara_pattern(self, pattern_text: str):
+        """Insert a YARA hex pattern from the hex editor at the current cursor position."""
+        cursor = self.ui.te_yara_editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.EndOfLine)
+        cursor.insertText("\n    " + pattern_text)
+        self.ui.te_yara_editor.setTextCursor(cursor)
+        self.ui.te_yara_editor.ensureCursorVisible()
+        self.statusBar().showMessage("YARA pattern inserted from hex editor", 5000)
+
+    def _show_fs_context_menu(self, pos):
+        """Show context menu for the file system tree view."""
+        index = self.fs_view.indexAt(pos)
+        if not index.isValid():
+            return
+
+        filepath = self.fs_model.filePath(index)
+        if not filepath or not Path(filepath).is_file():
+            return
+
+        menu = QMenu(self)
+        hex_action = menu.addAction("Open in Hex Editor")
+        action = menu.exec(self.fs_view.viewport().mapToGlobal(pos))
+        if action == hex_action:
+            self.open_hex_editor(filepath)
+
+    def _show_hits_context_menu(self, pos):
+        """Show context menu for file hits table."""
+        index = self.ui.tv_file_hits.indexAt(pos)
+        if not index.isValid():
+            return
+
+        source_index = self.results.hits_proxy.mapToSource(index)
+        row = source_index.row()
+        filepath_item = self.results.hits_model.item(row, 1)
+        if not filepath_item:
+            return
+        filepath = filepath_item.text()
+
+        menu = QMenu(self)
+        hex_action = menu.addAction("Open in Hex Editor")
+        action = menu.exec(self.ui.tv_file_hits.viewport().mapToGlobal(pos))
+        if action == hex_action:
+            self.open_hex_editor(filepath)
 
     def highlight_tag_in_editor(self, tag_name):
         """Highlight the specified tag in the YARA editor."""

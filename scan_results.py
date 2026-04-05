@@ -11,8 +11,8 @@ from typing import Dict, List, Optional, Set
 
 from PySide6.QtCore import QObject, Qt, Signal
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
-from PySide6.QtWidgets import (QAbstractItemView, QHeaderView, QTableWidgetItem,
-                               QTreeWidgetItem)
+from PySide6.QtWidgets import (QAbstractItemView, QHeaderView, QMenu,
+                               QTableWidgetItem, QTreeWidgetItem)
 
 from search_filter import (DebouncedSearchBar, MultiColumnFilterProxy,
                            filter_table_widget, filter_tree_widget,
@@ -26,6 +26,7 @@ class ScanResultsManager(QObject):
     file_selection_requested = Signal(str)       # filepath -> MainWindow selects in hits table
     tag_highlight_requested = Signal(str)        # tag_name -> MainWindow highlights in editor
     status_message_requested = Signal(str, int)  # message, timeout -> MainWindow statusBar
+    hex_editor_requested = Signal(str, int, int)  # filepath, offset, length -> MainWindow opens hex editor
 
     def __init__(self, ui, theme_manager, parent=None):
         """
@@ -92,6 +93,10 @@ class ScanResultsManager(QObject):
         self.ui.tv_file_misses.setWordWrap(False)
         self.ui.tv_file_misses.setTextElideMode(Qt.TextElideMode.ElideMiddle)
 
+        # Context menu for misses: "Open in Hex Editor"
+        self.ui.tv_file_misses.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ui.tv_file_misses.customContextMenuRequested.connect(self._show_misses_context_menu)
+
         # --- Rule details table ---
         self.ui.tv_rule_details.setModel(self.rule_details_proxy)
         self._make_table_compact(self.ui.tv_rule_details)
@@ -156,6 +161,10 @@ class ScanResultsManager(QObject):
 
         self._make_table_compact(self.tw_yara_match_details)
         self.tw_yara_match_details.cellDoubleClicked.connect(self.on_match_detail_double_clicked)
+
+        # Context menu for "Open in Hex Editor at Offset"
+        self.tw_yara_match_details.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_yara_match_details.customContextMenuRequested.connect(self._show_match_context_menu)
 
         all_tab_index = self.ui.tabWidget_4.indexOf(self.ui.tab)
         if all_tab_index >= 0:
@@ -554,7 +563,9 @@ class ScanResultsManager(QObject):
                         self.tw_yara_match_details.setItem(row_count, 0, QTableWidgetItem(filename))
                         self.tw_yara_match_details.setItem(row_count, 1, QTableWidgetItem(rule_name))
                         self.tw_yara_match_details.setItem(row_count, 2, QTableWidgetItem(pattern_name))
-                        self.tw_yara_match_details.setItem(row_count, 3, QTableWidgetItem(f"0x{match['offset']:08x}"))
+                        offset_widget = QTableWidgetItem(f"0x{match['offset']:08x}")
+                        offset_widget.setData(Qt.ItemDataRole.UserRole, match['length'])
+                        self.tw_yara_match_details.setItem(row_count, 3, offset_widget)
 
                         file_data = hit_data.get('file_data', b'')
                         offset = match['offset']
@@ -613,6 +624,7 @@ class ScanResultsManager(QObject):
                 path_display = filepath
             filepath_item = QStandardItem(path_display)
             filepath_item.setToolTip(filepath)
+            filepath_item.setData(filepath, Qt.ItemDataRole.UserRole)
 
             self.misses_model.appendRow([filename_item, filepath_item])
 
@@ -722,6 +734,58 @@ class ScanResultsManager(QObject):
 
         # Request MainWindow to select this file
         self.file_selection_requested.emit(filename)
+
+    def _show_match_context_menu(self, pos):
+        """Show context menu on match details for hex editor navigation."""
+        row = self.tw_yara_match_details.rowAt(pos.y())
+        if row < 0:
+            return
+
+        filename_item = self.tw_yara_match_details.item(row, 0)
+        offset_item = self.tw_yara_match_details.item(row, 3)
+        if not filename_item or not offset_item:
+            return
+
+        menu = QMenu(self.tw_yara_match_details)
+        hex_action = menu.addAction("Open in Hex Editor at Offset")
+        action = menu.exec(self.tw_yara_match_details.viewport().mapToGlobal(pos))
+        if action == hex_action:
+            filename = filename_item.text()
+            offset_hex = offset_item.text()
+            try:
+                offset = int(offset_hex, 16) if offset_hex.startswith("0x") else int(offset_hex)
+            except ValueError:
+                offset = 0
+
+            match_length = offset_item.data(Qt.ItemDataRole.UserRole)
+            if not match_length or not isinstance(match_length, int):
+                match_length = 0
+
+            self.hex_editor_requested.emit(filename, offset, match_length)
+
+    def _show_misses_context_menu(self, pos):
+        """Show context menu on misses table for hex editor."""
+        index = self.ui.tv_file_misses.indexAt(pos)
+        if not index.isValid():
+            return
+
+        source_index = self.misses_proxy.mapToSource(index)
+        row = source_index.row()
+        filepath_item = self.misses_model.item(row, 1)
+        if not filepath_item:
+            return
+
+        filepath = filepath_item.data(Qt.ItemDataRole.UserRole)
+        if not filepath:
+            filepath = filepath_item.toolTip()  # fallback
+        if not filepath:
+            return
+
+        menu = QMenu(self.ui.tv_file_misses)
+        hex_action = menu.addAction("Open in Hex Editor")
+        action = menu.exec(self.ui.tv_file_misses.viewport().mapToGlobal(pos))
+        if action == hex_action:
+            self.hex_editor_requested.emit(filepath, 0, 0)
 
     def on_similar_file_double_clicked(self, item, column):
         """Handle double-click of a similar file to synchronize with hits list."""

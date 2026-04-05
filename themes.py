@@ -106,11 +106,20 @@ class ThemeColors:
     
     # Table column colors for match details (with defaults for backward compatibility)
     column_file: str = "#f8fcff"            # File column background
-    column_rule: str = "#f8fff8"            # Rule column background  
+    column_rule: str = "#f8fff8"            # Rule column background
     column_pattern: str = "#fffdf8"         # Pattern ID column background
     column_offset: str = "#fff8f8"          # Offset column background
     column_data: str = "#f9fff8"            # Data Preview column background
     column_hex: str = "#f9f8ff"             # Hex Dump column background
+
+    # Hex editor colors (with defaults for backward compatibility)
+    hex_offset_bg: str = "#f0f0f0"          # Offset column background
+    hex_offset_text: str = "#666666"        # Offset column text
+    hex_byte_text: str = "#000000"          # Hex byte text
+    hex_ascii_text: str = "#0066cc"         # ASCII printable text
+    hex_ascii_nonprint: str = "#cccccc"     # ASCII non-printable dot
+    hex_cursor_bg: str = "#3399ff"          # Cursor highlight
+    hex_separator: str = "#cccccc"          # Column separator lines
 
 
 @dataclass
@@ -182,8 +191,19 @@ class ThemeSettings:
             'column_hex': colors_data.get('table_alternate', '#f9f8ff')
         }
         
+        # Provide fallbacks for hex editor colors if not present
+        hex_fallbacks = {
+            'hex_offset_bg': colors_data.get('editor_line_number_bg', '#f0f0f0'),
+            'hex_offset_text': colors_data.get('editor_line_number_text', '#666666'),
+            'hex_byte_text': colors_data.get('editor_text', '#000000'),
+            'hex_ascii_text': colors_data.get('primary', '#0066cc'),
+            'hex_ascii_nonprint': colors_data.get('text_disabled', '#cccccc'),
+            'hex_cursor_bg': colors_data.get('selection_background', '#3399ff'),
+            'hex_separator': colors_data.get('table_border', '#cccccc'),
+        }
+
         # Add missing colors with fallbacks
-        all_fallbacks = {**syntax_fallbacks, **column_fallbacks}
+        all_fallbacks = {**syntax_fallbacks, **column_fallbacks, **hex_fallbacks}
         for key, fallback_value in all_fallbacks.items():
             if key not in colors_data:
                 colors_data[key] = fallback_value
@@ -309,8 +329,11 @@ class ThemeManager:
                 syntax_regex="#800080", syntax_hex="#ff8000", syntax_comment="#008000", syntax_identifier="#000080",
                 syntax_meta_key="#008000", syntax_tag="#ff8000", syntax_condition="#800080", syntax_operator="#000000",
                 syntax_literal="#ff0000", syntax_function="#008080", syntax_section="#0000ff",
-                column_file="#f0f8ff", column_rule="#f0fff0", column_pattern="#fff8dc", column_offset="#ffe4e1", 
-                column_data="#f5f5dc", column_hex="#e6e6fa"
+                column_file="#f0f8ff", column_rule="#f0fff0", column_pattern="#fff8dc", column_offset="#ffe4e1",
+                column_data="#f5f5dc", column_hex="#e6e6fa",
+                hex_offset_bg="#f0f0f0", hex_offset_text="#666666", hex_byte_text="#000000",
+                hex_ascii_text="#0066cc", hex_ascii_nonprint="#cccccc", hex_cursor_bg="#3399ff",
+                hex_separator="#cccccc"
             )
         )
     

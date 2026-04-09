@@ -94,9 +94,9 @@ class HexWidget(QAbstractScrollArea):
 
     def _update_metrics(self):
         fm = QFontMetrics(self.font())
-        # Use the max of several glyphs so ligature-prone fonts still
-        # line up correctly when drawn one-char-at-a-time.
-        self._char_w = max(fm.horizontalAdvance(c) for c in "0XW ")
+        # Font is guaranteed fixed-pitch (Cascadia Mono / Consolas with
+        # setFixedPitch) so every glyph has the same advance — use "0".
+        self._char_w = fm.horizontalAdvance("0")
         self._line_h = fm.height() + 2  # small padding
 
         bpl = self._bytes_per_line_hex

@@ -197,16 +197,14 @@ class MainWindow(QMainWindow):
         # Hex editor windows
         self._hex_editor_windows: list = []
 
-        # Accept drops (directories -> scan root, files -> hex editor or
-        # YARA editor for .yar/.yara). Child widgets that accept drops by
-        # default (QPlainTextEdit, QTreeView) would otherwise swallow the
-        # event, so we install an event filter to intercept URL drops
-        # before they reach those widgets.
+        # Accept drops at the window level. Child widgets (QPlainTextEdit,
+        # QTreeView, QTextBrowser, QListWidget, ...) that accept drops
+        # by default would otherwise swallow URL drops before they reach
+        # the window, so we later walk every descendant and install an
+        # event filter on it. That pass happens at the end of __init__,
+        # after the results UI and any other dynamic widgets exist.
         self.setAcceptDrops(True)
-        for w in (self.ui.te_yara_editor, self.fs_view, self.ui.tv_file_hits):
-            w.setAcceptDrops(True)
-            w.installEventFilter(self)
-        
+
         # Setup scan results UI
         self.results.setup_scan_results_ui()
 
@@ -271,6 +269,40 @@ class MainWindow(QMainWindow):
         
         # Reset interface to default state on application startup
         self.reset_interface_on_startup()
+
+        # Drag & drop: make every child widget forward URL drops to us.
+        # Done at the end of __init__ so every child (including widgets
+        # built by ScanResultsManager) is already parented under self.
+        self._install_drop_filter_recursive()
+
+    def _install_drop_filter_recursive(self) -> None:
+        """Make every descendant widget accept URL drops and forward them
+        to :meth:`eventFilter`.
+
+        Many Qt widgets (QPlainTextEdit, QTreeView, QListWidget,
+        QTextBrowser, QLineEdit, ...) accept drops by default and will
+        swallow a file-URL drop before it reaches the main window.
+        Widgets that don't accept drops are worse: Qt never even sends
+        them drag events, and the drag "falls through" only if the
+        parent widget chain has ``acceptDrops=True`` the whole way.
+
+        To make drops work *anywhere* inside the window we:
+
+        1. Set ``acceptDrops(True)`` on every descendant widget so drag
+           events actually reach it.
+        2. Install ``self`` as an event filter so we see DragEnter /
+           DragMove / Drop *before* the widget's own handler and can
+           intercept URL drops (returning True), while letting every
+           other event (internal text drag, selection, etc.) pass
+           through unchanged.
+        """
+        for w in self.findChildren(QWidget):
+            try:
+                w.setAcceptDrops(True)
+                w.installEventFilter(self)
+            except Exception:
+                # Some private/native widgets can refuse these calls.
+                pass
 
     def reset_interface_on_startup(self):
         """Reset the interface to default state when application starts"""

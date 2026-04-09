@@ -544,7 +544,7 @@ class YaraHighlighter(QSyntaxHighlighter):
                                 })
                         
                         # Find module references (e.g., pe.*, math.*, etc.)
-                        module_pattern = r'\b(pe|elf|macho|dotnet|dex|cuckoo|hash|math|magic|time)\.'
+                        module_pattern = r'\b(pe|elf|macho|dotnet|dex|hash|math|time|lnk|string|console|crx)\.'
                         for match in re.finditer(module_pattern, condition_text):
                             module_name = match.group(1)
                             module_pos = condition_start + match.start(1)
@@ -611,14 +611,18 @@ class YaraHighlighter(QSyntaxHighlighter):
             'startswith': 'logic',
             'endswith': 'logic',
             'icontains': 'logic',
+            'istartswith': 'logic',
+            'iendswith': 'logic',
             'iequals': 'logic',
-            
+            'none': 'logic',
+            'with': 'logic',
+
             # Built-in functions
             'filesize': 'builtin',
             'entrypoint': 'builtin',
             'uint8': 'builtin',
             'uint16': 'builtin',
-            'uint32': 'builtin', 
+            'uint32': 'builtin',
             'uint64': 'builtin',
             'int8': 'builtin',
             'int16': 'builtin',
@@ -629,9 +633,13 @@ class YaraHighlighter(QSyntaxHighlighter):
             'uint32be': 'builtin',
             'uint64be': 'builtin',
             'int8be': 'builtin',
-            'int16be': 'builtin', 
+            'int16be': 'builtin',
             'int32be': 'builtin',
             'int64be': 'builtin',
+            'float32': 'builtin',
+            'float64': 'builtin',
+            'float32be': 'builtin',
+            'float64be': 'builtin',
             
             # String modifiers
             'ascii': 'modifier',
@@ -647,13 +655,15 @@ class YaraHighlighter(QSyntaxHighlighter):
             'pe': 'module',
             'elf': 'module',
             'macho': 'module',
-            'dotnet': 'module', 
+            'dotnet': 'module',
             'dex': 'module',
-            'cuckoo': 'module',
             'hash': 'module',
             'math': 'module',
-            'magic': 'module',
             'time': 'module',
+            'lnk': 'module',
+            'string': 'module',
+            'console': 'module',
+            'crx': 'module',
         }
         
         # Extract each keyword with proper word boundaries
@@ -776,8 +786,9 @@ class YaraHighlighter(QSyntaxHighlighter):
         # Basic YARA keywords
         keywords = [
             'rule', 'meta', 'strings', 'condition', 'import', 'include', 'private', 'global',
-            'and', 'or', 'not', 'all', 'any', 'them', 'for', 'of', 'in', 'contains',
-            'matches', 'startswith', 'endswith', 'icontains', 'iequals', 'istartswith', 'iendswith'
+            'and', 'or', 'not', 'all', 'any', 'none', 'them', 'for', 'of', 'in', 'with',
+            'contains', 'matches', 'startswith', 'endswith', 'icontains', 'iequals',
+            'istartswith', 'iendswith', 'defined', 'at'
         ]
         
         # Highlight keywords

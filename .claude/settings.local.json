@@ -5,7 +5,10 @@
       "Bash(ls:*)",
       "Bash(python:*)",
       "Bash(python3:*)",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(\".qtcreator/Python_3_13_7venv/Scripts/python.exe\":*)",
+      "Bash(.qtcreator/Python_3_13_7venv/Scripts/python.exe:*)",
+      "Bash(PYTHONIOENCODING=utf-8 python:*)"
     ]
   }
 }

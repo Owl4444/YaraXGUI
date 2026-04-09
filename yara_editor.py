@@ -6,11 +6,14 @@ highlighting, cursor position reporting, word wrap toggle, monospace font setup,
 and optional vim-style keybindings.
 """
 
+import re
+
 from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTextCursor, QTextFormat
 from PySide6.QtWidgets import QApplication, QTextEdit, QWidget
 
-from vim_handler import VimHandler
+from vim_handler import VimHandler, VimMode
+from yara_completer import CompletionEngine, CompletionPopup
 
 
 class _LineNumberArea(QWidget):
@@ -42,6 +45,15 @@ class YaraTextEdit(QTextEdit):
         # --- Vim handler ---
         self._vim_handler = VimHandler(self, parent=self)
         self._vim_handler.mode_changed.connect(self.vim_mode_changed.emit)
+
+        # --- Autocompletion ---
+        self._completion_engine = CompletionEngine()
+        self._completion_popup = CompletionPopup(self)
+        self._completion_popup.completion_selected.connect(self._insert_completion)
+        self._completion_timer = QTimer(self)
+        self._completion_timer.setSingleShot(True)
+        self._completion_timer.setInterval(300)
+        self._completion_timer.timeout.connect(lambda: self._trigger_completion(force=False))
 
         # --- Scrollbar / editor optimizations ---
         document = self.document()
@@ -103,6 +115,7 @@ class YaraTextEdit(QTextEdit):
     def set_theme_manager(self, theme_manager):
         """Provide the theme manager for colour lookups."""
         self._theme_manager = theme_manager
+        self._completion_popup.set_theme_manager(theme_manager)
         self._apply_scrollbar_style()
         self._highlight_current_line()
         self.line_number_area.update()
@@ -176,14 +189,20 @@ class YaraTextEdit(QTextEdit):
         if self._theme_manager and self._theme_manager.current_theme:
             c = self._theme_manager.current_theme.colors
             sb_bg = c.scrollbar_background
-            sb_handle = c.scrollbar_handle
-            sb_hover = c.scrollbar_handle_hover
+            raw_handle = c.scrollbar_handle
+            raw_hover = c.scrollbar_handle_hover
             border_color = c.primary
         else:
             sb_bg = "#2d2d2d"
-            sb_handle = "#606060"
-            sb_hover = "#707070"
+            raw_handle = "#606060"
+            raw_hover = "#707070"
             border_color = "#3d3d3d"
+
+        try:
+            from themes import ensure_scrollbar_contrast
+            sb_handle, sb_hover = ensure_scrollbar_contrast(sb_bg, raw_handle, raw_hover)
+        except ImportError:
+            sb_handle, sb_hover = raw_handle, raw_hover
 
         self.setStyleSheet(f"""
             QTextEdit {{
@@ -191,26 +210,44 @@ class YaraTextEdit(QTextEdit):
             }}
             QScrollBar:vertical {{
                 background-color: {sb_bg};
-                width: 18px;
+                width: 14px;
                 border: none;
+                margin: 0px;
+            }}
+            QScrollBar:horizontal {{
+                background-color: {sb_bg};
+                height: 14px;
+                border: none;
+                margin: 0px;
             }}
             QScrollBar::handle:vertical {{
                 background-color: {sb_handle};
-                min-height: 30px;
-                border-radius: 9px;
-                margin: 2px;
+                min-height: 28px;
+                border-radius: 4px;
+                margin: 2px 3px 2px 3px;
             }}
-            QScrollBar::handle:vertical:hover {{
+            QScrollBar::handle:horizontal {{
+                background-color: {sb_handle};
+                min-width: 28px;
+                border-radius: 4px;
+                margin: 3px 2px 3px 2px;
+            }}
+            QScrollBar::handle:vertical:hover,
+            QScrollBar::handle:horizontal:hover {{
                 background-color: {sb_hover};
             }}
-            QScrollBar::handle:vertical:pressed {{
+            QScrollBar::handle:vertical:pressed,
+            QScrollBar::handle:horizontal:pressed {{
                 background-color: {sb_hover};
             }}
-            QScrollBar::add-line:vertical {{
+            QScrollBar::add-line, QScrollBar::sub-line {{
+                width: 0px;
                 height: 0px;
+                background: none;
+                border: none;
             }}
-            QScrollBar::sub-line:vertical {{
-                height: 0px;
+            QScrollBar::add-page, QScrollBar::sub-page {{
+                background: none;
             }}
         """)
 
@@ -383,11 +420,256 @@ class YaraTextEdit(QTextEdit):
 
     # ─── Overrides ───────────────────────────────────────────────────────
 
+    # ─── Auto-pair / auto-indent constants ──────────────────────────────
+
+    _OPEN_PAIRS = {"(": ")", "[": "]", "{": "}"}
+    _CLOSE_CHARS = {")", "]", "}"}
+    _QUOTE_CHARS = {'"'}
+    _PAIR_MAP = {"(": ")", "[": "]", "{": "}", '"': '"'}
+
     def keyPressEvent(self, event):
+        # 1. Completion popup consumes navigation/accept keys when visible
+        if self._completion_popup.handle_key(event):
+            return
+
+        # 2. Vim handler
         if self._vim_handler.is_enabled():
             if self._vim_handler.handle_key_event(event):
                 return
+
+        # 3. Ctrl+Space → manual completion trigger
+        if (event.key() == Qt.Key.Key_Space and
+                event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            self._trigger_completion(force=True)
+            return
+
+        # 4. "." after module name → insert then trigger immediately
+        if event.text() == ".":
+            super().keyPressEvent(event)
+            QTimer.singleShot(0, lambda: self._trigger_completion(force=True))
+            return
+
+        ch = event.text()
+        cursor = self.textCursor()
+        has_sel = cursor.hasSelection()
+        text = self.toPlainText()
+        pos = cursor.position()
+        next_char = text[pos] if pos < len(text) else ""
+
+        # 5. Enter → smart auto-indent
+        if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter) and not event.modifiers():
+            self._handle_enter(cursor, text, pos)
+            return
+
+        # 6. Skip-over closing bracket / quote
+        if ch in self._CLOSE_CHARS and not has_sel and next_char == ch:
+            cursor.movePosition(QTextCursor.MoveOperation.Right)
+            self.setTextCursor(cursor)
+            return
+
+        # 7. Quote smart handling
+        if ch in self._QUOTE_CHARS and not has_sel:
+            # Skip-over if next char is the same quote
+            if next_char == ch and self._is_inside_string(text, pos):
+                cursor.movePosition(QTextCursor.MoveOperation.Right)
+                self.setTextCursor(cursor)
+                return
+            # Auto-pair quote (only if not already inside a string)
+            if not self._is_inside_string(text, pos):
+                cursor.beginEditBlock()
+                cursor.insertText(ch + ch)
+                cursor.movePosition(QTextCursor.MoveOperation.Left)
+                cursor.endEditBlock()
+                self.setTextCursor(cursor)
+                return
+
+        # 8. Auto-close brackets: wrap selection or insert pair
+        if ch in self._OPEN_PAIRS:
+            close = self._OPEN_PAIRS[ch]
+            if has_sel:
+                # Wrap selection
+                sel_text = cursor.selectedText()
+                cursor.beginEditBlock()
+                cursor.insertText(ch + sel_text + close)
+                # Position cursor after the wrapped content
+                cursor.movePosition(QTextCursor.MoveOperation.Left)
+                cursor.endEditBlock()
+                self.setTextCursor(cursor)
+            else:
+                cursor.beginEditBlock()
+                cursor.insertText(ch + close)
+                cursor.movePosition(QTextCursor.MoveOperation.Left)
+                cursor.endEditBlock()
+                self.setTextCursor(cursor)
+            self._completion_timer.start()
+            return
+
+        # 9. Backspace → delete matching pair
+        if event.key() == Qt.Key.Key_Backspace and not has_sel and pos > 0:
+            prev_char = text[pos - 1]
+            if prev_char in self._PAIR_MAP and next_char == self._PAIR_MAP[prev_char]:
+                cursor.beginEditBlock()
+                cursor.deletePreviousChar()
+                cursor.deleteChar()
+                cursor.endEditBlock()
+                self.setTextCursor(cursor)
+                self._completion_timer.start()
+                return
+
+        # 10. Default key handling + debounced completion
         super().keyPressEvent(event)
+
+        # Start debounce timer for typed characters (only in insert mode or vim disabled)
+        if ch and ch.isprintable():
+            if self._vim_handler.is_enabled() and self._vim_handler._mode != VimMode.INSERT:
+                self._completion_popup.hide()
+                return
+            self._completion_timer.start()
+        elif event.key() in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete):
+            self._completion_timer.start()
+
+    def _handle_enter(self, cursor: QTextCursor, text: str, pos: int):
+        """Smart Enter: maintain indent, add extra indent after { or section headers."""
+        # Get current line's leading whitespace
+        line_start = text.rfind("\n", 0, pos) + 1
+        line = text[line_start:pos]
+        indent = ""
+        for c in line:
+            if c in (" ", "\t"):
+                indent += c
+            else:
+                break
+
+        tab = "    "  # 4-space indent
+        stripped = line.strip()
+        prev_char = text[pos - 1] if pos > 0 else ""
+        next_char = text[pos] if pos < len(text) else ""
+
+        # Between { and } → expand to 3 lines
+        if prev_char == "{" and next_char == "}":
+            cursor.beginEditBlock()
+            cursor.insertText("\n" + indent + tab + "\n" + indent)
+            cursor.endEditBlock()
+            # Position cursor on the middle line
+            cursor.movePosition(QTextCursor.MoveOperation.Up)
+            cursor.movePosition(QTextCursor.MoveOperation.EndOfLine)
+            self.setTextCursor(cursor)
+            return
+
+        # After { → indent
+        if prev_char == "{":
+            cursor.insertText("\n" + indent + tab)
+            self.setTextCursor(cursor)
+            return
+
+        # After YARA section headers (meta:, strings:, condition:)
+        if re.match(r'(meta|strings|condition)\s*:', stripped):
+            cursor.insertText("\n" + indent + tab)
+            self.setTextCursor(cursor)
+            return
+
+        # After "rule ... {" line → indent
+        if re.match(r'rule\s+\w+', stripped) and stripped.endswith("{"):
+            cursor.insertText("\n" + indent + tab)
+            self.setTextCursor(cursor)
+            return
+
+        # Default: maintain current indentation
+        cursor.insertText("\n" + indent)
+        self.setTextCursor(cursor)
+
+    def _is_inside_string(self, text: str, pos: int) -> bool:
+        """Rough check: count unescaped quotes before pos on the current line."""
+        line_start = text.rfind("\n", 0, pos) + 1
+        before = text[line_start:pos]
+        count = 0
+        i = 0
+        while i < len(before):
+            if before[i] == '"' and (i == 0 or before[i - 1] != "\\"):
+                count += 1
+            i += 1
+        return count % 2 == 1
+
+    def _trigger_completion(self, force: bool = False):
+        """Invoke the completion engine and show popup."""
+        # Don't show completions in vim normal/visual modes
+        if self._vim_handler.is_enabled() and self._vim_handler._mode != VimMode.INSERT:
+            self._completion_popup.hide()
+            return
+
+        text = self.toPlainText()
+        cursor = self.textCursor()
+        pos = cursor.position()
+
+        # Get the current word prefix
+        before = text[:pos]
+        word_match = re.search(r'[\$#@!]?\w*$', before)
+        prefix = word_match.group(0) if word_match else ""
+
+        # Require 2+ chars unless forced or after "."
+        if not force and len(prefix) < 2 and not before.endswith("."):
+            self._completion_popup.hide()
+            return
+
+        items = self._completion_engine.get_completions(text, pos)
+
+        if items:
+            self._completion_popup.show_completions(items, prefix)
+        else:
+            self._completion_popup.hide()
+
+    def _insert_completion(self, insert_text: str, is_snippet: bool):
+        """Replace the current prefix with the completion text."""
+        cursor = self.textCursor()
+        text = self.toPlainText()
+        pos = cursor.position()
+        before = text[:pos]
+
+        # Determine prefix length to replace
+        word_match = re.search(r'[\$#@!]?\w*$', before)
+        prefix_len = len(word_match.group(0)) if word_match else 0
+
+        # Handle import context: also replace the opening quote
+        if re.search(r'import\s+"[a-z]*$', before):
+            quote_match = re.search(r'"[a-z]*$', before)
+            if quote_match:
+                prefix_len = len(quote_match.group(0)) - 1  # keep the quote
+
+        # For multi-line snippets, adapt indentation to cursor position
+        final_text = insert_text
+        if "\n" in final_text:
+            line_start = before.rfind("\n") + 1
+            line_before = before[line_start:]
+            # Current line indent = leading whitespace up to the word being typed
+            base_indent = ""
+            for c in line_before:
+                if c in (" ", "\t"):
+                    base_indent += c
+                else:
+                    break
+            # Indent all lines after the first
+            lines = final_text.split("\n")
+            final_text = lines[0] + "\n" + "\n".join(
+                base_indent + ln if ln.strip() else ln for ln in lines[1:]
+            )
+
+        cursor.beginEditBlock()
+        # Remove prefix
+        for _ in range(prefix_len):
+            cursor.deletePreviousChar()
+
+        if is_snippet and "$0" in final_text:
+            # Split at $0 and position cursor there
+            parts = final_text.split("$0", 1)
+            cursor.insertText(parts[0])
+            snippet_pos = cursor.position()
+            cursor.insertText(parts[1])
+            cursor.setPosition(snippet_pos)
+        else:
+            cursor.insertText(final_text)
+
+        cursor.endEditBlock()
+        self.setTextCursor(cursor)
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

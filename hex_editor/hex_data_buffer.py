@@ -1,5 +1,11 @@
 # -*- coding: utf-8 -*-
-"""Memory-mapped read-only file buffer for the hex editor."""
+"""Memory-mapped read-only file buffer for the hex editor.
+
+Supports a lazy editable *working copy* for in-place byte transforms.
+Until a write happens, reads come straight from mmap/bytes so huge files
+have zero overhead.  The first mutation promotes the buffer to an
+in-memory ``bytearray`` which then serves all subsequent reads.
+"""
 
 import mmap
 import os
@@ -11,7 +17,7 @@ MMAP_THRESHOLD = 10 * 1024 * 1024  # 10 MB
 
 
 class HexDataBuffer:
-    """Read-only file buffer with mmap support for large files."""
+    """Read/write file buffer with mmap + lazy editable working copy."""
 
     def __init__(self):
         self._data: bytes | mmap.mmap | None = None
@@ -20,6 +26,8 @@ class HexDataBuffer:
         self._size = 0
         self._filepath: str = ""
         self._format: str = ""
+        # Lazy editable working copy. While None, reads use self._data.
+        self._working: bytearray | None = None
 
     @property
     def filepath(self) -> str:
@@ -65,15 +73,109 @@ class HexDataBuffer:
         self._format = self.detect_format()
         return True
 
+    # ── Reads ──────────────────────────────────────────────────────
+
     def read(self, offset: int, length: int) -> bytes:
         """Read *length* bytes starting at *offset*."""
-        if self._data is None or offset < 0 or offset >= self._size:
+        if offset < 0 or offset >= self._size:
             return b""
         end = min(offset + length, self._size)
+        if self._working is not None:
+            return bytes(self._working[offset:end])
+        if self._data is None:
+            return b""
         return bytes(self._data[offset:end])
+
+    def read_range(self, lo: int, hi: int) -> bytes:
+        """Read bytes in the inclusive range ``[lo, hi]``."""
+        if hi < lo:
+            return b""
+        return self.read(lo, hi - lo + 1)
 
     def size(self) -> int:
         return self._size
+
+    # ── Editable working copy ─────────────────────────────────────
+
+    def is_modified(self) -> bool:
+        """True once any write/replace has promoted the buffer."""
+        return self._working is not None
+
+    def _promote_to_working(self):
+        """Copy current contents to a bytearray and release mmap."""
+        if self._working is not None:
+            return
+        if self._data is None:
+            self._working = bytearray()
+        else:
+            self._working = bytearray(bytes(self._data[0:self._size]))
+        # Release mmap / file handles — we no longer need them
+        if self._mmap is not None:
+            try:
+                self._mmap.close()
+            except Exception:
+                pass
+            self._mmap = None
+        if self._file is not None:
+            try:
+                self._file.close()
+            except Exception:
+                pass
+            self._file = None
+        # Point _data at the working copy so any stray consumers still work
+        self._data = self._working
+
+    def write_bytes(self, offset: int, data: bytes) -> None:
+        """Overwrite ``len(data)`` bytes starting at *offset*.
+
+        Length-preserving; the buffer size does not change.  Writes past
+        the current end are clamped.
+        """
+        if offset < 0 or offset > self._size:
+            return
+        self._promote_to_working()
+        end = min(offset + len(data), self._size)
+        if end <= offset:
+            return
+        assert self._working is not None
+        self._working[offset:end] = data[: end - offset]
+
+    def replace_range(self, lo: int, hi: int, new_bytes: bytes) -> None:
+        """Replace the inclusive range ``[lo, hi]`` with *new_bytes*.
+
+        Supports length changes — the buffer grows or shrinks accordingly.
+        """
+        if lo < 0 or lo > self._size:
+            return
+        if hi < lo - 1:  # allow hi == lo - 1 for zero-length range
+            return
+        hi = min(hi, self._size - 1)
+        self._promote_to_working()
+        assert self._working is not None
+        self._working[lo:hi + 1] = new_bytes
+        self._size = len(self._working)
+
+    def save_to(self, filepath: str) -> bool:
+        """Write the current buffer contents to *filepath*.
+
+        Writes the working copy if present, else copies the original
+        mmap / bytes contents.  Never touches ``self._filepath``.
+        """
+        try:
+            if self._working is not None:
+                with open(filepath, "wb") as f:
+                    f.write(bytes(self._working))
+                return True
+            if self._data is None:
+                with open(filepath, "wb") as f:
+                    pass
+                return True
+            with open(filepath, "wb") as f:
+                f.write(bytes(self._data[0:self._size]))
+            return True
+        except Exception as e:
+            print(f"Error saving file: {e}")
+            return False
 
     def close(self):
         if self._mmap is not None:
@@ -89,6 +191,7 @@ class HexDataBuffer:
                 pass
             self._file = None
         self._data = None
+        self._working = None
         self._size = 0
         self._filepath = ""
         self._format = ""

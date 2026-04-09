@@ -21,6 +21,9 @@ class HexWidget(QAbstractScrollArea):
     cursor_moved = Signal(int)           # emits cursor offset
     selection_changed = Signal(int, int) # emits start, length
     yara_pattern_requested = Signal(str) # emits "$hex_N = { ... }"
+    pattern_regions_changed = Signal(int) # emits region count
+    disassemble_requested = Signal(bytes, int)  # selected_bytes, base_offset
+    transform_requested = Signal()       # emits when user picks "Apply Transform…"
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -41,6 +44,10 @@ class HexWidget(QAbstractScrollArea):
 
         # Auto-incrementing YARA pattern counter
         self._yara_counter: int = 0
+
+        # Wildcard pattern builder regions
+        self._pattern_regions: list[tuple[int, int]] = []  # (start, end) inclusive
+        self._pattern_region_color = QColor(255, 165, 0, 100)  # orange overlay
 
         # Theme colours (defaults — overridden by set_theme)
         self._offset_bg = QColor("#f0f0f0")
@@ -154,23 +161,43 @@ class HexWidget(QAbstractScrollArea):
             c.setAlpha(160)
             self._selection_bg = c
 
-        # Make scrollbar clearly visible regardless of theme
-        handle = getattr(colors, "scrollbar_handle", None) or "#888888"
-        handle_hover = getattr(colors, "scrollbar_handle_hover", None) or "#aaaaaa"
+        # Make scrollbar clearly visible regardless of theme — use the
+        # shared contrast helper so it always pops against the background.
+        try:
+            from themes import ensure_scrollbar_contrast
+        except ImportError:
+            ensure_scrollbar_contrast = None
         sb_bg = getattr(colors, "scrollbar_background", None) or self._bg.name()
+        raw_handle = getattr(colors, "scrollbar_handle", None) or "#888888"
+        raw_hover = getattr(colors, "scrollbar_handle_hover", None) or "#aaaaaa"
+        if ensure_scrollbar_contrast:
+            handle, handle_hover = ensure_scrollbar_contrast(sb_bg, raw_handle, raw_hover)
+        else:
+            handle, handle_hover = raw_handle, raw_hover
         self.setStyleSheet(f"""
             QScrollBar:vertical {{
-                background: {sb_bg}; width: 14px; border: none;
+                background: {sb_bg}; width: 14px; border: none; margin: 0px;
+            }}
+            QScrollBar:horizontal {{
+                background: {sb_bg}; height: 14px; border: none; margin: 0px;
             }}
             QScrollBar::handle:vertical {{
-                background: {handle}; min-height: 24px; border-radius: 4px;
-                margin: 2px;
+                background: {handle}; min-height: 28px; border-radius: 4px;
+                margin: 2px 3px 2px 3px;
             }}
-            QScrollBar::handle:vertical:hover {{
+            QScrollBar::handle:horizontal {{
+                background: {handle}; min-width: 28px; border-radius: 4px;
+                margin: 3px 2px 3px 2px;
+            }}
+            QScrollBar::handle:vertical:hover,
+            QScrollBar::handle:horizontal:hover {{
                 background: {handle_hover};
             }}
             QScrollBar::add-line, QScrollBar::sub-line {{
-                height: 0px;
+                width: 0px; height: 0px; background: none; border: none;
+            }}
+            QScrollBar::add-page, QScrollBar::sub-page {{
+                background: none;
             }}
         """)
 
@@ -260,6 +287,12 @@ class HexWidget(QAbstractScrollArea):
 
                 byte_rect = QRect(x, y, 2 * self._char_w, self._line_h)
 
+                # Pattern region overlay (orange)
+                for pr_start, pr_end in self._pattern_regions:
+                    if pr_start <= byte_offset <= pr_end:
+                        painter.fillRect(byte_rect, self._pattern_region_color)
+                        break
+
                 # Selection / cursor highlight
                 if sel_min <= byte_offset <= sel_max:
                     painter.fillRect(byte_rect, self._selection_bg)
@@ -282,6 +315,12 @@ class HexWidget(QAbstractScrollArea):
                 ch = data[j]
                 x = self._ascii_start + j * self._char_w
                 char_rect = QRect(x, y, self._char_w, self._line_h)
+
+                # Pattern region overlay (orange)
+                for pr_start, pr_end in self._pattern_regions:
+                    if pr_start <= byte_offset <= pr_end:
+                        painter.fillRect(char_rect, self._pattern_region_color)
+                        break
 
                 if sel_min <= byte_offset <= sel_max:
                     painter.fillRect(char_rect, self._selection_bg)
@@ -706,6 +745,88 @@ class HexWidget(QAbstractScrollArea):
         self._selection_end = -1
         self.viewport().update()
 
+    # ── Wildcard pattern builder ─────────────────────────────────
+
+    def _get_active_range(self) -> tuple[int, int]:
+        """Return (lo, hi) inclusive byte range from markers > selection > cursor."""
+        if self._marker_start >= 0 and self._marker_end >= 0:
+            return (min(self._marker_start, self._marker_end),
+                    max(self._marker_start, self._marker_end))
+        if self.has_selection():
+            return self._ordered_selection()
+        return (self._cursor_offset, self._cursor_offset)
+
+    def add_pattern_region(self, lo: int = -1, hi: int = -1):
+        """Append a byte range as a pattern region.
+
+        If *lo*/*hi* are not given, the current selection/markers/cursor are used.
+        """
+        if lo < 0 or hi < 0:
+            lo, hi = self._get_active_range()
+
+        # Merge with overlapping/adjacent existing regions
+        new_regions = []
+        for rs, re_ in self._pattern_regions:
+            if lo <= re_ + 1 and hi >= rs - 1:
+                lo = min(lo, rs)
+                hi = max(hi, re_)
+            else:
+                new_regions.append((rs, re_))
+        new_regions.append((lo, hi))
+        new_regions.sort()
+        self._pattern_regions = new_regions
+        self.pattern_regions_changed.emit(len(self._pattern_regions))
+        self.viewport().update()
+
+    def clear_pattern_regions(self):
+        """Reset all pattern regions."""
+        self._pattern_regions.clear()
+        self.pattern_regions_changed.emit(0)
+        self.viewport().update()
+
+    def build_wildcard_pattern(self) -> str:
+        """Generate a YARA hex pattern with [N] wildcards between regions."""
+        if not self._pattern_regions or not self._buffer:
+            return ""
+        regions = sorted(self._pattern_regions)
+        parts = []
+        for i, (start, end) in enumerate(regions):
+            data = self._buffer.read(start, end - start + 1)
+            hex_bytes = " ".join(f"{b:02X}" for b in data)
+            if i > 0:
+                prev_end = regions[i - 1][1]
+                gap = start - (prev_end + 1)
+                if gap > 0:
+                    parts.append(f"[{gap}]")
+                # gap == 0: adjacent, no wildcard needed
+                # gap < 0 should not happen after merge
+            parts.append(hex_bytes)
+
+        self._yara_counter += 1
+        origin = regions[0][0]
+        return (f"$wildcard_{self._yara_counter} = {{ {' '.join(parts)} }}"
+                f"  // {len(regions)} regions from 0x{origin:08X}")
+
+    def send_wildcard_to_yara_editor(self):
+        """Build wildcard pattern and emit via yara_pattern_requested."""
+        pattern = self.build_wildcard_pattern()
+        if pattern:
+            self.yara_pattern_requested.emit(pattern)
+
+    def send_all_regions_to_yara_editor(self):
+        """Send each pattern region as a separate $hex_N pattern."""
+        if not self._pattern_regions or not self._buffer:
+            return
+        lines = []
+        for start, end in sorted(self._pattern_regions):
+            data = self._buffer.read(start, end - start + 1)
+            hex_str = " ".join(f"{b:02X}" for b in data)
+            self._yara_counter += 1
+            lines.append(f"$hex_{self._yara_counter} = {{ {hex_str} }}"
+                         f"  // 0x{start:08X}, {len(data)} bytes")
+        if lines:
+            self.yara_pattern_requested.emit("\n    ".join(lines))
+
     # ── Context menu ─────────────────────────────────────────────
 
     def contextMenuEvent(self, event):
@@ -758,6 +879,36 @@ class HexWidget(QAbstractScrollArea):
         act_send = menu.addAction("Send to YARA Editor    Ctrl+Shift+Y")
         act_send.triggered.connect(self.send_to_yara_editor)
 
+        menu.addSeparator()
+
+        act_xform = menu.addAction("Apply Transform\u2026")
+        act_xform.triggered.connect(self._request_transform)
+
+        menu.addSeparator()
+
+        # Capture the active range NOW, before menu event loop can change state
+        rgn_lo, rgn_hi = self._get_active_range()
+
+        act_add_region = menu.addAction("Mark Region")
+        act_add_region.triggered.connect(lambda: self.add_pattern_region(rgn_lo, rgn_hi))
+
+        act_send_regions = menu.addAction("Send Regions to YARA Editor")
+        act_send_regions.triggered.connect(self.send_all_regions_to_yara_editor)
+
+        act_build_wc = menu.addAction("Send as Wildcard Pattern")
+        act_build_wc.triggered.connect(self.send_wildcard_to_yara_editor)
+
+        act_clear_regions = menu.addAction("Clear Regions")
+        act_clear_regions.triggered.connect(self.clear_pattern_regions)
+
+        menu.addSeparator()
+
+        # Capture range for disassemble
+        disasm_lo, disasm_hi = self._get_active_range()
+        act_disasm = menu.addAction("Disassemble Selection")
+        act_disasm.triggered.connect(
+            lambda: self._emit_disassemble(disasm_lo, disasm_hi))
+
         # Disable actions if no data loaded
         has_data = self._buffer is not None and self._buffer.size() > 0
         copy_acts = (act_hex, act_hex_compact, act_yara, act_h2t, act_t2h,
@@ -767,8 +918,64 @@ class HexWidget(QAbstractScrollArea):
         for act in (act_start, act_end):
             act.setEnabled(has_data)
         act_clear.setEnabled(self._marker_start >= 0 or self._marker_end >= 0)
+        act_add_region.setEnabled(has_data)
+        act_xform.setEnabled(has_data)
+        has_regions = len(self._pattern_regions) >= 1
+        act_build_wc.setEnabled(len(self._pattern_regions) >= 2)
+        act_send_regions.setEnabled(has_regions)
+        act_clear_regions.setEnabled(has_regions)
+        act_disasm.setEnabled(has_data and disasm_hi > disasm_lo)
 
         menu.exec(event.globalPos())
+
+    def _emit_disassemble(self, lo: int, hi: int):
+        if self._buffer is None or hi <= lo:
+            return
+        data = self._buffer.read(lo, hi - lo)
+        self.disassemble_requested.emit(bytes(data), lo)
+
+    def _request_transform(self):
+        """Ask the window to open the transform dialog for us."""
+        self.transform_requested.emit()
+
+    def pattern_regions(self) -> list[tuple[int, int]]:
+        """Return the current pattern regions as a sorted list."""
+        return sorted(self._pattern_regions)
+
+    def refresh_after_data_change(self):
+        """Called by the window after a transform/undo/redo.
+
+        Clamps cursor/selection to the (possibly shorter) buffer and
+        forces a repaint.  The window is responsible for pushing the
+        buffer into the other docks.
+        """
+        if self._buffer is None:
+            self.viewport().update()
+            return
+        size = self._buffer.size()
+        max_off = max(0, size - 1)
+        if self._cursor_offset > max_off:
+            self._cursor_offset = max_off
+        if self._selection_start > max_off:
+            self._selection_start = -1
+        if self._selection_end > max_off:
+            self._selection_end = max_off if self._selection_start >= 0 else -1
+        if self._marker_start > max_off:
+            self._marker_start = -1
+        if self._marker_end > max_off:
+            self._marker_end = -1
+        # Clamp pattern regions to the new size
+        new_regions: list[tuple[int, int]] = []
+        for lo, hi in self._pattern_regions:
+            if lo > max_off:
+                continue
+            new_regions.append((lo, min(hi, max_off)))
+        if new_regions != self._pattern_regions:
+            self._pattern_regions = new_regions
+            self.pattern_regions_changed.emit(len(new_regions))
+        self._update_scrollbar()
+        self.cursor_moved.emit(self._cursor_offset)
+        self.viewport().update()
 
     # ── Scrolling / navigation ──────────────────────────────────────
 

@@ -8,24 +8,28 @@ Usage:
 """
 
 # Standard library imports
+import fnmatch
 import os
+import re
 import sys
 from pathlib import Path
 from typing import Dict, List
 
 # Third-party imports
-from PySide6.QtCore import QDir, QModelIndex, QTimer, Qt
+from PySide6.QtCore import QDir, QEvent, QModelIndex, QTimer, Qt
 from PySide6.QtGui import (QIcon, QPainter, QPen, QPixmap, QStandardItem,
                            QTextCursor)
-from PySide6.QtWidgets import (QAbstractItemView, QApplication, QFileDialog,
-                               QHeaderView, QListWidgetItem, QMenu,
-                               QMainWindow, QMessageBox,
-                               QTreeView)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
+                               QFileDialog, QHBoxLayout, QHeaderView, QLabel,
+                               QLineEdit, QListWidgetItem, QMenu, QMainWindow,
+                               QMessageBox, QProgressBar, QPushButton,
+                               QToolButton, QTreeView, QVBoxLayout, QWidget)
 
 # Local imports
 from checkable_fs_model import CheckableFsModel
 from scan_results import ScanResultsManager
 from scanner import YaraScanner, YARA_X_AVAILABLE, YARAAST_AVAILABLE
+from scanner_worker import ScanWorker
 from themes import theme_manager
 from ui_form import Ui_MainWindow
 from yara_editor import YaraTextEdit
@@ -116,20 +120,42 @@ class MainWindow(QMainWindow):
         # self.fs_view.setModel(self.fs_model) will be called in on_select_scan_dir
 
         header = self.fs_view.header()
+        # Name column stretches to fill the rest; the fixed-width metadata
+        # columns (size/type/date) start at reasonable defaults so Name
+        # isn't squeezed to a sliver on startup. All three remain user-
+        # resizable via Interactive mode.
         header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.resizeSection(1, 90)   # Size
+        header.resizeSection(2, 100)  # Type
+        header.resizeSection(3, 140)  # Date Modified
+        self.fs_view.setColumnWidth(0, 420)  # Name — generous starting width
 
-        # Replace treeWidget with fs_view in the splitter
+        # Build a container that pairs a filter bar with the file tree.
+        # The filter bar lets the user quickly include/exclude files in
+        # the current scan root by glob or regex pattern without having
+        # to click through the tree.
+        self.fs_container = QWidget(self.ui.tab_scan_dir)
+        fs_layout = QVBoxLayout(self.fs_container)
+        fs_layout.setContentsMargins(0, 0, 0, 0)
+        fs_layout.setSpacing(3)
+        fs_layout.addWidget(self._build_fs_filter_bar(self.fs_container))
+        fs_layout.addWidget(self.fs_view, 1)
+
+        # Replace treeWidget with the fs_container in the splitter
         self.ui.treeWidget.setVisible(False)  # Hide original immediately
-        
+
         # QSplitter.replaceWidget requires an index, not the widget reference
         # The treeWidget should be the first widget (index 0) in splitter_3
-        self.ui.splitter_3.replaceWidget(0, self.fs_view)
+        self.ui.splitter_3.replaceWidget(0, self.fs_container)
         self.ui.treeWidget.deleteLater()
-        self.fs_view.setVisible(True)  # Ensure our view is visible
-        self.fs_view.show()  # Show it explicitly
+        self.fs_container.setVisible(True)
+        self.fs_view.setVisible(True)
+        self.fs_container.show()
+        self.fs_view.show()
 
         # Connect to expansion events to update children's checkboxes on-demand
         self.fs_view.expanded.connect(self.on_tree_expanded)
@@ -150,8 +176,36 @@ class MainWindow(QMainWindow):
         self.scan_hits = []  # List of hit file data
         self.scan_misses = []  # List of miss file data
 
+        # Background scan worker (None when idle)
+        self._scan_worker: ScanWorker | None = None
+
+        # Status-bar progress widgets (hidden until a scan starts)
+        self._scan_progress = QProgressBar()
+        self._scan_progress.setMaximumWidth(280)
+        self._scan_progress.setMinimumWidth(180)
+        self._scan_progress.setTextVisible(True)
+        self._scan_progress.hide()
+        self.statusBar().addPermanentWidget(self._scan_progress)
+
+        self._scan_cancel_btn = QToolButton()
+        self._scan_cancel_btn.setText("\u2716 Cancel")
+        self._scan_cancel_btn.setToolTip("Cancel the running scan")
+        self._scan_cancel_btn.hide()
+        self._scan_cancel_btn.clicked.connect(self._on_scan_cancel_clicked)
+        self.statusBar().addPermanentWidget(self._scan_cancel_btn)
+
         # Hex editor windows
         self._hex_editor_windows: list = []
+
+        # Accept drops (directories -> scan root, files -> hex editor or
+        # YARA editor for .yar/.yara). Child widgets that accept drops by
+        # default (QPlainTextEdit, QTreeView) would otherwise swallow the
+        # event, so we install an event filter to intercept URL drops
+        # before they reach those widgets.
+        self.setAcceptDrops(True)
+        for w in (self.ui.te_yara_editor, self.fs_view, self.ui.tv_file_hits):
+            w.setAcceptDrops(True)
+            w.installEventFilter(self)
         
         # Setup scan results UI
         self.results.setup_scan_results_ui()
@@ -326,16 +380,22 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
                 QMessageBox.StandardButton.Save
             )
-            
+
             if reply == QMessageBox.StandardButton.Save:
                 self.on_save_rule()
-                event.accept()
-            elif reply == QMessageBox.StandardButton.Discard:
-                event.accept()
-            else:  # Cancel
+            elif reply == QMessageBox.StandardButton.Cancel:
                 event.ignore()
-        else:
-            event.accept()
+                return
+
+        # Stop any in-flight scan worker before the window goes away
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self._scan_worker.cancel()
+            # Give the worker up to 3 s to finish its current file gracefully
+            if not self._scan_worker.wait(3000):
+                self._scan_worker.terminate()
+                self._scan_worker.wait(1000)
+
+        event.accept()
 
     def toggle_word_wrap(self):
         """Toggle word wrap in the YARA editor."""
@@ -1255,32 +1315,44 @@ class MainWindow(QMainWindow):
             return
 
     def on_scan(self) -> None:
-        """Scan selected files with compiled YARA rules and populate results tabs."""
+        """Scan selected files with compiled YARA rules (runs on a worker thread).
+
+        While a scan is in progress, the SCAN button flips to CANCEL, so
+        clicking it a second time requests a graceful stop instead of
+        starting a new scan.
+        """
+        # If a scan is already running, the SCAN button acts as CANCEL.
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self._on_scan_cancel_clicked()
+            return
+
         if not self._validate_scan_prerequisites():
             return
-            
+
         rule_text = self.ui.te_yara_editor.toPlainText()
-        
-        # Compile rules first
+
+        # Compile rules first (fast — stays on main thread)
         compiled_rules = self._compile_yara_rules(rule_text)
         if not compiled_rules:
             return
-        
+
         # Prepare for scanning
         self._prepare_scan_ui()
-        
+
         # Collect files to scan
         files_to_scan = list(self.iter_selected_files())
         if not files_to_scan:
-            self.ui.tb_compilation_output.append("⚠ No files to scan (all excluded or empty directory).")
+            self.ui.tb_compilation_output.append("\u26a0 No files to scan (all excluded or empty directory).")
             self.statusBar().showMessage("No files to scan", 3000)
             return
-        
-        # Perform the actual scanning
-        scan_stats = self._perform_file_scanning(compiled_rules, files_to_scan)
-        
-        # Finalize results
-        self._finalize_scan_results(scan_stats)
+
+        # Derive filesize bounds from the rule text so the worker can
+        # skip files that can't possibly match without reading them.
+        size_bounds = self._compute_size_bounds(rule_text)
+
+        # Kick off the worker thread — returns immediately.
+        # Results are handled in _on_scan_finished.
+        self._perform_file_scanning(compiled_rules, files_to_scan, size_bounds)
 
     def _validate_scan_prerequisites(self) -> bool:
         """Validate that all prerequisites for scanning are met."""
@@ -1351,31 +1423,132 @@ class MainWindow(QMainWindow):
         self.scan_misses.clear()
         self.results.clear_all()
     
-    def _perform_file_scanning(self, rules, files_to_scan: List[Path]) -> Dict[str, int]:
-        """Perform the actual file scanning and return statistics."""
-        self.ui.tb_compilation_output.append(f"Scanning {len(files_to_scan)} files...\n")
-        self.statusBar().showMessage(f"Scanning {len(files_to_scan)} files...", 0)
-        QApplication.processEvents()
+    def _compute_size_bounds(self, rule_text: str):
+        """Parse the rule text for `filesize` constraints and log the
+        derived skip bounds (if any) to the compilation output."""
+        from scanner import compute_size_bounds, format_size
+        bounds = compute_size_bounds(rule_text)
+        if bounds.is_useful():
+            parts = []
+            if bounds.min_size > 0:
+                parts.append(f"min={format_size(bounds.min_size)}")
+            if bounds.max_size is not None:
+                parts.append(f"max={format_size(bounds.max_size)}")
+            self.ui.tb_compilation_output.append(
+                f"\u26A1 filesize pre-filter active: {', '.join(parts)} "
+                f"\u2014 files outside this range will be skipped "
+                f"without being read."
+            )
+        return bounds
 
-        def progress_callback(scanned, total):
-            self.statusBar().showMessage(f"Scanning... {scanned}/{total} files", 0)
-            QApplication.processEvents()
+    def _perform_file_scanning(self, rules, files_to_scan: List[Path],
+                                size_bounds=None) -> None:
+        """Launch the background scan worker; results land in ``_on_scan_finished``."""
+        total = len(files_to_scan)
+        self.ui.tb_compilation_output.append(f"Scanning {total} files...\n")
+        self.statusBar().showMessage(f"Scanning {total} files...", 0)
 
-        result = self.scanner.scan_files(rules, files_to_scan, progress_callback=progress_callback)
+        # Show progress bar + cancel button in status bar
+        self._scan_progress.setRange(0, total)
+        self._scan_progress.setValue(0)
+        self._scan_progress.setFormat("Scanning %v / %m  (%p%)")
+        self._scan_progress.show()
+        self._scan_cancel_btn.setEnabled(True)
+        self._scan_cancel_btn.show()
 
-        # Process results into UI
+        # Flip the SCAN button into a CANCEL button so the user has an
+        # obvious way to stop a runaway scan (e.g. accidentally scanning
+        # a folder full of 2 GB files). The click handler already checks
+        # for a running worker and routes to cancel in that case.
+        if not hasattr(self, "_scan_btn_default_text"):
+            self._scan_btn_default_text = self.ui.pb_scan.text()
+            self._scan_btn_default_tooltip = self.ui.pb_scan.toolTip()
+        self.ui.pb_scan.setText("\u26D4 CANCEL SCAN")
+        self.ui.pb_scan.setToolTip("Cancel the running scan")
+        self.ui.pb_scan.setEnabled(True)
+
+        # Spin up the worker thread
+        self._scan_worker = ScanWorker(
+            self.scanner, rules, files_to_scan, parent=self,
+            size_bounds=size_bounds,
+        )
+        self._scan_worker.progress.connect(self._on_scan_progress)
+        self._scan_worker.result_ready.connect(self._on_scan_finished)
+        self._scan_worker.error.connect(self._on_scan_error)
+        self._scan_worker.finished.connect(self._on_scan_thread_done)
+        self._scan_worker.start()
+
+    def _on_scan_progress(self, scanned: int, total: int, filename: str) -> None:
+        """Worker thread → main thread progress update."""
+        self._scan_progress.setValue(scanned)
+        # Truncate very long filenames so the status bar stays readable
+        display = filename if len(filename) <= 60 else filename[:57] + "..."
+        self.statusBar().showMessage(
+            f"Scanning ({scanned}/{total}): {display}", 0)
+
+    def _on_scan_finished(self, result: dict) -> None:
+        """Worker finished (successfully or cancelled). Populate results into UI."""
+        # Process hits
         for hit in result['hits']:
             self.scan_hits.append(hit)
             self._add_hit_to_table(hit['filename'], hit['filepath'], hit['matched_rules'])
 
+        # Stash misses (displayed lazily via the tab-change hook)
         for miss in result['misses']:
             self.scan_misses.append(miss)
 
+        # Surface per-file errors
         for msg in result['error_messages']:
             self.ui.tb_compilation_output.append(f"\n{msg}")
-            QApplication.processEvents()
 
-        return result['stats']
+        cancelled = bool(result.get('cancelled'))
+        stats = result['stats']
+        if cancelled:
+            self.ui.tb_compilation_output.append(
+                f"\n\u26a0 Scan cancelled after {stats['scanned']} file(s)."
+            )
+            self.statusBar().showMessage(
+                f"Scan cancelled \u2014 {stats['scanned']} scanned, "
+                f"{stats['matches']} matches",
+                6000
+            )
+
+        # Finalize (populate aggregate views, switch tabs, show summary)
+        self._finalize_scan_results(stats)
+
+    def _on_scan_error(self, msg: str) -> None:
+        """Fatal worker-thread error."""
+        self.ui.tb_compilation_output.append(f"\n\u2717 {msg}")
+        self.statusBar().showMessage("Scan failed", 5000)
+
+    def _on_scan_thread_done(self) -> None:
+        """Hide progress widgets and drop the worker reference (UI thread)."""
+        self._scan_progress.hide()
+        self._scan_cancel_btn.hide()
+        # Restore the SCAN button label/tooltip (it was swapped to CANCEL
+        # for the duration of the scan).
+        if hasattr(self, "_scan_btn_default_text"):
+            self.ui.pb_scan.setText(self._scan_btn_default_text)
+            self.ui.pb_scan.setToolTip(self._scan_btn_default_tooltip)
+        self.ui.pb_scan.setEnabled(True)
+        # Let Qt clean up the QThread before releasing our reference
+        if self._scan_worker is not None:
+            self._scan_worker.deleteLater()
+            self._scan_worker = None
+
+    def _on_scan_cancel_clicked(self) -> None:
+        """User clicked cancel (either the status-bar button or the main
+        SCAN/CANCEL button in the toolbar)."""
+        if self._scan_worker is None or not self._scan_worker.isRunning():
+            return
+        self._scan_worker.cancel()
+        self._scan_cancel_btn.setEnabled(False)
+        # Gray out the main button and update its label so the user gets
+        # immediate feedback while the current file finishes scanning.
+        self.ui.pb_scan.setEnabled(False)
+        self.ui.pb_scan.setText("Cancelling...")
+        self.statusBar().showMessage(
+            "Cancelling scan \u2014 finishing current file...", 0)
     
     def _add_hit_to_table(self, filename: str, filepath: str, matched_rules: List[Dict]) -> None:
         """Add a hit to the hits table with appropriate styling."""
@@ -1423,7 +1596,14 @@ class MainWindow(QMainWindow):
         self.ui.tb_compilation_output.append(f"Files scanned: {stats['scanned']}")
         self.ui.tb_compilation_output.append(f"Matches found: {stats['matches']}")
         self.ui.tb_compilation_output.append(f"Files without matches: {len(self.scan_misses)}")
-        
+
+        skipped = stats.get('skipped', 0)
+        if skipped > 0:
+            self.ui.tb_compilation_output.append(
+                f"\u26A1 Skipped via filesize pre-filter: {skipped} "
+                f"(outside rule bounds \u2014 not read from disk)"
+            )
+
         if stats['errors'] > 0:
             self.ui.tb_compilation_output.append(f"Errors: {stats['errors']}")
 
@@ -1445,6 +1625,266 @@ class MainWindow(QMainWindow):
             10000
         )
 
+    # ── scan-dir filter bar ──────────────────────────────────────
+    def _build_fs_filter_bar(self, parent: QWidget) -> QWidget:
+        """Build the filter row that sits above the file-system tree.
+
+        The filter can match by glob (default) or Python regex, against
+        either the file name or the full path. The four action buttons
+        operate on the current scan root:
+
+        * Select matching only - keep only matching files (everything
+          else becomes excluded).
+        * Exclude matching     - add matching files to the exclusion
+          list (additive: keeps existing exclusions intact).
+        * Select all           - clear all exclusions.
+        * Deselect all         - exclude the entire scan root.
+
+        All long-running traversals run with a busy cursor.
+        """
+        bar = QWidget(parent)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        layout.addWidget(QLabel("Filter:"))
+
+        self.fs_filter_edit = QLineEdit(bar)
+        self.fs_filter_edit.setPlaceholderText(
+            "*.exe,*.dll   or   \\.(exe|dll)$")
+        self.fs_filter_edit.setClearButtonEnabled(True)
+        self.fs_filter_edit.setToolTip(
+            "Glob: comma-separated patterns (e.g. *.exe,*.dll).\n"
+            "Regex: Python re syntax. Case-insensitive.")
+        self.fs_filter_edit.returnPressed.connect(
+            self._on_fs_select_matching_only)
+        layout.addWidget(self.fs_filter_edit, 1)
+
+        self.fs_filter_mode = QComboBox(bar)
+        self.fs_filter_mode.addItems(["Glob", "Regex"])
+        self.fs_filter_mode.setToolTip("How to interpret the filter text")
+        layout.addWidget(self.fs_filter_mode)
+
+        self.fs_filter_target = QComboBox(bar)
+        self.fs_filter_target.addItems(["Name", "Full path"])
+        self.fs_filter_target.setToolTip(
+            "Match against the file name only, or the full path")
+        layout.addWidget(self.fs_filter_target)
+
+        btn_keep = QPushButton("Select matching only", bar)
+        btn_keep.setToolTip(
+            "Clear exclusions, then exclude every file that does NOT "
+            "match the filter")
+        btn_keep.clicked.connect(self._on_fs_select_matching_only)
+        layout.addWidget(btn_keep)
+
+        btn_excl = QPushButton("Exclude matching", bar)
+        btn_excl.setToolTip(
+            "Add every file that matches the filter to the exclusion "
+            "list (keeps existing exclusions)")
+        btn_excl.clicked.connect(self._on_fs_exclude_matching)
+        layout.addWidget(btn_excl)
+
+        btn_all = QPushButton("Select all", bar)
+        btn_all.setToolTip("Clear all exclusions")
+        btn_all.clicked.connect(self._on_fs_select_all)
+        layout.addWidget(btn_all)
+
+        btn_none = QPushButton("Deselect all", bar)
+        btn_none.setToolTip("Exclude the entire scan root")
+        btn_none.clicked.connect(self._on_fs_deselect_all)
+        layout.addWidget(btn_none)
+
+        return bar
+
+    def _fs_filter_predicate(self):
+        """Build a ``match(name, full_path) -> bool`` callable from the
+        current filter bar state.
+
+        Returns ``None`` if the filter text is empty or if the pattern
+        is invalid (status bar receives an explanatory message in the
+        latter case).
+        """
+        text = self.fs_filter_edit.text().strip()
+        if not text:
+            return None
+
+        mode = self.fs_filter_mode.currentText()
+        target = self.fs_filter_target.currentText()
+        use_full_path = target == "Full path"
+
+        if mode == "Regex":
+            try:
+                pat = re.compile(text, re.IGNORECASE)
+            except re.error as e:
+                self.statusBar().showMessage(f"Bad regex: {e}", 5000)
+                return None
+
+            def match(name: str, full_path: str) -> bool:
+                return pat.search(full_path if use_full_path else name) is not None
+
+            return match
+
+        # Glob: comma-separated list, case-insensitive (fnmatch on Windows
+        # is already case-insensitive via fnmatch.fnmatch, but we force
+        # lowercase to behave the same everywhere).
+        patterns = [p.strip() for p in text.split(",") if p.strip()]
+        if not patterns:
+            return None
+        lowered = [p.lower() for p in patterns]
+
+        def match(name: str, full_path: str) -> bool:
+            subject = (full_path if use_full_path else name).lower()
+            for pat in lowered:
+                if fnmatch.fnmatchcase(subject, pat):
+                    return True
+            return False
+
+        return match
+
+    def _fs_require_scan_root(self) -> bool:
+        if self.scan_root is None:
+            self.statusBar().showMessage(
+                "Select a scan directory first", 4000)
+            return False
+        return True
+
+    def _fs_refresh_view(self) -> None:
+        """Refresh the tree and exclusion list after bulk changes to
+        ``_unchecked`` (direct mutation bypasses :meth:`setData`)."""
+        root_idx = self.fs_view.rootIndex()
+        if root_idx.isValid():
+            self.fs_model._update_visible_children(root_idx)
+        self.update_exclusion_list()
+        self.fs_model.exclusionsChanged.emit()
+
+    def _on_fs_select_all(self) -> None:
+        if not self._fs_require_scan_root():
+            return
+        self.fs_model._unchecked.clear()
+        self._fs_refresh_view()
+        self.statusBar().showMessage("All files selected", 3000)
+
+    def _on_fs_deselect_all(self) -> None:
+        if not self._fs_require_scan_root():
+            return
+        root = self.fs_model._normalize_path(str(self.scan_root))
+        self.fs_model._unchecked.clear()
+        self.fs_model._unchecked.add(root)
+        self._fs_refresh_view()
+        self.statusBar().showMessage("All files deselected", 3000)
+
+    def _on_fs_exclude_matching(self) -> None:
+        if not self._fs_require_scan_root():
+            return
+        match = self._fs_filter_predicate()
+        if match is None:
+            if not self.fs_filter_edit.text().strip():
+                self.statusBar().showMessage(
+                    "Enter a filter pattern first", 4000)
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            added = 0
+            normalize = self.fs_model._normalize_path
+            unchecked = self.fs_model._unchecked
+            for root, dirs, files in os.walk(self.scan_root):
+                for name in files:
+                    full = os.path.join(root, name)
+                    if match(name, full):
+                        norm = normalize(full)
+                        if norm not in unchecked:
+                            unchecked.add(norm)
+                            added += 1
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self._fs_refresh_view()
+        self.statusBar().showMessage(
+            f"Excluded {added} matching file(s)", 5000)
+
+    def _on_fs_select_matching_only(self) -> None:
+        """Clear exclusions, then exclude everything that does not match
+        the filter.
+
+        Uses a two-pass walk:
+
+        1. Bottom-up: count matching files per directory subtree.
+        2. Top-down: directories whose subtree has zero matches are
+           excluded wholesale (a single entry in ``_unchecked``).
+           Directories with matches are descended into, and each file
+           there is individually excluded if it doesn't match.
+
+        This keeps ``_unchecked`` small even for very large trees.
+        """
+        if not self._fs_require_scan_root():
+            return
+        match = self._fs_filter_predicate()
+        if match is None:
+            if not self.fs_filter_edit.text().strip():
+                self.statusBar().showMessage(
+                    "Enter a filter pattern first", 4000)
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            # Pass 1: collect (dir_path, [matching_files], [non_matching_files])
+            # and match counts per directory using a single os.walk.
+            # match_count[dir] = number of matching files in dir's subtree.
+            match_count: Dict[str, int] = {}
+            dir_files: Dict[str, List[tuple]] = {}
+            dir_order: List[str] = []  # parents before children (os.walk default)
+            for root, dirs, files in os.walk(self.scan_root):
+                dir_order.append(root)
+                local = []
+                local_matches = 0
+                for name in files:
+                    full = os.path.join(root, name)
+                    is_match = match(name, full)
+                    local.append((name, full, is_match))
+                    if is_match:
+                        local_matches += 1
+                dir_files[root] = local
+                match_count[root] = local_matches
+
+            # Propagate counts up: walk dir_order in reverse so children
+            # aggregate into parents before parents are themselves read.
+            for d in reversed(dir_order):
+                parent = os.path.dirname(d)
+                if parent in match_count and parent != d:
+                    match_count[parent] += match_count[d]
+
+            # Pass 2: start fresh, then exclude empty branches wholesale
+            # and individual non-matching files in live branches.
+            unchecked = set()
+            normalize = self.fs_model._normalize_path
+            total_matches = match_count.get(str(self.scan_root), 0)
+
+            skipped_dirs: List[str] = []  # prefixes we've already excluded
+            for d in dir_order:
+                # If an ancestor was already excluded, skip quickly.
+                if any(d == s or d.startswith(s + os.sep)
+                       for s in skipped_dirs):
+                    continue
+                if match_count.get(d, 0) == 0:
+                    # Entire subtree has no matches - exclude the dir
+                    unchecked.add(normalize(d))
+                    skipped_dirs.append(d)
+                    continue
+                # Live branch: exclude non-matching files individually.
+                for name, full, is_match in dir_files[d]:
+                    if not is_match:
+                        unchecked.add(normalize(full))
+
+            self.fs_model._unchecked = unchecked
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self._fs_refresh_view()
+        self.statusBar().showMessage(
+            f"Kept {total_matches} matching file(s)", 5000)
+
     def on_select_scan_dir(self):
         path = QFileDialog.getExistingDirectory(
             self, "Select folder to scan", self.last_dir,
@@ -1452,30 +1892,135 @@ class MainWindow(QMainWindow):
         )
         if not path:
             return
+        self._set_scan_root(Path(path))
 
-        self.scan_root = Path(path).resolve()
-        self.last_dir = str(self.scan_root)
+    def _set_scan_root(self, path: Path) -> None:
+        """Set *path* as the current scan directory and refresh the tree.
 
-        root_idx = self.fs_model.setRootPath(str(self.scan_root))
-        
+        Shared by the File menu, drag/drop, and command-line handling.
+        """
+        path = Path(path).resolve()
+        if not path.is_dir():
+            self.statusBar().showMessage(
+                f"Not a directory: {path}", 4000)
+            return
+
+        self.scan_root = path
+        self.last_dir = str(path)
+
+        root_idx = self.fs_model.setRootPath(str(path))
+
         # Connect model to view if not already connected (first directory selection)
         if self.fs_view.model() is None:
             self.fs_view.setModel(self.fs_model)
-        
+
         # Process events to allow the file system model to populate
         QApplication.processEvents()
-        
+
         self.fs_view.setRootIndex(root_idx)
         self.fs_view.expand(root_idx)
-        
+
         # Process events again after expanding
         QApplication.processEvents()
-        
-        self.statusBar().showMessage(f"Selected root: {path} (all files selected by default)", 4000)
+
+        self.statusBar().showMessage(
+            f"Selected root: {path} (all files selected by default)", 4000)
         self.update_exclusion_list()
 
         # Focus on the file tree tab
-        self.ui.tabWidget.setCurrentWidget(self.ui.tab_scan_dir)  # Switch to Tab 1
+        self.ui.tabWidget.setCurrentWidget(self.ui.tab_scan_dir)
+
+    def _handle_input_paths(self, paths) -> None:
+        """Dispatch a list of path-like inputs from drag/drop or the CLI.
+
+        Dispatch rules:
+        * Directory  -> set as scan root (first dropped dir wins if many)
+        * .yar/.yara -> loaded into the YARA rule editor
+        * other file -> opened in a new hex editor window
+        Missing paths are silently ignored.
+        """
+        resolved = []
+        for p in paths:
+            try:
+                pp = Path(p)
+            except TypeError:
+                continue
+            if pp.exists():
+                resolved.append(pp)
+        if not resolved:
+            return
+
+        dirs = [p for p in resolved if p.is_dir()]
+        files = [p for p in resolved if p.is_file()]
+
+        if dirs:
+            self._set_scan_root(dirs[0])
+            if len(dirs) > 1:
+                self.statusBar().showMessage(
+                    f"Multiple folders dropped \u2014 using "
+                    f"'{dirs[0].name}' as scan root", 5000)
+
+        for fp in files:
+            ext = fp.suffix.lower()
+            if ext in (".yar", ".yara", ".yarax"):
+                try:
+                    text = fp.read_text(encoding="utf-8")
+                    self._load_text_to_editor(text, source_path=str(fp))
+                except Exception as e:
+                    self.statusBar().showMessage(
+                        f"Failed to load {fp.name}: {e}", 5000)
+            else:
+                self.open_hex_editor(str(fp))
+
+    # ── drag & drop plumbing ─────────────────────────────────────
+    @staticmethod
+    def _drop_urls(event) -> list:
+        md = event.mimeData()
+        if not md or not md.hasUrls():
+            return []
+        out = []
+        for u in md.urls():
+            if u.isLocalFile():
+                lf = u.toLocalFile()
+                if lf:
+                    out.append(lf)
+        return out
+
+    def dragEnterEvent(self, event) -> None:
+        if self._drop_urls(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        if self._drop_urls(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:
+        paths = self._drop_urls(event)
+        if not paths:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self._handle_input_paths(paths)
+
+    def eventFilter(self, obj, event):
+        """Intercept URL drops on child widgets that would otherwise
+        swallow them (QPlainTextEdit, QTreeView)."""
+        et = event.type()
+        if et in (QEvent.DragEnter, QEvent.DragMove):
+            if self._drop_urls(event):
+                event.acceptProposedAction()
+                return True
+        elif et == QEvent.Drop:
+            paths = self._drop_urls(event)
+            if paths:
+                event.acceptProposedAction()
+                self._handle_input_paths(paths)
+                return True
+        return super().eventFilter(obj, event)
 
     def on_tree_expanded(self, index: QModelIndex):
         """When user expands a node, update the checkboxes of its immediate children"""
@@ -1778,18 +2323,14 @@ class MainWindow(QMainWindow):
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     widget = MainWindow()
-    
-    # Handle command line arguments (file association)
-    # sys.argv[0] is the script name, sys.argv[1:] are the arguments
-    if len(sys.argv) > 1:
-        file_path = sys.argv[1]
-        # Check if it's a valid YARA file
-        if Path(file_path).exists():
-            try:
-                text = Path(file_path).read_text(encoding='utf-8')
-                widget._load_text_to_editor(text, source_path=file_path)
-            except Exception as e:
-                print(f"Failed to load file from command line: {e}")
-    
     widget.show()
+
+    # Handle command-line arguments (file association / drag onto .exe /
+    # Open-With). Same dispatcher as drag-and-drop onto the running window:
+    #   directory -> scan root
+    #   .yar/.yara -> YARA rule editor
+    #   any other file -> hex editor
+    if len(sys.argv) > 1:
+        widget._handle_input_paths(sys.argv[1:])
+
     sys.exit(app.exec())

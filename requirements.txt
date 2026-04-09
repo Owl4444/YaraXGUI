@@ -1,4 +1,6 @@
 PySide6
 yara-x
 yaraast[full]
+capstone
 pyinstaller
+pycryptodome

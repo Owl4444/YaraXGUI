@@ -5,9 +5,67 @@ Provides light and dark themes with easy customization
 """
 
 from dataclasses import dataclass
-from typing import Dict, Any
+from typing import Dict, Any, Tuple
 import json
 from pathlib import Path
+
+
+def _hex_to_rgb(hex_color: str) -> Tuple[int, int, int]:
+    s = hex_color.lstrip("#")
+    if len(s) == 3:
+        s = "".join(c * 2 for c in s)
+    if len(s) != 6:
+        return (128, 128, 128)
+    try:
+        return int(s[0:2], 16), int(s[2:4], 16), int(s[4:6], 16)
+    except ValueError:
+        return (128, 128, 128)
+
+
+def _rgb_to_hex(rgb: Tuple[int, int, int]) -> str:
+    r, g, b = (max(0, min(255, int(c))) for c in rgb)
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+def _luminance(hex_color: str) -> float:
+    """Perceived luminance 0..255 (rough Rec. 601)."""
+    r, g, b = _hex_to_rgb(hex_color)
+    return 0.299 * r + 0.587 * g + 0.114 * b
+
+
+def _shift_toward(hex_color: str, target: int, amount: float) -> str:
+    """Move every channel ``amount`` (0..1) of the way toward ``target`` (0/255)."""
+    r, g, b = _hex_to_rgb(hex_color)
+    return _rgb_to_hex((
+        r + (target - r) * amount,
+        g + (target - g) * amount,
+        b + (target - b) * amount,
+    ))
+
+
+def ensure_scrollbar_contrast(bg: str, handle: str, hover: str,
+                               min_delta: float = 55.0) -> Tuple[str, str]:
+    """Return (handle, hover) with at least ``min_delta`` luminance vs ``bg``.
+
+    If the theme already has enough contrast we return its colors unchanged.
+    Otherwise we boost the *handle* (and hover) toward white/black depending
+    on the background — preserving the handle's hue rather than collapsing it
+    to neutral gray.
+    """
+    bg_lum = _luminance(bg)
+    if abs(_luminance(handle) - bg_lum) >= min_delta:
+        return handle, hover
+
+    # Iteratively brighten/darken the handle until contrast is met (max 4 steps).
+    target = 255 if bg_lum < 128 else 0
+    boosted_handle = handle
+    boosted_hover = hover
+    for _ in range(5):
+        boosted_handle = _shift_toward(boosted_handle, target, 0.35)
+        boosted_hover = _shift_toward(boosted_hover, target, 0.45)
+        if abs(_luminance(boosted_handle) - bg_lum) >= min_delta:
+            break
+    return boosted_handle, boosted_hover
 
 
 @dataclass
@@ -341,9 +399,14 @@ class ThemeManager:
         """Generate complete QSS stylesheet from theme"""
         if theme is None:
             theme = self.current_theme
-        
+
         colors = theme.colors
-        
+        sb_handle, sb_hover = ensure_scrollbar_contrast(
+            colors.scrollbar_background,
+            colors.scrollbar_handle,
+            colors.scrollbar_handle_hover,
+        )
+
         return f"""
         /* Main Application Styling */
         QMainWindow {{
@@ -515,32 +578,61 @@ class ThemeManager:
             height: 3px;
         }}
         
-        /* Scrollbars */
-        QScrollBar:vertical, QScrollBar:horizontal {{
+        /* Scrollbars — standardized across the entire app for visibility */
+        QScrollBar:vertical {{
+            background-color: {colors.scrollbar_background};
+            width: 14px;
+            border: none;
+            margin: 0px;
+        }}
+
+        QScrollBar:horizontal {{
+            background-color: {colors.scrollbar_background};
+            height: 14px;
+            border: none;
+            margin: 0px;
+        }}
+
+        QScrollBar::handle:vertical {{
+            background-color: {sb_handle};
+            min-height: 28px;
+            border-radius: 4px;
+            margin: 2px 3px 2px 3px;
+        }}
+
+        QScrollBar::handle:horizontal {{
+            background-color: {sb_handle};
+            min-width: 28px;
+            border-radius: 4px;
+            margin: 3px 2px 3px 2px;
+        }}
+
+        QScrollBar::handle:vertical:hover,
+        QScrollBar::handle:horizontal:hover {{
+            background-color: {sb_hover};
+        }}
+
+        QScrollBar::handle:vertical:pressed,
+        QScrollBar::handle:horizontal:pressed {{
+            background-color: {sb_hover};
+        }}
+
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical,
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {{
+            background: none;
+            border: none;
+            width: 0px;
+            height: 0px;
+        }}
+
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical,
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {{
+            background: none;
+        }}
+
+        QScrollBar::corner {{
             background-color: {colors.scrollbar_background};
             border: none;
-        }}
-        
-        QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
-            background-color: {colors.scrollbar_handle};
-            border-radius: {theme.border_radius}px;
-        }}
-        
-        QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{
-            background-color: {colors.scrollbar_handle_hover};
-        }}
-        
-        QScrollBar:vertical {{
-            width: 12px;
-        }}
-        
-        QScrollBar:horizontal {{
-            height: 12px;
-        }}
-        
-        QScrollBar::add-line, QScrollBar::sub-line {{
-            border: none;
-            background: none;
         }}
         
         /* Status Bar */

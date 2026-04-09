@@ -14,10 +14,21 @@ from .hex_data_buffer import HexDataBuffer
 class DataInspectorWidget(QWidget):
     """Dock widget content showing the byte(s) at the cursor in multiple formats."""
 
+    # Maximum bytes to show in the "Hex" selection row. Selections larger
+    # than this are truncated with an ellipsis suffix; the full length is
+    # still shown in the "Length" row.
+    MAX_HEX_DISPLAY_BYTES = 256
+
     def __init__(self, parent=None):
         super().__init__(parent)
         self._buffer: HexDataBuffer | None = None
         self._offset = 0
+        # Selection range tracked from the hex widget. When
+        # ``_sel_len`` is zero, the inspector falls back to the cursor
+        # byte for the type rows but always shows a Hex row for the
+        # single byte under the cursor.
+        self._sel_start = -1
+        self._sel_len = 0
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(4, 4, 4, 4)
@@ -38,7 +49,7 @@ class DataInspectorWidget(QWidget):
         self._table.setHorizontalHeaderLabels(["Type", "Value"])
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.horizontalHeader().setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
-        self._table.setColumnWidth(0, 54)
+        self._table.setColumnWidth(0, 64)
         self._table.verticalHeader().setVisible(False)
         self._table.verticalHeader().setDefaultSectionSize(20)
         self._table.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
@@ -47,10 +58,25 @@ class DataInspectorWidget(QWidget):
 
     def set_buffer(self, buf: HexDataBuffer):
         self._buffer = buf
+        self._sel_start = -1
+        self._sel_len = 0
         self._refresh()
 
     def update_offset(self, offset: int):
         self._offset = offset
+        self._refresh()
+
+    def update_selection(self, start: int, length: int):
+        """Called when the hex widget's selection changes.
+
+        A length of 0 means "no selection"; the inspector will then
+        show just the cursor byte interpretations.
+        """
+        self._sel_start = start if length > 0 else -1
+        self._sel_len = max(0, length)
+        # A fresh selection always implies the cursor sits at its end,
+        # but the hex widget already emits cursor_moved in that case,
+        # so we only need to repaint the table with the new range info.
         self._refresh()
 
     def _is_big_endian(self) -> bool:
@@ -65,12 +91,37 @@ class DataInspectorWidget(QWidget):
         be = self._is_big_endian()
         bo = ">" if be else "<"
 
-        # Read up to 8 bytes from cursor
+        # Read up to 8 bytes from cursor (used for type interpretations)
         raw = self._buffer.read(off, 8)
         if not raw:
             return
 
-        rows = []
+        rows: list[tuple[str, str]] = []
+
+        # ── Selection / cursor hex display ───────────────────────────
+        # Always show a Hex row. If there's a selection, use it;
+        # otherwise fall back to the single byte at the cursor.
+        if self._sel_len > 0 and self._sel_start >= 0:
+            sel_bytes = self._buffer.read(self._sel_start, self._sel_len)
+            rows.append(("Range",
+                         f"0x{self._sel_start:X} +{self._sel_len} "
+                         f"(to 0x{self._sel_start + self._sel_len - 1:X})"))
+            rows.append(("Length", f"{self._sel_len} bytes"))
+            hex_bytes = sel_bytes[:self.MAX_HEX_DISPLAY_BYTES]
+            hex_str = " ".join(f"{b:02X}" for b in hex_bytes)
+            if self._sel_len > self.MAX_HEX_DISPLAY_BYTES:
+                hex_str += f" \u2026 (+{self._sel_len - self.MAX_HEX_DISPLAY_BYTES} more)"
+            rows.append(("Hex", hex_str))
+            ascii_str = "".join(
+                chr(b) if 32 <= b <= 126 else "." for b in hex_bytes
+            )
+            if self._sel_len > self.MAX_HEX_DISPLAY_BYTES:
+                ascii_str += "\u2026"
+            rows.append(("ASCII", ascii_str))
+        else:
+            # Single cursor byte
+            rows.append(("Offset", f"0x{off:X} ({off:,})"))
+            rows.append(("Hex", f"{raw[0]:02X}"))
 
         # 1-byte
         if len(raw) >= 1:

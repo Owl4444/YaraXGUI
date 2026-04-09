@@ -1661,19 +1661,16 @@ class MainWindow(QMainWindow):
     def _build_fs_filter_bar(self, parent: QWidget) -> QWidget:
         """Build the filter row that sits above the file-system tree.
 
-        The filter can match by glob (default) or Python regex, against
-        either the file name or the full path. The four action buttons
-        operate on the current scan root:
+        Compact layout:
+            [Filter: ______________] [Glob|Regex] [Name|Path] [Apply ▾]
 
-        * Select matching only - keep only matching files (everything
-          else becomes excluded).
-        * Exclude matching     - add matching files to the exclusion
-          list (additive: keeps existing exclusions intact).
-        * Select all           - clear all exclusions.
-        * Deselect all         - exclude the entire scan root.
-
-        All long-running traversals run with a busy cursor.
+        The ``Apply`` tool button's default click triggers
+        ``Select matching only`` (the common case). The dropdown
+        arrow exposes the other three actions. Pressing Enter in the
+        filter field is also wired to ``Select matching only``.
         """
+        from PySide6.QtGui import QAction  # local import to avoid top-level clutter
+
         bar = QWidget(parent)
         layout = QHBoxLayout(bar)
         layout.setContentsMargins(0, 0, 0, 0)
@@ -1687,7 +1684,8 @@ class MainWindow(QMainWindow):
         self.fs_filter_edit.setClearButtonEnabled(True)
         self.fs_filter_edit.setToolTip(
             "Glob: comma-separated patterns (e.g. *.exe,*.dll).\n"
-            "Regex: Python re syntax. Case-insensitive.")
+            "Regex: Python re syntax. Case-insensitive.\n"
+            "Press Enter to select matching only.")
         self.fs_filter_edit.returnPressed.connect(
             self._on_fs_select_matching_only)
         layout.addWidget(self.fs_filter_edit, 1)
@@ -1698,34 +1696,51 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.fs_filter_mode)
 
         self.fs_filter_target = QComboBox(bar)
-        self.fs_filter_target.addItems(["Name", "Full path"])
+        self.fs_filter_target.addItems(["Name", "Path"])
         self.fs_filter_target.setToolTip(
             "Match against the file name only, or the full path")
         layout.addWidget(self.fs_filter_target)
 
-        btn_keep = QPushButton("Select matching only", bar)
-        btn_keep.setToolTip(
+        # Single compact tool button with a dropdown menu carrying all
+        # four actions. Clicking the button body runs the default
+        # action (select matching only); the little arrow opens the
+        # menu with the rest.
+        act_keep = QAction("Select matching only", self)
+        act_keep.setToolTip(
             "Clear exclusions, then exclude every file that does NOT "
             "match the filter")
-        btn_keep.clicked.connect(self._on_fs_select_matching_only)
-        layout.addWidget(btn_keep)
+        act_keep.triggered.connect(self._on_fs_select_matching_only)
 
-        btn_excl = QPushButton("Exclude matching", bar)
-        btn_excl.setToolTip(
+        act_excl = QAction("Exclude matching", self)
+        act_excl.setToolTip(
             "Add every file that matches the filter to the exclusion "
             "list (keeps existing exclusions)")
-        btn_excl.clicked.connect(self._on_fs_exclude_matching)
-        layout.addWidget(btn_excl)
+        act_excl.triggered.connect(self._on_fs_exclude_matching)
 
-        btn_all = QPushButton("Select all", bar)
-        btn_all.setToolTip("Clear all exclusions")
-        btn_all.clicked.connect(self._on_fs_select_all)
-        layout.addWidget(btn_all)
+        act_all = QAction("Select all", self)
+        act_all.setToolTip("Clear all exclusions")
+        act_all.triggered.connect(self._on_fs_select_all)
 
-        btn_none = QPushButton("Deselect all", bar)
-        btn_none.setToolTip("Exclude the entire scan root")
-        btn_none.clicked.connect(self._on_fs_deselect_all)
-        layout.addWidget(btn_none)
+        act_none = QAction("Deselect all", self)
+        act_none.setToolTip("Exclude the entire scan root")
+        act_none.triggered.connect(self._on_fs_deselect_all)
+
+        menu = QMenu(bar)
+        menu.addAction(act_keep)
+        menu.addAction(act_excl)
+        menu.addSeparator()
+        menu.addAction(act_all)
+        menu.addAction(act_none)
+
+        self.fs_filter_btn = QToolButton(bar)
+        self.fs_filter_btn.setText("Apply")
+        self.fs_filter_btn.setToolTip(
+            "Click: select matching only.  \u25BE: more actions.")
+        self.fs_filter_btn.setPopupMode(
+            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.fs_filter_btn.setDefaultAction(act_keep)
+        self.fs_filter_btn.setMenu(menu)
+        layout.addWidget(self.fs_filter_btn)
 
         return bar
 

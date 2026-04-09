@@ -8,7 +8,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QFont, QKeySequence, QIcon
 from PySide6.QtWidgets import (QMainWindow, QFileDialog, QDockWidget,
                                QStatusBar, QToolBar, QApplication, QLabel,
-                               QMessageBox)
+                               QMessageBox, QSpinBox, QWidget)
 
 from .hex_data_buffer import HexDataBuffer
 from .hex_widget import HexWidget
@@ -160,6 +160,7 @@ class HexEditorWindow(QMainWindow):
         # ── Connections ─────────────────────────────────────────────
 
         self._hex_widget.cursor_moved.connect(self._on_cursor_moved)
+        self._hex_widget.selection_changed.connect(self._inspector.update_selection)
         self._format_viewer.navigate_requested.connect(self._hex_widget.navigate_to_offset)
         self._strings_widget.navigate_requested.connect(self._hex_widget.navigate_to_offset)
         self._entropy_widget.navigate_requested.connect(self._hex_widget.navigate_to_offset)
@@ -334,6 +335,32 @@ class HexEditorWindow(QMainWindow):
         self._view_toggle_btn.setCheckable(True)
         self._view_toggle_btn.toggled.connect(self._toggle_view_action.setChecked)
         toolbar.addAction(self._view_toggle_btn)
+
+        toolbar.addSeparator()
+
+        # Bytes-per-row selector
+        toolbar.addWidget(QLabel(" Bytes/row: "))
+        self._bpl_spin = QSpinBox(toolbar)
+        self._bpl_spin.setRange(4, 64)
+        self._bpl_spin.setSingleStep(4)
+        self._bpl_spin.setValue(self._hex_widget.bytes_per_line())
+        self._bpl_spin.setToolTip(
+            "Bytes per row in hex view (4–64). Common: 8, 16, 24, 32."
+        )
+        self._bpl_spin.valueChanged.connect(self._hex_widget.set_bytes_per_line)
+        # Keep spinner in sync if anything else mutates bpl
+        self._hex_widget.bytes_per_line_changed.connect(self._on_bpl_changed)
+        toolbar.addWidget(self._bpl_spin)
+
+    def _on_bpl_changed(self, n: int):
+        """Mirror external bytes-per-line changes into the toolbar spinbox."""
+        if self._bpl_spin.value() == n:
+            return
+        self._bpl_spin.blockSignals(True)
+        try:
+            self._bpl_spin.setValue(n)
+        finally:
+            self._bpl_spin.blockSignals(False)
 
     def _setup_statusbar(self):
         self._status_offset = QLabel("Offset: 0x00000000")

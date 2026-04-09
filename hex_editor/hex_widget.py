@@ -11,7 +11,9 @@ from .hex_data_buffer import HexDataBuffer
 
 
 # Layout constants
-BYTES_PER_LINE = 16
+DEFAULT_BYTES_PER_LINE = 16
+MIN_BYTES_PER_LINE = 4
+MAX_BYTES_PER_LINE = 64
 OFFSET_CHARS = 10  # "00000000: "
 
 
@@ -24,6 +26,7 @@ class HexWidget(QAbstractScrollArea):
     pattern_regions_changed = Signal(int) # emits region count
     disassemble_requested = Signal(bytes, int)  # selected_bytes, base_offset
     transform_requested = Signal()       # emits when user picks "Apply Transform…"
+    bytes_per_line_changed = Signal(int) # emits new bytes-per-line (hex mode only)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -34,6 +37,9 @@ class HexWidget(QAbstractScrollArea):
         self._selecting = False  # mouse drag in progress
         self._focus_ascii = False  # Tab toggles hex/ascii focus
         self._text_mode = False   # False=hex view, True=text view
+
+        # Hex-mode layout (configurable)
+        self._bytes_per_line_hex = DEFAULT_BYTES_PER_LINE
 
         # Text-mode layout
         self._text_cols = 64  # characters per line in text mode
@@ -60,9 +66,23 @@ class HexWidget(QAbstractScrollArea):
         self._bg = QColor("#ffffff")
         self._selection_bg = QColor(51, 153, 255, 160)
 
-        # Font
-        self._font = QFont("Cascadia Code", 10)
-        self._font.setStyleHint(QFont.StyleHint.Monospace)
+        # Font — must be truly fixed-pitch. Cascadia Code has ligatures
+        # that collapse pairs like "XX" in rendering, so we prefer
+        # Cascadia Mono / Consolas / Courier New with styleHint Monospace
+        # and setFixedPitch(True) as a hard guarantee.
+        self._font = QFont()
+        self._font.setFamilies([
+            "Cascadia Mono",
+            "Consolas",
+            "Courier New",
+            "DejaVu Sans Mono",
+            "monospace",
+        ])
+        self._font.setPointSize(10)
+        self._font.setStyleHint(QFont.StyleHint.Monospace,
+                                QFont.StyleStrategy.PreferDefault)
+        self._font.setFixedPitch(True)
+        self._font.setKerning(False)
         self.setFont(self._font)
         self._update_metrics()
 
@@ -74,18 +94,24 @@ class HexWidget(QAbstractScrollArea):
 
     def _update_metrics(self):
         fm = QFontMetrics(self.font())
-        self._char_w = fm.horizontalAdvance("0")
+        # Use the max of several glyphs so ligature-prone fonts still
+        # line up correctly when drawn one-char-at-a-time.
+        self._char_w = max(fm.horizontalAdvance(c) for c in "0XW ")
         self._line_h = fm.height() + 2  # small padding
+
+        bpl = self._bytes_per_line_hex
+        # Mid gap only if there's a "byte 8" split worth rendering
+        mid_gap = 1 if bpl > 8 else 0
 
         # Column positions (in chars then converted to px)
         # Offset column: "00000000  " = 10 chars
         self._offset_width = OFFSET_CHARS * self._char_w
-        # Hex column: "XX " * 16 + extra gap at byte 8
+        # Hex column: "XX " * bpl + extra gap at byte 8
         self._hex_start = self._offset_width + self._char_w
-        self._hex_col_width = (3 * BYTES_PER_LINE + 1) * self._char_w  # +1 for mid gap
+        self._hex_col_width = (3 * bpl + mid_gap) * self._char_w
         # ASCII column
         self._ascii_start = self._hex_start + self._hex_col_width + self._char_w
-        self._ascii_width = BYTES_PER_LINE * self._char_w
+        self._ascii_width = bpl * self._char_w
         self._total_width = self._ascii_start + self._ascii_width + self._char_w
 
     def setFont(self, font):
@@ -106,7 +132,26 @@ class HexWidget(QAbstractScrollArea):
         self.cursor_moved.emit(0)
 
     def _bytes_per_line(self) -> int:
-        return self._text_cols if self._text_mode else BYTES_PER_LINE
+        return self._text_cols if self._text_mode else self._bytes_per_line_hex
+
+    def bytes_per_line(self) -> int:
+        """Public accessor for the current hex-mode bytes-per-line."""
+        return self._bytes_per_line_hex
+
+    def set_bytes_per_line(self, n: int):
+        """Change hex-mode bytes-per-line; clamps to MIN..MAX."""
+        n = max(MIN_BYTES_PER_LINE, min(int(n), MAX_BYTES_PER_LINE))
+        if n == self._bytes_per_line_hex:
+            return
+        # Preserve approximate cursor position (stay at same byte).
+        self._bytes_per_line_hex = n
+        self._update_metrics()
+        self._update_scrollbar()
+        # Snap cursor so _ensure_visible uses the new bpl correctly
+        if self._buffer is not None:
+            self._ensure_visible(self._cursor_offset)
+        self.viewport().update()
+        self.bytes_per_line_changed.emit(n)
 
     def _total_lines(self) -> int:
         if not self._buffer:
@@ -225,6 +270,9 @@ class HexWidget(QAbstractScrollArea):
         painter.setFont(self._font)
         painter.fillRect(self.viewport().rect(), self._bg)
 
+        bpl = self._bytes_per_line_hex
+        mid_split = 8 if bpl > 8 else bpl  # where the mid-gap sits
+
         first_line = self.verticalScrollBar().value()
         visible = self._visible_lines() + 1
 
@@ -232,12 +280,12 @@ class HexWidget(QAbstractScrollArea):
 
         for i in range(visible):
             line_idx = first_line + i
-            offset = line_idx * BYTES_PER_LINE
+            offset = line_idx * bpl
             if offset >= self._buffer.size():
                 break
 
             y = i * self._line_h
-            data = self._buffer.read(offset, BYTES_PER_LINE)
+            data = self._buffer.read(offset, bpl)
             data_len = len(data)
 
             # Offset column background
@@ -281,8 +329,8 @@ class HexWidget(QAbstractScrollArea):
             for j in range(data_len):
                 byte_offset = offset + j
                 x = self._hex_start + j * 3 * self._char_w
-                # Extra gap at byte 8
-                if j >= 8:
+                # Extra gap at the mid-split (only when bpl > 8)
+                if bpl > 8 and j >= mid_split:
                     x += self._char_w
 
                 byte_rect = QRect(x, y, 2 * self._char_w, self._line_h)
@@ -460,22 +508,22 @@ class HexWidget(QAbstractScrollArea):
         # Hex mode: check hex column
         if self._hex_start <= x < self._ascii_start - self._char_w // 2:
             rel = x - self._hex_start
-            # Account for mid gap
+            # Account for mid gap (only present when bpl > 8)
             col = int(rel // (3 * self._char_w))
-            if col >= 8:
+            if bpl > 8 and col >= 8:
                 # Adjust for mid-gap
                 rel2 = x - self._hex_start - self._char_w
                 col = int(rel2 // (3 * self._char_w))
                 if col < 8:
                     col = 8
-            col = max(0, min(col, BYTES_PER_LINE - 1))
+            col = max(0, min(col, bpl - 1))
             off = offset_base + col
             return min(off, self._buffer.size() - 1)
 
         # Check ASCII column
         if self._ascii_start <= x < self._ascii_start + self._ascii_width:
             col = (x - self._ascii_start) // self._char_w
-            col = max(0, min(col, BYTES_PER_LINE - 1))
+            col = max(0, min(col, bpl - 1))
             off = offset_base + col
             return min(off, self._buffer.size() - 1)
 
@@ -521,6 +569,9 @@ class HexWidget(QAbstractScrollArea):
             if self._selection_start == self._selection_end:
                 self._selection_start = -1
                 self._selection_end = -1
+                # Emit a zero-length selection so observers (e.g. the
+                # data inspector) know to clear any prior range.
+                self.selection_changed.emit(self._cursor_offset, 0)
             else:
                 lo, hi = self._ordered_selection()
                 self.selection_changed.emit(lo, hi - lo + 1)
@@ -582,6 +633,7 @@ class HexWidget(QAbstractScrollArea):
             return
 
         # Update selection
+        had_selection = self.has_selection()
         if shift:
             if self._selection_start < 0:
                 self._selection_start = self._cursor_offset
@@ -593,6 +645,14 @@ class HexWidget(QAbstractScrollArea):
         self._cursor_offset = new_off
         self._ensure_visible(new_off)
         self.cursor_moved.emit(new_off)
+
+        # Keep observers (inspector, etc.) in sync with selection state.
+        if shift and self.has_selection():
+            lo, hi = self._ordered_selection()
+            self.selection_changed.emit(lo, hi - lo + 1)
+        elif had_selection:
+            self.selection_changed.emit(new_off, 0)
+
         self.viewport().update()
 
     def _copy_selection(self):
@@ -1002,6 +1062,7 @@ class HexWidget(QAbstractScrollArea):
         if not self._buffer:
             return
         offset = max(0, min(offset, self._buffer.size() - 1))
+        had_selection = self.has_selection()
         self._cursor_offset = offset
         if length > 0:
             self._selection_start = offset
@@ -1011,6 +1072,8 @@ class HexWidget(QAbstractScrollArea):
         else:
             self._selection_start = -1
             self._selection_end = -1
+            if had_selection:
+                self.selection_changed.emit(offset, 0)
         self._scroll_to_center(offset)
         self.cursor_moved.emit(offset)
         self.viewport().update()

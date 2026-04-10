@@ -1,5 +1,14 @@
 # -*- coding: utf-8 -*-
-"""Main hex editor window — standalone QMainWindow."""
+"""Main hex editor window -- standalone QMainWindow.
+
+Refactored to eliminate duplicated buffer distribution across
+open_file / open_bytes / _broadcast_buffer_changed by maintaining
+a registry of buffer-aware dock widgets.
+
+Design pattern: **Mediator** -- HexEditorWindow coordinates all
+dock widgets and the central hex view without them knowing about
+each other.
+"""
 
 from datetime import datetime
 from pathlib import Path
@@ -7,7 +16,8 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QFont, QKeySequence, QIcon
 from PySide6.QtWidgets import (QMainWindow, QFileDialog, QDockWidget,
-                               QStatusBar, QToolBar, QApplication, QLabel,
+                               QStatusBar, QToolBar, QToolButton, QMenu,
+                               QApplication, QLabel,
                                QMessageBox, QSpinBox, QWidget)
 
 from .hex_data_buffer import HexDataBuffer
@@ -24,10 +34,13 @@ from .transforms import (REGISTRY, TransformError, RecipeStep, find_spec,
                          apply_recipe, recipe_length_preserving)
 from .transform_dialog import TransformDialog
 from .transform_log import TransformLogWidget, TransformLogEntry
+from .edit_log_widget import EditLogWidget
+
+
+# ── Formatting helpers (pure functions) ────────────────────────────
 
 
 def _format_scope(scope: str, ranges: list[tuple[int, int]]) -> str:
-    """Human-readable scope label for the log table."""
     if scope == "entire":
         return "Entire file"
     if scope == "selection":
@@ -35,18 +48,16 @@ def _format_scope(scope: str, ranges: list[tuple[int, int]]) -> str:
             return "Selection"
         lo, hi = ranges[0]
         return f"Selection 0x{lo:X}-0x{hi:X}"
-    # regions
     if not ranges:
         return "Regions"
     if len(ranges) <= 3:
         parts = [f"0x{lo:X}-0x{hi:X}" for lo, hi in ranges]
         return "Regions: " + ", ".join(parts)
     lo0, hi0 = ranges[0]
-    return f"Regions: 0x{lo0:X}-0x{hi0:X} … (+{len(ranges) - 1} more)"
+    return f"Regions: 0x{lo0:X}-0x{hi0:X} \u2026 (+{len(ranges) - 1} more)"
 
 
 def _format_params(params: dict) -> str:
-    """Compact params label for a single step (truncates long hex)."""
     if not params:
         return ""
     parts = []
@@ -59,14 +70,12 @@ def _format_params(params: dict) -> str:
 
 
 def _format_recipe_name(steps: list[RecipeStep]) -> str:
-    """Render a recipe as ``step1 \u2192 step2 \u2192 step3``."""
     if not steps:
         return "(empty)"
     return " \u2192 ".join(step.spec_name for step in steps)
 
 
 def _format_recipe_params(steps: list[RecipeStep]) -> str:
-    """Render per-step params as ``step1: k=v | step2: k=v``."""
     parts = []
     for step in steps:
         if not step.params:
@@ -75,8 +84,44 @@ def _format_recipe_params(steps: list[RecipeStep]) -> str:
     return " | ".join(parts)
 
 
+# ── Dock descriptor (eliminates repetitive dock creation) ──────────
+
+
+class _DockSpec:
+    """Lightweight descriptor for dock widget creation."""
+    __slots__ = ("attr", "title", "widget_class", "area", "hidden")
+
+    def __init__(self, attr: str, title: str, widget_class: type,
+                 area: Qt.DockWidgetArea, hidden: bool = False):
+        self.attr = attr
+        self.title = title
+        self.widget_class = widget_class
+        self.area = area
+        self.hidden = hidden
+
+
+_DOCK_SPECS = [
+    _DockSpec("format_viewer", "Format", FormatViewerWidget,
+              Qt.DockWidgetArea.LeftDockWidgetArea),
+    _DockSpec("inspector", "Inspector", DataInspectorWidget,
+              Qt.DockWidgetArea.RightDockWidgetArea),
+    _DockSpec("strings_widget", "Strings", StringResultsWidget,
+              Qt.DockWidgetArea.BottomDockWidgetArea, hidden=True),
+    _DockSpec("entropy_widget", "Entropy", EntropyWidget,
+              Qt.DockWidgetArea.BottomDockWidgetArea, hidden=True),
+    _DockSpec("xor_widget", "XOR Scanner", XorScannerWidget,
+              Qt.DockWidgetArea.BottomDockWidgetArea, hidden=True),
+    _DockSpec("disasm_widget", "Disassembly", DisasmWidget,
+              Qt.DockWidgetArea.BottomDockWidgetArea, hidden=True),
+]
+
+
 class HexEditorWindow(QMainWindow):
-    """Standalone hex editor window."""
+    """Standalone hex editor window.
+
+    Acts as a **Mediator**: coordinates signals between the central
+    HexWidget and all dock widgets without them coupling to each other.
+    """
 
     yara_pattern_generated = Signal(str)
 
@@ -86,7 +131,6 @@ class HexEditorWindow(QMainWindow):
         self.resize(1200, 800)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
-        # Inherit application icon
         icon_path = Path(__file__).parent.parent / "assets" / "YaraXGUI.ico"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
@@ -96,104 +140,144 @@ class HexEditorWindow(QMainWindow):
         self._search_dialog: HexSearchDialog | None = None
 
         # ── Central widget ──────────────────────────────────────────
-
         self._hex_widget = HexWidget(self)
         self.setCentralWidget(self._hex_widget)
 
-        # ── Dock widgets ────────────────────────────────────────────
+        # ── Dock widgets (created from specs) ───────────────────────
+        self._docks: dict[str, QDockWidget] = {}
+        self._widgets: dict[str, QWidget] = {}
+        self._buffer_aware: list[QWidget] = []
 
-        # Format viewer (left)
-        self._format_viewer = FormatViewerWidget(self)
-        self._format_dock = QDockWidget("Format", self)
-        self._format_dock.setWidget(self._format_viewer)
-        self._format_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.LeftDockWidgetArea, self._format_dock)
+        for spec in _DOCK_SPECS:
+            widget = spec.widget_class(self)
+            dock = QDockWidget(spec.title, self)
+            dock.setWidget(widget)
+            areas = spec.area
+            if areas in (Qt.DockWidgetArea.LeftDockWidgetArea,
+                         Qt.DockWidgetArea.RightDockWidgetArea):
+                dock.setAllowedAreas(
+                    Qt.DockWidgetArea.LeftDockWidgetArea |
+                    Qt.DockWidgetArea.RightDockWidgetArea)
+            else:
+                dock.setAllowedAreas(
+                    Qt.DockWidgetArea.BottomDockWidgetArea |
+                    Qt.DockWidgetArea.TopDockWidgetArea)
+            self.addDockWidget(areas, dock)
+            if spec.hidden:
+                dock.hide()
 
-        # Data inspector (right)
-        self._inspector = DataInspectorWidget(self)
+            self._docks[spec.attr] = dock
+            self._widgets[spec.attr] = widget
+            if hasattr(widget, "set_buffer"):
+                self._buffer_aware.append(widget)
+
+        # Convenience accessors
+        self._inspector: DataInspectorWidget = self._widgets["inspector"]
         self._inspector.setMinimumWidth(200)
-        self._inspector_dock = QDockWidget("Inspector", self)
-        self._inspector_dock.setWidget(self._inspector)
-        self._inspector_dock.setAllowedAreas(Qt.DockWidgetArea.LeftDockWidgetArea | Qt.DockWidgetArea.RightDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, self._inspector_dock)
+        self._format_viewer: FormatViewerWidget = self._widgets["format_viewer"]
+        self._strings_widget: StringResultsWidget = self._widgets["strings_widget"]
+        self._entropy_widget: EntropyWidget = self._widgets["entropy_widget"]
+        self._xor_widget: XorScannerWidget = self._widgets["xor_widget"]
+        self._disasm_widget: DisasmWidget = self._widgets["disasm_widget"]
 
-        # String results (bottom)
-        self._strings_widget = StringResultsWidget(self)
-        self._strings_dock = QDockWidget("Strings", self)
-        self._strings_dock.setWidget(self._strings_widget)
-        self._strings_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._strings_dock)
-        self._strings_dock.hide()
-
-        # Entropy (bottom)
-        self._entropy_widget = EntropyWidget(self)
-        self._entropy_dock = QDockWidget("Entropy", self)
-        self._entropy_dock.setWidget(self._entropy_widget)
-        self._entropy_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._entropy_dock)
-        self._entropy_dock.hide()
-
-        # XOR Scanner (bottom)
-        self._xor_widget = XorScannerWidget(self)
-        self._xor_dock = QDockWidget("XOR Scanner", self)
-        self._xor_dock.setWidget(self._xor_widget)
-        self._xor_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._xor_dock)
-        self._xor_dock.hide()
-
-        # Disassembly (bottom)
-        self._disasm_widget = DisasmWidget(self)
-        self._disasm_dock = QDockWidget("Disassembly", self)
-        self._disasm_dock.setWidget(self._disasm_widget)
-        self._disasm_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._disasm_dock)
-        self._disasm_dock.hide()
-
-        # Transforms log (bottom, hidden until first transform)
+        # Transform log (manually created -- has extra signals)
         self._xform_log = TransformLogWidget(self)
         self._xform_dock = QDockWidget("Transforms", self)
         self._xform_dock.setWidget(self._xform_log)
-        self._xform_dock.setAllowedAreas(Qt.DockWidgetArea.BottomDockWidgetArea | Qt.DockWidgetArea.TopDockWidgetArea)
-        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea, self._xform_dock)
+        self._xform_dock.setAllowedAreas(
+            Qt.DockWidgetArea.BottomDockWidgetArea |
+            Qt.DockWidgetArea.TopDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                           self._xform_dock)
         self._xform_dock.hide()
+        self._docks["xform_log"] = self._xform_dock
 
-        # ── Connections ─────────────────────────────────────────────
+        # Edit log (bottom, hidden until first edit)
+        self._edit_log = EditLogWidget(self)
+        self._edit_log_dock = QDockWidget("Edit Log", self)
+        self._edit_log_dock.setWidget(self._edit_log)
+        self._edit_log_dock.setAllowedAreas(
+            Qt.DockWidgetArea.BottomDockWidgetArea |
+            Qt.DockWidgetArea.TopDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                           self._edit_log_dock)
+        self._edit_log_dock.hide()
+        self._docks["edit_log"] = self._edit_log_dock
 
-        self._hex_widget.cursor_moved.connect(self._on_cursor_moved)
-        self._hex_widget.selection_changed.connect(self._inspector.update_selection)
-        self._format_viewer.navigate_requested.connect(self._hex_widget.navigate_to_offset)
-        self._strings_widget.navigate_requested.connect(self._hex_widget.navigate_to_offset)
-        self._entropy_widget.navigate_requested.connect(self._hex_widget.navigate_to_offset)
-        self._xor_widget.navigate_requested.connect(self._hex_widget.navigate_to_offset)
-        self._hex_widget.yara_pattern_requested.connect(self.yara_pattern_generated.emit)
-        self._hex_widget.pattern_regions_changed.connect(self._on_pattern_regions_changed)
-        self._hex_widget.cursor_moved.connect(self._entropy_widget.set_cursor_offset)
-        self._disasm_widget.navigate_requested.connect(self._hex_widget.navigate_to_offset)
-        self._hex_widget.disassemble_requested.connect(self._on_disassemble_requested)
-        self._hex_widget.transform_requested.connect(self._on_apply_transform)
-        self._xform_log.undo_requested.connect(self._on_undo_transform)
-        self._xform_log.redo_requested.connect(self._on_redo_transform)
-        self._xform_log.clear_requested.connect(self._on_clear_transforms)
-        self._xform_log.navigate_requested.connect(self._hex_widget.navigate_to_offset)
-        self._xform_log.modify_requested.connect(self._on_modify_transform)
+        # ── Signal wiring (Mediator pattern) ────────────────────────
+        self._connect_signals()
 
-        # ── Menus ───────────────────────────────────────────────────
-
+        # ── Menus & toolbar ─────────────────────────────────────────
         self._setup_menus()
         self._setup_toolbar()
         self._setup_statusbar()
 
-        # Apply theme if available
         if self._theme_manager:
             self.apply_theme()
 
-    # ── Menu setup ──────────────────────────────────────────────────
+    # ── Signal wiring ──────────────────────────────────────────────
+
+    def _connect_signals(self):
+        hw = self._hex_widget
+
+        # Cursor & selection -> inspector, status, entropy
+        hw.cursor_moved.connect(self._on_cursor_moved)
+        hw.selection_changed.connect(self._inspector.update_selection)
+        hw.cursor_moved.connect(self._entropy_widget.set_cursor_offset)
+
+        # Navigation from dock widgets -> hex view
+        for widget in (self._format_viewer, self._strings_widget,
+                       self._entropy_widget, self._xor_widget,
+                       self._disasm_widget, self._xform_log):
+            if hasattr(widget, "navigate_requested"):
+                widget.navigate_requested.connect(hw.navigate_to_offset)
+
+        # YARA integration
+        hw.yara_pattern_requested.connect(self.yara_pattern_generated.emit)
+        hw.pattern_regions_changed.connect(self._on_pattern_regions_changed)
+
+        # Disassembly
+        hw.disassemble_requested.connect(self._on_disassemble_requested)
+
+        # Direct byte edits (typing, delete, paste, fill, undo/redo)
+        hw.data_edited.connect(self._on_data_edited)
+
+        # Edit log
+        self._edit_log.navigate_requested.connect(hw.navigate_to_offset)
+        self._edit_log.undo_to_requested.connect(self._on_undo_to_entry)
+
+        # Transforms
+        hw.transform_requested.connect(self._on_apply_transform)
+        self._xform_log.undo_requested.connect(self._on_undo_transform)
+        self._xform_log.redo_requested.connect(self._on_redo_transform)
+        self._xform_log.clear_requested.connect(self._on_clear_transforms)
+        self._xform_log.modify_requested.connect(self._on_modify_transform)
+
+    # ── Unified buffer distribution ────────────────────────────────
+
+    def _distribute_buffer(self):
+        """Push the buffer to every buffer-aware widget. Single source."""
+        for widget in self._buffer_aware:
+            widget.set_buffer(self._buffer)
+        self._hex_widget.set_buffer(self._buffer)
+        self._status_size.setText(f"Size: {self._buffer.size():,}")
+
+    def _broadcast_buffer_changed(self):
+        """Re-push after transforms (invalidates caches)."""
+        for widget in self._buffer_aware:
+            widget.set_buffer(self._buffer)
+        self._hex_widget.refresh_after_data_change()
+        self._status_size.setText(f"Size: {self._buffer.size():,}")
+
+    # ── Menu setup ─────────────────────────────────────────────────
 
     def _setup_menus(self):
         menubar = self.menuBar()
+        hw = self._hex_widget
 
-        # File menu
+        # ── File ───────────────────────────────────────────────────
         file_menu = menubar.addMenu("&File")
+
         open_action = QAction("&Open...", self)
         open_action.setShortcut(QKeySequence.StandardKey.Open)
         open_action.triggered.connect(self._on_open)
@@ -207,8 +291,7 @@ class HexEditorWindow(QMainWindow):
         save_sel_action = QAction("Save Se&lection As...", self)
         save_sel_action.setShortcut(QKeySequence("Ctrl+Shift+E"))
         save_sel_action.setToolTip(
-            "Save the current selection (or marked regions, concatenated) to a new file"
-        )
+            "Save the current selection (or marked regions) to a new file")
         save_sel_action.triggered.connect(self._on_save_selection_as)
         file_menu.addAction(save_sel_action)
 
@@ -222,34 +305,77 @@ class HexEditorWindow(QMainWindow):
         close_action.triggered.connect(self.close)
         file_menu.addAction(close_action)
 
-        # Edit menu
+        # ── Edit ───────────────────────────────────────────────────
         edit_menu = menubar.addMenu("&Edit")
-        copy_action = QAction("&Copy", self)
-        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
-        copy_action.triggered.connect(self._hex_widget.copy_as_hex)
-        edit_menu.addAction(copy_action)
 
-        copy_yara_action = QAction("Copy as &YARA Hex", self)
-        copy_yara_action.setShortcut(QKeySequence("Ctrl+Y"))
-        copy_yara_action.triggered.connect(self._hex_widget.copy_as_yara_hex)
-        edit_menu.addAction(copy_yara_action)
+        undo_action = QAction("&Undo", self)
+        undo_action.setShortcut(QKeySequence("Ctrl+Z"))
+        undo_action.triggered.connect(hw._do_undo)
+        edit_menu.addAction(undo_action)
 
-        send_yara_action = QAction("&Send to YARA Editor", self)
-        send_yara_action.setShortcut(QKeySequence("Ctrl+Shift+Y"))
-        send_yara_action.triggered.connect(self._hex_widget.send_to_yara_editor)
-        edit_menu.addAction(send_yara_action)
+        redo_action = QAction("&Redo", self)
+        redo_action.setShortcut(QKeySequence("Ctrl+Shift+Z"))
+        redo_action.triggered.connect(hw._do_redo)
+        edit_menu.addAction(redo_action)
 
         edit_menu.addSeparator()
+
+        copy_action = QAction("&Copy", self)
+        copy_action.setShortcut(QKeySequence.StandardKey.Copy)
+        copy_action.triggered.connect(hw.copy_as_hex)
+        edit_menu.addAction(copy_action)
+
+        paste_action = QAction("&Paste", self)
+        paste_action.setShortcut(QKeySequence("Ctrl+V"))
+        paste_action.triggered.connect(hw._do_paste)
+        edit_menu.addAction(paste_action)
+
+        # Copy-as submenu
+        copy_as_menu = edit_menu.addMenu("Copy As")
+        for label, fmt_name in [
+            ("Hex (spaced)", "hex"),
+            ("Hex (compact)", "hex_compact"),
+            ("YARA Hex\tCtrl+Y", "yara_hex"),
+            ("C Escape", "c_escape"),
+            ("Python Bytes", "python_bytes"),
+            ("ASCII", "ascii"),
+            ("Base64", "base64"),
+        ]:
+            act = copy_as_menu.addAction(label)
+            act.triggered.connect(lambda checked, f=fmt_name: hw._exporter.copy(f))
+        copy_as_menu.addSeparator()
+        act_send = copy_as_menu.addAction("Send to YARA Editor\tCtrl+Shift+Y")
+        act_send.triggered.connect(hw.send_to_yara_editor)
+
+        edit_menu.addSeparator()
+
+        insert_action = QAction("&Insert Bytes...", self)
+        insert_action.setShortcut(QKeySequence("Ctrl+I"))
+        insert_action.triggered.connect(hw._do_insert_dialog)
+        edit_menu.addAction(insert_action)
+
+        fill_action = QAction("&Fill Selection...", self)
+        fill_action.setShortcut(QKeySequence("Ctrl+Shift+F"))
+        fill_action.triggered.connect(hw._do_fill_dialog)
+        edit_menu.addAction(fill_action)
+
+        xform_action = QAction("Apply &Transform...", self)
+        xform_action.triggered.connect(self._on_apply_transform)
+        edit_menu.addAction(xform_action)
+
+        edit_menu.addSeparator()
+
         goto_action = QAction("&Go to Offset...", self)
         goto_action.setShortcut(QKeySequence("Ctrl+G"))
         goto_action.triggered.connect(self._on_goto)
         edit_menu.addAction(goto_action)
+
         find_action = QAction("&Find...", self)
         find_action.setShortcut(QKeySequence.StandardKey.Find)
         find_action.triggered.connect(self._on_find)
         edit_menu.addAction(find_action)
 
-        # View menu
+        # ── View ───────────────────────────────────────────────────
         view_menu = menubar.addMenu("&View")
 
         self._toggle_view_action = QAction("&Text View", self)
@@ -258,102 +384,114 @@ class HexEditorWindow(QMainWindow):
         self._toggle_view_action.setChecked(False)
         self._toggle_view_action.toggled.connect(self._on_toggle_view_mode)
         view_menu.addAction(self._toggle_view_action)
+
+        self._toggle_escape_action = QAction("&Escape non-printable chars", self)
+        self._toggle_escape_action.setCheckable(True)
+        self._toggle_escape_action.setChecked(False)
+        self._toggle_escape_action.setToolTip(
+            "Off: notepad view with real newlines. On: fixed grid, dots.")
+        self._toggle_escape_action.toggled.connect(self._on_toggle_text_escape_mode)
+        view_menu.addAction(self._toggle_escape_action)
+
         view_menu.addSeparator()
 
-        view_menu.addAction(self._format_dock.toggleViewAction())
-        view_menu.addAction(self._inspector_dock.toggleViewAction())
-        view_menu.addAction(self._strings_dock.toggleViewAction())
-        view_menu.addAction(self._entropy_dock.toggleViewAction())
-        view_menu.addAction(self._xor_dock.toggleViewAction())
-        view_menu.addAction(self._disasm_dock.toggleViewAction())
-        view_menu.addAction(self._xform_dock.toggleViewAction())
+        # Panels submenu — keeps the View menu clean
+        panels_menu = view_menu.addMenu("&Panels")
+        for dock in self._docks.values():
+            panels_menu.addAction(dock.toggleViewAction())
 
     def _setup_toolbar(self):
         toolbar = QToolBar("Main", self)
         toolbar.setMovable(False)
         self.addToolBar(toolbar)
 
-        open_action = QAction("Open", self)
-        open_action.setToolTip("Open file (Ctrl+O)")
-        open_action.triggered.connect(self._on_open)
-        toolbar.addAction(open_action)
-
-        goto_action = QAction("Goto", self)
-        goto_action.setToolTip("Go to offset (Ctrl+G)")
-        goto_action.triggered.connect(self._on_goto)
-        toolbar.addAction(goto_action)
-
-        find_action = QAction("Find", self)
-        find_action.setToolTip("Find pattern (Ctrl+F)")
-        find_action.triggered.connect(self._on_find)
-        toolbar.addAction(find_action)
-
-        strings_action = QAction("Strings", self)
-        strings_action.setToolTip("Toggle strings panel")
-        strings_action.triggered.connect(lambda: self._strings_dock.setVisible(not self._strings_dock.isVisible()))
-        toolbar.addAction(strings_action)
-
-        inspector_action = QAction("Inspector", self)
-        inspector_action.setToolTip("Toggle data inspector")
-        inspector_action.triggered.connect(lambda: self._inspector_dock.setVisible(not self._inspector_dock.isVisible()))
-        toolbar.addAction(inspector_action)
-
-        format_action = QAction("Format", self)
-        format_action.setToolTip("Toggle format viewer")
-        format_action.triggered.connect(lambda: self._format_dock.setVisible(not self._format_dock.isVisible()))
-        toolbar.addAction(format_action)
-
-        entropy_action = QAction("Entropy", self)
-        entropy_action.setToolTip("Toggle entropy heatmap")
-        entropy_action.triggered.connect(lambda: self._entropy_dock.setVisible(not self._entropy_dock.isVisible()))
-        toolbar.addAction(entropy_action)
-
-        xor_action = QAction("XOR Scan", self)
-        xor_action.setToolTip("Toggle XOR string scanner")
-        xor_action.triggered.connect(lambda: self._xor_dock.setVisible(not self._xor_dock.isVisible()))
-        toolbar.addAction(xor_action)
-
-        disasm_action = QAction("Disasm", self)
-        disasm_action.setToolTip("Toggle disassembly panel")
-        disasm_action.triggered.connect(lambda: self._disasm_dock.setVisible(not self._disasm_dock.isVisible()))
-        toolbar.addAction(disasm_action)
-
-        xform_action = QAction("Transform", self)
-        xform_action.setToolTip("Apply a data transform to the selection/regions")
-        xform_action.triggered.connect(self._on_apply_transform)
-        toolbar.addAction(xform_action)
-
-        xform_log_action = QAction("Xform Log", self)
-        xform_log_action.setToolTip("Toggle transforms log panel")
-        xform_log_action.triggered.connect(lambda: self._xform_dock.setVisible(not self._xform_dock.isVisible()))
-        toolbar.addAction(xform_log_action)
+        # ── Primary actions (always visible) ───────────────────────
+        for label, tip, handler in [
+            ("Open", "Open file (Ctrl+O)", self._on_open),
+            ("Goto", "Go to offset (Ctrl+G)", self._on_goto),
+            ("Find", "Find pattern (Ctrl+F)", self._on_find),
+        ]:
+            act = QAction(label, self)
+            act.setToolTip(tip)
+            act.triggered.connect(handler)
+            toolbar.addAction(act)
 
         toolbar.addSeparator()
 
+        # ── Panels dropdown (replaces 8+ individual toggle buttons) ─
+        panels_btn = QToolButton(self)
+        panels_btn.setText("Panels")
+        panels_btn.setToolTip("Show/hide analysis panels")
+        panels_btn.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        panels_menu = QMenu(self)
+        for dock in self._docks.values():
+            panels_menu.addAction(dock.toggleViewAction())
+        panels_btn.setMenu(panels_menu)
+        toolbar.addWidget(panels_btn)
+
+        act_xform = QAction("Transform", self)
+        act_xform.setToolTip("Apply a data transform (Edit > Apply Transform)")
+        act_xform.triggered.connect(self._on_apply_transform)
+        toolbar.addAction(act_xform)
+
+        toolbar.addSeparator()
+
+        # ── View mode toggles ──────────────────────────────────────
         self._view_toggle_btn = QAction("Text", self)
         self._view_toggle_btn.setToolTip("Switch to text view (Ctrl+T)")
         self._view_toggle_btn.setCheckable(True)
         self._view_toggle_btn.toggled.connect(self._toggle_view_action.setChecked)
         toolbar.addAction(self._view_toggle_btn)
 
+        self._escape_text_action = QAction("Escape", self)
+        self._escape_text_action.setCheckable(True)
+        self._escape_text_action.setChecked(False)
+        self._escape_text_action.setToolTip(
+            "Off: notepad view with real newlines.\n"
+            "On: fixed 64-byte grid, non-printable as \u00b7")
+        self._escape_text_action.toggled.connect(self._on_toggle_text_escape_mode)
+        toolbar.addAction(self._escape_text_action)
+
         toolbar.addSeparator()
 
-        # Bytes-per-row selector
+        # ── Bytes per row ──────────────────────────────────────────
         toolbar.addWidget(QLabel(" Bytes/row: "))
         self._bpl_spin = QSpinBox(toolbar)
         self._bpl_spin.setRange(4, 64)
-        self._bpl_spin.setSingleStep(4)
+        self._bpl_spin.setSingleStep(1)
         self._bpl_spin.setValue(self._hex_widget.bytes_per_line())
         self._bpl_spin.setToolTip(
-            "Bytes per row in hex view (4–64). Common: 8, 16, 24, 32."
-        )
+            "Bytes per row in hex view (4\u201364). Common: 8, 16, 24, 32.")
         self._bpl_spin.valueChanged.connect(self._hex_widget.set_bytes_per_line)
-        # Keep spinner in sync if anything else mutates bpl
         self._hex_widget.bytes_per_line_changed.connect(self._on_bpl_changed)
         toolbar.addWidget(self._bpl_spin)
 
+        toolbar.addSeparator()
+
+        # ── Read-only lock toggle ──────────────────────────────────
+        self._lock_action = QAction("\U0001F512 Read-Only", self)
+        self._lock_action.setCheckable(True)
+        self._lock_action.setChecked(True)  # locked by default
+        self._lock_action.setToolTip(
+            "Locked: editing disabled (safe browsing).\n"
+            "Click to unlock and allow byte editing.")
+        self._lock_action.toggled.connect(self._on_lock_toggled)
+        toolbar.addAction(self._lock_action)
+
+    def _on_lock_toggled(self, locked: bool):
+        self._hex_widget.read_only = locked
+        if locked:
+            self._lock_action.setText("\U0001F512 Read-Only")
+            self._lock_action.setToolTip(
+                "Locked: editing disabled (safe browsing).\n"
+                "Click to unlock and allow byte editing.")
+        else:
+            self._lock_action.setText("\U0001F513 Editable")
+            self._lock_action.setToolTip(
+                "Unlocked: byte editing enabled.\n"
+                "Click to lock and prevent accidental edits.")
+
     def _on_bpl_changed(self, n: int):
-        """Mirror external bytes-per-line changes into the toolbar spinbox."""
         if self._bpl_spin.value() == n:
             return
         self._bpl_spin.blockSignals(True)
@@ -366,14 +504,26 @@ class HexEditorWindow(QMainWindow):
         self._status_offset = QLabel("Offset: 0x00000000")
         self._status_size = QLabel("Size: 0")
         self._status_regions = QLabel("")
+        self._status_mode = QLabel("\U0001F512 Read-Only")
+        self._status_mode.setToolTip("Click the lock button in the toolbar to toggle editing")
         self._status_format = QLabel("")
         sb = self.statusBar()
         sb.addWidget(self._status_offset)
         sb.addWidget(self._status_size)
         sb.addWidget(self._status_regions)
+        sb.addPermanentWidget(self._status_mode)
         sb.addPermanentWidget(self._status_format)
 
-    # ── Actions ─────────────────────────────────────────────────────
+        # Keep status bar in sync with lock state
+        self._hex_widget.read_only_changed.connect(self._on_read_only_changed)
+
+    def _on_read_only_changed(self, read_only: bool):
+        if read_only:
+            self._status_mode.setText("\U0001F512 Read-Only")
+        else:
+            self._status_mode.setText("\U0001F513 Editable")
+
+    # ── Actions ────────────────────────────────────────────────────
 
     def _on_open(self):
         filepath, _ = QFileDialog.getOpenFileName(
@@ -390,6 +540,16 @@ class HexEditorWindow(QMainWindow):
         self._view_toggle_btn.setToolTip(tooltip)
         self._toggle_view_action.setText("&Hex View" if text_mode else "&Text View")
 
+    def _on_toggle_text_escape_mode(self, escape: bool):
+        self._hex_widget.set_text_escape_mode(escape)
+        for act in (self._escape_text_action, self._toggle_escape_action):
+            if act.isChecked() != escape:
+                act.blockSignals(True)
+                try:
+                    act.setChecked(escape)
+                finally:
+                    act.blockSignals(False)
+
     def _on_goto(self):
         if self._buffer.size() == 0:
             return
@@ -402,7 +562,8 @@ class HexEditorWindow(QMainWindow):
             return
         if self._search_dialog is None:
             self._search_dialog = HexSearchDialog(self._buffer, self)
-            self._search_dialog.navigate_requested.connect(self._hex_widget.navigate_to_offset)
+            self._search_dialog.navigate_requested.connect(
+                self._hex_widget.navigate_to_offset)
         else:
             self._search_dialog.set_buffer(self._buffer)
         self._search_dialog.show()
@@ -414,17 +575,39 @@ class HexEditorWindow(QMainWindow):
         self._inspector.update_offset(offset)
 
     def _on_pattern_regions_changed(self, count: int):
-        if count > 0:
-            self._status_regions.setText(f"Pattern regions: {count}")
-        else:
-            self._status_regions.setText("")
+        self._status_regions.setText(
+            f"Pattern regions: {count}" if count > 0 else "")
 
     def _on_disassemble_requested(self, code: bytes, base_offset: int):
-        self._disasm_dock.show()
-        self._disasm_dock.raise_()
+        self._docks["disasm_widget"].show()
+        self._docks["disasm_widget"].raise_()
         self._disasm_widget.disassemble_bytes(code, base_offset)
 
-    # ── Transform handlers ──────────────────────────────────────────
+    def _on_data_edited(self):
+        """Handle direct byte edits from the hex widget (typing, delete, etc.)."""
+        self._mark_modified()
+        self._inspector.set_buffer(self._buffer)
+        self._status_size.setText(f"Size: {self._buffer.size():,}")
+
+        # Refresh the edit log table
+        editor = self._hex_widget._editor
+        history = editor.edit_history
+        self._edit_log.refresh(history)
+        if history:
+            self._edit_log_dock.show()
+
+    def _on_undo_to_entry(self, target_count: int):
+        """Undo back until the undo stack has *target_count* entries."""
+        editor = self._hex_widget._editor
+        while editor.has_undo() and len(editor.edit_history) > target_count:
+            cmd = editor.undo()
+            if not cmd:
+                break
+        self._hex_widget.refresh_after_data_change()
+        self._hex_widget._ensure_visible(self._hex_widget._selection.cursor)
+        self._hex_widget.data_edited.emit()  # triggers _on_data_edited -> refresh log
+
+    # ── Transform handlers ─────────────────────────────────────────
 
     def _on_apply_transform(self):
         if self._buffer is None or self._buffer.size() == 0:
@@ -434,10 +617,6 @@ class HexEditorWindow(QMainWindow):
         has_sel = self._hex_widget.has_selection()
         regions = self._hex_widget.pattern_regions()
 
-        # Probe: bytes from the most-specific current scope, for live preview.
-        # The upper bound must be >= the maximum value the TransformDialog's
-        # "Show" spinner allows (see PREVIEW_BYTES_MAX in transform_dialog.py)
-        # so that users can grow the preview without re-opening the dialog.
         PROBE_MAX = 4096
         probe = b""
         if regions:
@@ -456,7 +635,6 @@ class HexEditorWindow(QMainWindow):
         if req is None:
             return
 
-        # Resolve scope → list of inclusive (lo, hi) ranges
         if req.scope == "selection":
             if not has_sel:
                 return
@@ -464,13 +642,12 @@ class HexEditorWindow(QMainWindow):
             ranges = [(lo, hi)]
         elif req.scope == "regions":
             ranges = sorted(regions)
-        else:  # entire
+        else:
             ranges = [(0, self._buffer.size() - 1)]
 
         if not ranges:
             return
 
-        # Reject overlapping ranges for length-changing recipes
         if not recipe_length_preserving(req.steps) and len(ranges) > 1:
             prev_hi = -1
             for lo, hi in ranges:
@@ -478,41 +655,13 @@ class HexEditorWindow(QMainWindow):
                     QMessageBox.warning(
                         self, "Overlapping ranges",
                         "This recipe changes length and cannot be applied to "
-                        "overlapping regions. Please clear or merge regions first.",
-                    )
+                        "overlapping regions. Please clear or merge regions first.")
                     return
                 prev_hi = hi
 
-        # Apply in reverse order so length changes don't shift earlier offsets.
-        # Keep snapshots + new lengths aligned (both in reverse-application order).
-        snapshots: list[tuple[int, bytes]] = []
-        new_lengths: list[int] = []
-        applied: list[tuple[int, int, int]] = []  # (lo, original_len, new_len) for rollback
-        try:
-            for lo, hi in sorted(ranges, reverse=True):
-                original = self._buffer.read(lo, hi - lo + 1)
-                new_bytes = apply_recipe(original, req.steps)
-                snapshots.append((lo, original))
-                new_lengths.append(len(new_bytes))
-                self._buffer.replace_range(lo, hi, new_bytes)
-                applied.append((lo, len(original), len(new_bytes)))
-        except TransformError as e:
-            # Roll back in REVERSE of apply order (low-offset first) so stored
-            # offsets remain valid as the buffer shrinks back to its pre-apply
-            # size.  Each step undoes one range of length ``new_len`` back to
-            # the captured ``original`` bytes.
-            for (lo, _orig_len, new_len), (_lo2, original) in zip(
-                reversed(applied), reversed(snapshots)
-            ):
-                self._buffer.replace_range(lo, lo + new_len - 1, original)
-            QMessageBox.warning(self, "Transform failed", str(e))
-            return
-        except Exception as e:  # defensive
-            for (lo, _orig_len, new_len), (_lo2, original) in zip(
-                reversed(applied), reversed(snapshots)
-            ):
-                self._buffer.replace_range(lo, lo + new_len - 1, original)
-            QMessageBox.critical(self, "Transform error", f"Unexpected error: {e}")
+        snapshots, new_lengths, applied = self._apply_recipe_to_ranges(
+            ranges, req.steps)
+        if snapshots is None:
             return
 
         entry = TransformLogEntry(
@@ -529,18 +678,42 @@ class HexEditorWindow(QMainWindow):
         self._mark_modified()
         self._broadcast_buffer_changed()
 
+    def _apply_recipe_to_ranges(self, ranges, steps):
+        """Apply recipe to ranges (reverse order). Returns (snapshots, new_lengths, applied) or (None,None,None) on failure."""
+        snapshots: list[tuple[int, bytes]] = []
+        new_lengths: list[int] = []
+        applied: list[tuple[int, int, int]] = []
+        try:
+            for lo, hi in sorted(ranges, reverse=True):
+                original = self._buffer.read(lo, hi - lo + 1)
+                new_bytes = apply_recipe(original, steps)
+                snapshots.append((lo, original))
+                new_lengths.append(len(new_bytes))
+                self._buffer.replace_range(lo, hi, new_bytes)
+                applied.append((lo, len(original), len(new_bytes)))
+        except (TransformError, Exception) as e:
+            for (lo, _ol, nl), (_lo2, orig) in zip(
+                reversed(applied), reversed(snapshots)
+            ):
+                self._buffer.replace_range(lo, lo + nl - 1, orig)
+            title = "Transform failed" if isinstance(e, TransformError) else "Transform error"
+            msg = str(e) if isinstance(e, TransformError) else f"Unexpected error: {e}"
+            QMessageBox.warning(self, title, msg)
+            return None, None, None
+        return snapshots, new_lengths, applied
+
+    def _undo_snapshots(self, snapshots, new_lengths):
+        """Undo applied snapshots (reverse order)."""
+        for (lo, original), new_len in zip(
+            reversed(snapshots), reversed(new_lengths)
+        ):
+            self._buffer.replace_range(lo, lo + new_len - 1, original)
+
     def _on_undo_transform(self):
         entry = self._xform_log.pop_last()
         if entry is None:
             return
-        # Apply was done high-offset → low-offset. Undo must go low → high so
-        # each stored offset still points at its (possibly shifted) new bytes
-        # when we restore them.  snapshots/new_lengths are in apply order so
-        # we simply iterate them in reverse here.
-        for (lo, original), new_len in zip(
-            reversed(entry.snapshots), reversed(entry.new_lengths)
-        ):
-            self._buffer.replace_range(lo, lo + new_len - 1, original)
+        self._undo_snapshots(entry.snapshots, entry.new_lengths)
         self._mark_modified()
         self._broadcast_buffer_changed()
 
@@ -549,22 +722,14 @@ class HexEditorWindow(QMainWindow):
         if entry is None:
             return
         if not entry.steps:
-            QMessageBox.warning(
-                self, "Redo failed",
-                "Log entry has no recipe steps to replay.",
-            )
+            QMessageBox.warning(self, "Redo failed",
+                                "Log entry has no recipe steps to replay.")
             return
-        # Validate all steps exist in the registry before touching anything.
         for step in entry.steps:
             if find_spec(step.spec_name) is None:
-                QMessageBox.warning(
-                    self, "Redo failed",
-                    f"Unknown transform in recipe: {step.spec_name}",
-                )
+                QMessageBox.warning(self, "Redo failed",
+                                    f"Unknown transform in recipe: {step.spec_name}")
                 return
-        # snapshots are in reverse-application order (high → low offsets),
-        # which is the same order we need to re-apply in so length-changing
-        # ops don't shift earlier offsets.
         try:
             for (lo, original), _new_len in zip(entry.snapshots, entry.new_lengths):
                 hi = lo + len(original) - 1
@@ -579,14 +744,6 @@ class HexEditorWindow(QMainWindow):
         self._broadcast_buffer_changed()
 
     def _on_modify_transform(self, row: int):
-        """Edit the recipe of an existing log entry in place.
-
-        Only the most recent entry can be edited because later transforms
-        depend on the result of earlier ones.  We undo the entry, run the
-        new recipe on the same byte ranges, and replace the row in place.
-        On any failure we re-apply the original recipe so the buffer state
-        stays consistent.
-        """
         entries = self._xform_log.entries()
         if row < 0 or row >= len(entries):
             return
@@ -597,50 +754,30 @@ class HexEditorWindow(QMainWindow):
                 self, "Cannot modify",
                 "Only the most recent transform can be edited directly.\n\n"
                 "Undo the later transforms first, modify this one, then "
-                "re-apply the others.",
-            )
+                "re-apply the others.")
             return
 
         if not entry.snapshots:
             return
 
-        # Probe = the original input bytes (before the recipe ran), pulled
-        # from the saved snapshot of the lowest-offset region. Cap at the
-        # same upper bound as the live-apply path so the preview spinner
-        # has the same range.
         sorted_snaps = sorted(entry.snapshots, key=lambda s: s[0])
         probe = sorted_snaps[0][1][:4096]
 
         dlg = TransformDialog(
-            has_selection=False,
-            region_count=0,
-            probe_bytes=probe,
-            parent=self,
-            initial_steps=list(entry.steps),
-            edit_mode=True,
-        )
+            has_selection=False, region_count=0, probe_bytes=probe,
+            parent=self, initial_steps=list(entry.steps), edit_mode=True)
         if dlg.exec() != dlg.DialogCode.Accepted:
             return
         new_req = dlg.get_request()
         if new_req is None or not new_req.steps:
             return
 
-        # Step 1: undo the original entry (restore originals into buffer).
-        # snapshots/new_lengths are in reverse-application order, so undo
-        # in REVERSE of that (low → high) so each stored offset is still
-        # valid as the buffer shrinks back.
-        for (lo, original), new_len in zip(
-            reversed(entry.snapshots), reversed(entry.new_lengths)
-        ):
-            self._buffer.replace_range(lo, lo + new_len - 1, original)
+        # Undo original
+        self._undo_snapshots(entry.snapshots, entry.new_lengths)
 
-        # Reconstruct the (lo, hi) ranges from the now-restored snapshots.
         ranges = sorted(
-            (off, off + len(orig) - 1) for off, orig in entry.snapshots
-        )
+            (off, off + len(orig) - 1) for off, orig in entry.snapshots)
 
-        # Reject overlapping ranges for length-changing recipes (same rule
-        # as _on_apply_transform).
         if not recipe_length_preserving(new_req.steps) and len(ranges) > 1:
             prev_hi = -1
             for lo, hi in ranges:
@@ -649,50 +786,23 @@ class HexEditorWindow(QMainWindow):
                     QMessageBox.warning(
                         self, "Overlapping ranges",
                         "This recipe changes length and cannot be applied to "
-                        "overlapping regions.",
-                    )
+                        "overlapping regions.")
                     return
                 prev_hi = hi
 
-        # Step 2: apply the new recipe in reverse-offset order.
-        new_snapshots: list[tuple[int, bytes]] = []
-        new_new_lengths: list[int] = []
-        applied: list[tuple[int, int, int]] = []
-        try:
-            for lo, hi in sorted(ranges, reverse=True):
-                original = self._buffer.read(lo, hi - lo + 1)
-                new_bytes = apply_recipe(original, new_req.steps)
-                new_snapshots.append((lo, original))
-                new_new_lengths.append(len(new_bytes))
-                self._buffer.replace_range(lo, hi, new_bytes)
-                applied.append((lo, len(original), len(new_bytes)))
-        except TransformError as e:
-            # Rollback the new recipe, then re-apply the original.
-            for (lo, _ol, nl), (_lo2, orig) in zip(
-                reversed(applied), reversed(new_snapshots)
-            ):
-                self._buffer.replace_range(lo, lo + nl - 1, orig)
+        snapshots, new_lengths, applied = self._apply_recipe_to_ranges(
+            ranges, new_req.steps)
+        if snapshots is None:
             self._restore_entry_in_place(entry)
-            QMessageBox.warning(self, "Modification failed", str(e))
-            return
-        except Exception as e:  # defensive
-            for (lo, _ol, nl), (_lo2, orig) in zip(
-                reversed(applied), reversed(new_snapshots)
-            ):
-                self._buffer.replace_range(lo, lo + nl - 1, orig)
-            self._restore_entry_in_place(entry)
-            QMessageBox.critical(self, "Modification error",
-                                 f"Unexpected error: {e}")
             return
 
-        # Step 3: build a new log entry and swap it in place.
         new_entry = TransformLogEntry(
             timestamp=datetime.now().strftime("%H:%M:%S"),
             op_name=_format_recipe_name(new_req.steps),
             scope_label=entry.scope_label,
             params_label=_format_recipe_params(new_req.steps),
-            snapshots=new_snapshots,
-            new_lengths=new_new_lengths,
+            snapshots=snapshots,
+            new_lengths=new_lengths,
             steps=list(new_req.steps),
         )
         self._xform_log.replace_entry(row, new_entry)
@@ -700,12 +810,6 @@ class HexEditorWindow(QMainWindow):
         self._broadcast_buffer_changed()
 
     def _restore_entry_in_place(self, entry: TransformLogEntry):
-        """Re-apply ``entry``'s recipe to its original bytes (used on rollback).
-
-        Used when a modify-in-place attempt fails after we've already undone
-        the original entry — this puts the buffer back exactly the way the
-        log row claims it is.
-        """
         try:
             for (lo, original), _new_len in zip(entry.snapshots, entry.new_lengths):
                 hi = lo + len(original) - 1
@@ -713,8 +817,6 @@ class HexEditorWindow(QMainWindow):
                 new_bytes = apply_recipe(current, entry.steps)
                 self._buffer.replace_range(lo, hi, new_bytes)
         except Exception:
-            # Worst case: just leave the originals in the buffer.  The log
-            # row will be slightly out of sync but the user can undo it.
             pass
 
     def _on_clear_transforms(self):
@@ -724,8 +826,7 @@ class HexEditorWindow(QMainWindow):
             self, "Clear transform log",
             "Clearing the log will drop undo history but keep the current bytes.\n"
             "Continue?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if ret == QMessageBox.StandardButton.Yes:
             self._xform_log.clear_all()
 
@@ -737,8 +838,7 @@ class HexEditorWindow(QMainWindow):
         ret = QMessageBox.question(
             self, "Revert all transforms",
             "Undo every applied transform and restore the original bytes?",
-            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
-        )
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
         if ret != QMessageBox.StandardButton.Yes:
             return
         while self._xform_log.has_entries():
@@ -756,25 +856,23 @@ class HexEditorWindow(QMainWindow):
         if fp and fp != "<memory>":
             p = Path(fp)
             suggested = str(p.with_name(f"{p.stem}.transformed{p.suffix}"))
-        path, _ = QFileDialog.getSaveFileName(self, "Save As", suggested, "All Files (*)")
+        path, _ = QFileDialog.getSaveFileName(
+            self, "Save As", suggested, "All Files (*)")
         if not path:
             return
         if self._buffer.save_to(path):
             QMessageBox.information(
                 self, "Saved",
-                f"Wrote {self._buffer.size():,} bytes to:\n{path}",
-            )
+                f"Wrote {self._buffer.size():,} bytes to:\n{path}")
         else:
             QMessageBox.critical(self, "Save failed",
                                  f"Could not write to {path}")
 
     def _on_save_selection_as(self):
-        """Save the current selection (or marked regions concatenated) to a file."""
         if self._buffer is None or self._buffer.size() == 0:
             QMessageBox.information(self, "Nothing to save", "Open a file first.")
             return
 
-        # Resolve scope: prefer explicit selection, fall back to marked regions.
         ranges: list[tuple[int, int]] = []
         scope_label = ""
         if self._hex_widget.has_selection():
@@ -791,21 +889,16 @@ class HexEditorWindow(QMainWindow):
             QMessageBox.information(
                 self, "Nothing selected",
                 "Select bytes in the hex view, or mark one or more regions, "
-                "then try again.",
-            )
+                "then try again.")
             return
 
-        # Concatenate every range in offset order.
-        chunks: list[bytes] = []
-        for lo, hi in ranges:
-            chunks.append(self._buffer.read(lo, hi - lo + 1))
+        chunks = [self._buffer.read(lo, hi - lo + 1) for lo, hi in ranges]
         payload = b"".join(chunks)
         if not payload:
             QMessageBox.warning(self, "Empty selection",
                                 "The selection contains zero bytes.")
             return
 
-        # Suggest a default filename based on the source path + scope.
         suggested = ""
         fp = self._buffer.filepath
         if fp and fp != "<memory>":
@@ -829,28 +922,13 @@ class HexEditorWindow(QMainWindow):
                                  f"Could not write to {path}\n\n{e}")
             return
 
-        if scope_label == "regions":
-            detail = f"{len(ranges):,} regions, {len(payload):,} bytes"
-        else:
-            detail = f"{len(payload):,} bytes"
-        QMessageBox.information(
-            self, "Saved",
-            f"Wrote {detail} to:\n{path}",
-        )
-
-    def _broadcast_buffer_changed(self):
-        """Re-push the buffer to every dock so their caches are invalidated."""
-        self._inspector.set_buffer(self._buffer)
-        self._format_viewer.set_buffer(self._buffer)
-        self._strings_widget.set_buffer(self._buffer)
-        self._entropy_widget.set_buffer(self._buffer)
-        self._xor_widget.set_buffer(self._buffer)
-        self._disasm_widget.set_buffer(self._buffer)
-        self._hex_widget.refresh_after_data_change()
-        self._status_size.setText(f"Size: {self._buffer.size():,}")
+        detail = (f"{len(ranges):,} regions, {len(payload):,} bytes"
+                  if scope_label == "regions"
+                  else f"{len(payload):,} bytes")
+        QMessageBox.information(self, "Saved",
+                                f"Wrote {detail} to:\n{path}")
 
     def _mark_modified(self):
-        """Add a ``*`` suffix to the window title once the buffer is dirty."""
         title = self.windowTitle()
         if self._buffer and self._buffer.is_modified():
             if not title.endswith("*"):
@@ -859,52 +937,29 @@ class HexEditorWindow(QMainWindow):
             if title.endswith(" *"):
                 self.setWindowTitle(title[:-2])
 
-    # ── Public API ──────────────────────────────────────────────────
+    # ── Public API ─────────────────────────────────────────────────
 
     def open_file(self, filepath: str, offset: int = 0, length: int = 0):
-        """Open a file in the hex editor, optionally selecting *length* bytes at *offset*."""
         if not self._buffer.open_file(filepath):
             return
-
-        self.setWindowTitle(f"Hex Editor — {Path(filepath).name}")
-        self._hex_widget.set_buffer(self._buffer)
-        self._inspector.set_buffer(self._buffer)
-        self._format_viewer.set_buffer(self._buffer)
-        self._strings_widget.set_buffer(self._buffer)
-        self._entropy_widget.set_buffer(self._buffer)
-        self._xor_widget.set_buffer(self._buffer)
-        self._disasm_widget.set_buffer(self._buffer)
-
-        self._status_size.setText(f"Size: {self._buffer.size():,}")
+        self.setWindowTitle(f"Hex Editor \u2014 {Path(filepath).name}")
+        self._distribute_buffer()
         self._status_format.setText(self._buffer.format_name)
-
         if offset > 0 or length > 0:
             self._hex_widget.navigate_to_offset(offset, length)
 
     def open_bytes(self, data: bytes, name: str = "<memory>", offset: int = 0):
-        """Open raw bytes in the hex editor."""
         if not self._buffer.open_bytes(data, name):
             return
-
-        self.setWindowTitle(f"Hex Editor — {name}")
-        self._hex_widget.set_buffer(self._buffer)
-        self._inspector.set_buffer(self._buffer)
-        self._format_viewer.set_buffer(self._buffer)
-        self._strings_widget.set_buffer(self._buffer)
-        self._entropy_widget.set_buffer(self._buffer)
-        self._xor_widget.set_buffer(self._buffer)
-        self._disasm_widget.set_buffer(self._buffer)
-
-        self._status_size.setText(f"Size: {self._buffer.size():,}")
+        self.setWindowTitle(f"Hex Editor \u2014 {name}")
+        self._distribute_buffer()
         self._status_format.setText(self._buffer.format_name)
-
         if offset > 0:
             self._hex_widget.navigate_to_offset(offset)
 
-    # ── Theming ─────────────────────────────────────────────────────
+    # ── Theming ────────────────────────────────────────────────────
 
     def apply_theme(self):
-        """Apply the current theme from theme_manager."""
         if not self._theme_manager or not self._theme_manager.current_theme:
             return
         theme = self._theme_manager.current_theme
@@ -912,7 +967,6 @@ class HexEditorWindow(QMainWindow):
         self.setStyleSheet(qss)
         self._hex_widget.set_theme(theme.colors)
 
-        # Set monospace font
         font_name = theme.font_family or "Cascadia Code"
         font = QFont(font_name, 10)
         font.setStyleHint(QFont.StyleHint.Monospace)

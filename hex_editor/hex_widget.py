@@ -1,61 +1,74 @@
 # -*- coding: utf-8 -*-
-"""Core hex view widget using QAbstractScrollArea with custom painting."""
+"""Core hex view widget using QAbstractScrollArea with custom painting.
 
-from PySide6.QtCore import Qt, Signal, QRect, QPoint
-from PySide6.QtGui import (QFont, QFontMetrics, QPainter, QColor, QPen,
-                           QKeyEvent, QMouseEvent, QWheelEvent, QPalette,
-                           QKeySequence, QAction, QPolygon)
-from PySide6.QtWidgets import QAbstractScrollArea, QApplication, QMenu
+Refactored to follow the Single Responsibility Principle:
+- **SelectionModel** owns cursor/selection/marker/region state
+- **HexLayout** owns column metrics and coordinate mapping
+- **HexPainter** strategies handle all rendering
+- **ClipboardExporter** handles copy/format/YARA operations
+- **HexWidget** is the thin controller that wires input events to the model
+  and triggers repaints.
+"""
+
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import (QFont, QFontMetrics, QPainter, QColor,
+                           QKeyEvent, QMouseEvent, QAction)
+from PySide6.QtWidgets import (QAbstractScrollArea, QApplication, QMenu,
+                               QInputDialog, QMessageBox)
 
 from .hex_data_buffer import HexDataBuffer
-
-
-# Layout constants
-DEFAULT_BYTES_PER_LINE = 16
-MIN_BYTES_PER_LINE = 4
-MAX_BYTES_PER_LINE = 64
-OFFSET_CHARS = 10  # "00000000: "
+from .selection_model import SelectionModel
+from .hex_layout import HexLayout
+from .hex_painter import (PaintContext, HexModePainter, TextEscapePainter,
+                          TextNotepadPainter)
+from .clipboard_exporter import ClipboardExporter
+from .edit_controller import EditController
 
 
 class HexWidget(QAbstractScrollArea):
-    """Custom hex view widget rendering offset | hex | ASCII columns."""
+    """Custom hex view widget rendering offset | hex | ASCII columns.
 
-    cursor_moved = Signal(int)           # emits cursor offset
-    selection_changed = Signal(int, int) # emits start, length
-    yara_pattern_requested = Signal(str) # emits "$hex_N = { ... }"
-    pattern_regions_changed = Signal(int) # emits region count
-    disassemble_requested = Signal(bytes, int)  # selected_bytes, base_offset
-    transform_requested = Signal()       # emits when user picks "Apply Transform…"
-    bytes_per_line_changed = Signal(int) # emits new bytes-per-line (hex mode only)
+    Acts as the **Controller** in an MVC-style decomposition:
+    - Model: SelectionModel + HexDataBuffer
+    - View: HexPainter strategies
+    - Controller: this class (input dispatch + signal wiring)
+    """
+
+    cursor_moved = Signal(int)
+    selection_changed = Signal(int, int)
+    yara_pattern_requested = Signal(str)
+    pattern_regions_changed = Signal(int)
+    disassemble_requested = Signal(bytes, int)
+    transform_requested = Signal()
+    bytes_per_line_changed = Signal(int)
+    data_edited = Signal()  # emitted after any byte edit (type/delete/paste/fill/undo/redo)
+    read_only_changed = Signal(bool)  # emitted when lock state changes
 
     def __init__(self, parent=None):
         super().__init__(parent)
+
+        # ── Composed subsystems ────────────────────────────────────
         self._buffer: HexDataBuffer | None = None
-        self._cursor_offset = 0
-        self._selection_start = -1
-        self._selection_end = -1
-        self._selecting = False  # mouse drag in progress
-        self._focus_ascii = False  # Tab toggles hex/ascii focus
-        self._text_mode = False   # False=hex view, True=text view
+        self._selection = SelectionModel(self)
+        self._layout = HexLayout()
+        self._exporter = ClipboardExporter(None, self._selection)
+        self._editor = EditController()
+        self._read_only: bool = True  # locked by default — user must unlock to edit
 
-        # Hex-mode layout (configurable)
-        self._bytes_per_line_hex = DEFAULT_BYTES_PER_LINE
+        # Forward SelectionModel signals to our public API
+        self._selection.cursor_moved.connect(self.cursor_moved.emit)
+        self._selection.selection_changed.connect(self.selection_changed.emit)
 
-        # Text-mode layout
-        self._text_cols = 64  # characters per line in text mode
+        # ── View mode state ────────────────────────────────────────
+        self._text_mode = False
+        self._text_escape_mode = False
+        self._text_line_starts: list[int] = []
 
-        # Persistent selection markers
-        self._marker_start: int = -1
-        self._marker_end: int = -1
+        # ── Paint strategies (instantiated on demand) ──────────────
+        self._hex_painter = HexModePainter()
+        self._text_escape_painter = TextEscapePainter()
 
-        # Auto-incrementing YARA pattern counter
-        self._yara_counter: int = 0
-
-        # Wildcard pattern builder regions
-        self._pattern_regions: list[tuple[int, int]] = []  # (start, end) inclusive
-        self._pattern_region_color = QColor(255, 165, 0, 100)  # orange overlay
-
-        # Theme colours (defaults — overridden by set_theme)
+        # ── Theme colours (defaults — overridden by set_theme) ─────
         self._offset_bg = QColor("#f0f0f0")
         self._offset_text = QColor("#666666")
         self._hex_text = QColor("#000000")
@@ -65,18 +78,13 @@ class HexWidget(QAbstractScrollArea):
         self._separator = QColor("#cccccc")
         self._bg = QColor("#ffffff")
         self._selection_bg = QColor(51, 153, 255, 160)
+        self._pattern_region_color = QColor(255, 165, 0, 100)
 
-        # Font — must be truly fixed-pitch. Cascadia Code has ligatures
-        # that collapse pairs like "XX" in rendering, so we prefer
-        # Cascadia Mono / Consolas / Courier New with styleHint Monospace
-        # and setFixedPitch(True) as a hard guarantee.
+        # ── Font setup ─────────────────────────────────────────────
         self._font = QFont()
         self._font.setFamilies([
-            "Cascadia Mono",
-            "Consolas",
-            "Courier New",
-            "DejaVu Sans Mono",
-            "monospace",
+            "Cascadia Mono", "Consolas", "Courier New",
+            "DejaVu Sans Mono", "monospace",
         ])
         self._font.setPointSize(10)
         self._font.setStyleHint(QFont.StyleHint.Monospace,
@@ -84,94 +92,169 @@ class HexWidget(QAbstractScrollArea):
         self._font.setFixedPitch(True)
         self._font.setKerning(False)
         self.setFont(self._font)
-        self._update_metrics()
 
         self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
         self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
         self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
 
-    # ── Metrics ─────────────────────────────────────────────────────
+    # ── Properties (public API preserved) ──────────────────────────
 
-    def _update_metrics(self):
-        fm = QFontMetrics(self.font())
-        # Font is guaranteed fixed-pitch (Cascadia Mono / Consolas with
-        # setFixedPitch) so every glyph has the same advance — use "0".
-        self._char_w = fm.horizontalAdvance("0")
-        self._line_h = fm.height() + 2  # small padding
+    @property
+    def selection_model(self) -> SelectionModel:
+        return self._selection
 
-        bpl = self._bytes_per_line_hex
-        # Mid gap only if there's a "byte 8" split worth rendering
-        mid_gap = 1 if bpl > 8 else 0
+    @property
+    def layout_info(self) -> HexLayout:
+        return self._layout
 
-        # Column positions (in chars then converted to px)
-        # Offset column: "00000000  " = 10 chars
-        self._offset_width = OFFSET_CHARS * self._char_w
-        # Hex column: "XX " * bpl + extra gap at byte 8
-        self._hex_start = self._offset_width + self._char_w
-        self._hex_col_width = (3 * bpl + mid_gap) * self._char_w
-        # ASCII column
-        self._ascii_start = self._hex_start + self._hex_col_width + self._char_w
-        self._ascii_width = bpl * self._char_w
-        self._total_width = self._ascii_start + self._ascii_width + self._char_w
+    @property
+    def exporter(self) -> ClipboardExporter:
+        return self._exporter
+
+    @property
+    def read_only(self) -> bool:
+        return self._read_only
+
+    @read_only.setter
+    def read_only(self, value: bool):
+        if self._read_only != value:
+            self._read_only = value
+            self.read_only_changed.emit(value)
+            self.viewport().update()
+
+    def _check_editable(self) -> bool:
+        """Return True if editing is allowed. False = locked (read-only)."""
+        return not self._read_only
+
+    # ── Font / metrics ─────────────────────────────────────────────
 
     def setFont(self, font):
         super().setFont(font)
         self._font = font
-        self._update_metrics()
+        self._layout.update_metrics(QFontMetrics(font))
         self.viewport().update()
 
-    # ── Data binding ────────────────────────────────────────────────
+    # ── Data binding ───────────────────────────────────────────────
 
     def set_buffer(self, buf: HexDataBuffer):
         self._buffer = buf
-        self._cursor_offset = 0
-        self._selection_start = -1
-        self._selection_end = -1
+        self._exporter.set_buffer(buf)
+        self._editor.set_buffer(buf)
+        self._selection.reset()
+        self._text_line_starts = []
+        if self._text_mode and not self._text_escape_mode:
+            self._rebuild_text_line_starts()
         self._update_scrollbar()
         self.viewport().update()
-        self.cursor_moved.emit(0)
-
-    def _bytes_per_line(self) -> int:
-        return self._text_cols if self._text_mode else self._bytes_per_line_hex
+        self._selection.cursor_moved.emit(0)
 
     def bytes_per_line(self) -> int:
-        """Public accessor for the current hex-mode bytes-per-line."""
-        return self._bytes_per_line_hex
+        return self._layout.bytes_per_line_hex
 
     def set_bytes_per_line(self, n: int):
-        """Change hex-mode bytes-per-line; clamps to MIN..MAX."""
-        n = max(MIN_BYTES_PER_LINE, min(int(n), MAX_BYTES_PER_LINE))
-        if n == self._bytes_per_line_hex:
+        if not self._layout.set_bytes_per_line(n):
             return
-        # Preserve approximate cursor position (stay at same byte).
-        self._bytes_per_line_hex = n
-        self._update_metrics()
+        self._layout.update_metrics(QFontMetrics(self._font))
         self._update_scrollbar()
-        # Snap cursor so _ensure_visible uses the new bpl correctly
         if self._buffer is not None:
-            self._ensure_visible(self._cursor_offset)
+            self._ensure_visible(self._selection.cursor)
         self.viewport().update()
-        self.bytes_per_line_changed.emit(n)
+        self.bytes_per_line_changed.emit(self._layout.bytes_per_line_hex)
 
-    def _total_lines(self) -> int:
-        if not self._buffer:
-            return 0
-        bpl = self._bytes_per_line()
-        return (self._buffer.size() + bpl - 1) // bpl
+    # ── View mode ──────────────────────────────────────────────────
 
     def set_text_mode(self, enabled: bool):
-        """Toggle between hex view and text view."""
         if self._text_mode == enabled:
             return
         self._text_mode = enabled
+        if enabled and not self._text_escape_mode:
+            self._rebuild_text_line_starts()
         self._update_scrollbar()
         self.viewport().update()
 
+    def text_escape_mode(self) -> bool:
+        return self._text_escape_mode
+
+    def set_text_escape_mode(self, enabled: bool):
+        if self._text_escape_mode == enabled:
+            return
+        self._text_escape_mode = enabled
+        if self._text_mode and not enabled:
+            self._rebuild_text_line_starts()
+        self._update_scrollbar()
+        self.viewport().update()
+
+    # ── Text line index ────────────────────────────────────────────
+
+    def _rebuild_text_line_starts(self):
+        self._text_line_starts = [0]
+        if self._buffer is None or self._buffer.size() == 0:
+            return
+        CHUNK = 1 << 20
+        size = self._buffer.size()
+        off = 0
+        while off < size:
+            data = self._buffer.read(off, min(CHUNK, size - off))
+            i = 0
+            n = len(data)
+            while True:
+                j = data.find(b"\n", i)
+                if j < 0:
+                    break
+                start = off + j + 1
+                if start < size:
+                    self._text_line_starts.append(start)
+                i = j + 1
+            off += n
+
+    def _byte_to_text_line(self, offset: int) -> int:
+        if not self._text_line_starts:
+            self._rebuild_text_line_starts()
+        starts = self._text_line_starts
+        if not starts:
+            return 0
+        lo, hi = 0, len(starts) - 1
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if starts[mid] <= offset:
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo
+
+    def _line_col_to_offset(self, line_idx: int, col: int) -> int:
+        starts = self._text_line_starts
+        if not starts or self._buffer is None:
+            return 0
+        size = self._buffer.size()
+        line_idx = max(0, min(line_idx, len(starts) - 1))
+        line_start = starts[line_idx]
+        line_end = starts[line_idx + 1] if line_idx + 1 < len(starts) else size
+        content_end = line_end
+        if content_end > line_start and self._buffer.read(content_end - 1, 1) == b"\n":
+            content_end -= 1
+        if content_end > line_start and self._buffer.read(content_end - 1, 1) == b"\r":
+            content_end -= 1
+        content_len = max(0, content_end - line_start)
+        col = max(0, min(col, content_len))
+        return min(line_start + col, max(0, size - 1))
+
+    # ── Scrollbar ──────────────────────────────────────────────────
+
     def _visible_lines(self) -> int:
-        return max(1, self.viewport().height() // self._line_h)
+        return self._layout.visible_lines(self.viewport().height())
 
     def _update_scrollbar(self):
-        total = self._total_lines()
+        if not self._buffer:
+            total = 0
+        elif self._text_mode and not self._text_escape_mode:
+            if not self._text_line_starts:
+                self._rebuild_text_line_starts()
+            total = len(self._text_line_starts)
+        else:
+            total = self._layout.total_lines(
+                self._buffer.size() if self._buffer else 0,
+                self._text_mode, 0)
         visible = self._visible_lines()
         self.verticalScrollBar().setRange(0, max(0, total - visible))
         self.verticalScrollBar().setPageStep(visible)
@@ -180,10 +263,9 @@ class HexWidget(QAbstractScrollArea):
         super().resizeEvent(event)
         self._update_scrollbar()
 
-    # ── Theme ───────────────────────────────────────────────────────
+    # ── Theme ──────────────────────────────────────────────────────
 
     def set_theme(self, colors):
-        """Apply theme colours from ThemeColors (or dict with hex_ keys)."""
         def _c(attr, fallback):
             val = getattr(colors, attr, None) if hasattr(colors, attr) else colors.get(attr)
             return QColor(val) if val else fallback
@@ -196,7 +278,7 @@ class HexWidget(QAbstractScrollArea):
             self._ascii_nonprint = _c("hex_ascii_nonprint", self._ascii_nonprint)
             self._cursor_bg = _c("hex_cursor_bg", self._cursor_bg)
             self._separator = _c("hex_separator", self._separator)
-        # Also pick up generic background from theme
+
         bg = getattr(colors, "editor_background", None)
         if bg:
             self._bg = QColor(bg)
@@ -206,8 +288,6 @@ class HexWidget(QAbstractScrollArea):
             c.setAlpha(160)
             self._selection_bg = c
 
-        # Make scrollbar clearly visible regardless of theme — use the
-        # shared contrast helper so it always pops against the background.
         try:
             from themes import ensure_scrollbar_contrast
         except ImportError:
@@ -245,10 +325,9 @@ class HexWidget(QAbstractScrollArea):
                 background: none;
             }}
         """)
-
         self.viewport().update()
 
-    # ── Painting ────────────────────────────────────────────────────
+    # ── Painting ───────────────────────────────────────────────────
 
     def paintEvent(self, event):
         if not self._buffer or self._buffer.size() == 0:
@@ -256,226 +335,52 @@ class HexWidget(QAbstractScrollArea):
             painter.fillRect(self.viewport().rect(), self._bg)
             painter.setPen(self._offset_text)
             painter.drawText(self.viewport().rect(), Qt.AlignmentFlag.AlignCenter,
-                             "No file loaded — use File > Open or drag a file")
+                             "No file loaded \u2014 use File > Open or drag a file")
             painter.end()
             return
 
+        ctx = PaintContext(
+            buffer=self._buffer,
+            layout=self._layout,
+            selection=self._selection,
+            font=self._font,
+            first_line=self.verticalScrollBar().value(),
+            visible_lines=self._visible_lines(),
+            viewport_width=self.viewport().width(),
+            bg=self._bg,
+            offset_bg=self._offset_bg,
+            offset_text=self._offset_text,
+            hex_text=self._hex_text,
+            ascii_text=self._ascii_text,
+            ascii_nonprint=self._ascii_nonprint,
+            cursor_bg=self._cursor_bg,
+            selection_bg=self._selection_bg,
+            separator=self._separator,
+            pattern_region_color=self._pattern_region_color,
+            modified_offsets=self._editor.modified_offsets,
+        )
+
+        painter = QPainter(self.viewport())
+        strategy = self._current_paint_strategy()
+        strategy.paint(painter, ctx)
+        painter.end()
+
+    def _current_paint_strategy(self):
         if self._text_mode:
-            self._paint_text_mode(event)
-        else:
-            self._paint_hex_mode(event)
+            if self._text_escape_mode:
+                return self._text_escape_painter
+            if not self._text_line_starts:
+                self._rebuild_text_line_starts()
+            return TextNotepadPainter(self._text_line_starts)
+        return self._hex_painter
 
-    def _paint_hex_mode(self, event):
-        painter = QPainter(self.viewport())
-        painter.setFont(self._font)
-        painter.fillRect(self.viewport().rect(), self._bg)
-
-        bpl = self._bytes_per_line_hex
-        mid_split = 8 if bpl > 8 else bpl  # where the mid-gap sits
-
-        first_line = self.verticalScrollBar().value()
-        visible = self._visible_lines() + 1
-
-        sel_min, sel_max = self._ordered_selection()
-
-        for i in range(visible):
-            line_idx = first_line + i
-            offset = line_idx * bpl
-            if offset >= self._buffer.size():
-                break
-
-            y = i * self._line_h
-            data = self._buffer.read(offset, bpl)
-            data_len = len(data)
-
-            # Offset column background
-            painter.fillRect(QRect(0, y, self._offset_width, self._line_h), self._offset_bg)
-            painter.setPen(self._offset_text)
-            painter.drawText(
-                QRect(0, y, self._offset_width - self._char_w, self._line_h),
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                f"{offset:08X}"
-            )
-
-            # Draw marker triangles in gutter
-            line_end = offset + data_len - 1
-            tri_x = 2
-            tri_size = self._line_h // 3
-            tri_cy = y + self._line_h // 2
-            if self._marker_start >= 0 and offset <= self._marker_start <= line_end:
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor("#22bb45"))  # green
-                tri = QPolygon([
-                    QPoint(tri_x, tri_cy - tri_size),
-                    QPoint(tri_x + tri_size, tri_cy),
-                    QPoint(tri_x, tri_cy + tri_size),
-                ])
-                painter.drawPolygon(tri)
-            if self._marker_end >= 0 and offset <= self._marker_end <= line_end:
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor("#dd3333"))  # red
-                tri = QPolygon([
-                    QPoint(tri_x, tri_cy - tri_size),
-                    QPoint(tri_x + tri_size, tri_cy),
-                    QPoint(tri_x, tri_cy + tri_size),
-                ])
-                painter.drawPolygon(tri)
-
-            # Separator line after offset
-            painter.setPen(QPen(self._separator, 1))
-            painter.drawLine(self._offset_width, y, self._offset_width, y + self._line_h)
-
-            # Hex bytes
-            for j in range(data_len):
-                byte_offset = offset + j
-                x = self._hex_start + j * 3 * self._char_w
-                # Extra gap at the mid-split (only when bpl > 8)
-                if bpl > 8 and j >= mid_split:
-                    x += self._char_w
-
-                byte_rect = QRect(x, y, 2 * self._char_w, self._line_h)
-
-                # Pattern region overlay (orange)
-                for pr_start, pr_end in self._pattern_regions:
-                    if pr_start <= byte_offset <= pr_end:
-                        painter.fillRect(byte_rect, self._pattern_region_color)
-                        break
-
-                # Selection / cursor highlight
-                if sel_min <= byte_offset <= sel_max:
-                    painter.fillRect(byte_rect, self._selection_bg)
-                if byte_offset == self._cursor_offset and not self._focus_ascii:
-                    painter.fillRect(byte_rect, self._cursor_bg)
-                    painter.setPen(QColor("#ffffff"))
-                else:
-                    painter.setPen(self._hex_text)
-
-                painter.drawText(byte_rect, Qt.AlignmentFlag.AlignCenter, f"{data[j]:02X}")
-
-            # Separator before ASCII
-            sep_x = self._ascii_start - self._char_w // 2
-            painter.setPen(QPen(self._separator, 1))
-            painter.drawLine(sep_x, y, sep_x, y + self._line_h)
-
-            # ASCII column
-            for j in range(data_len):
-                byte_offset = offset + j
-                ch = data[j]
-                x = self._ascii_start + j * self._char_w
-                char_rect = QRect(x, y, self._char_w, self._line_h)
-
-                # Pattern region overlay (orange)
-                for pr_start, pr_end in self._pattern_regions:
-                    if pr_start <= byte_offset <= pr_end:
-                        painter.fillRect(char_rect, self._pattern_region_color)
-                        break
-
-                if sel_min <= byte_offset <= sel_max:
-                    painter.fillRect(char_rect, self._selection_bg)
-                if byte_offset == self._cursor_offset and self._focus_ascii:
-                    painter.fillRect(char_rect, self._cursor_bg)
-                    painter.setPen(QColor("#ffffff"))
-                elif 32 <= ch <= 126:
-                    painter.setPen(self._ascii_text)
-                else:
-                    painter.setPen(self._ascii_nonprint)
-
-                display = chr(ch) if 32 <= ch <= 126 else "."
-                painter.drawText(char_rect, Qt.AlignmentFlag.AlignCenter, display)
-
-        painter.end()
-
-    def _paint_text_mode(self, event):
-        painter = QPainter(self.viewport())
-        painter.setFont(self._font)
-        painter.fillRect(self.viewport().rect(), self._bg)
-
-        first_line = self.verticalScrollBar().value()
-        visible = self._visible_lines() + 1
-        bpl = self._text_cols
-        text_start = self._offset_width + self._char_w
-
-        sel_min, sel_max = self._ordered_selection()
-
-        for i in range(visible):
-            line_idx = first_line + i
-            offset = line_idx * bpl
-            if offset >= self._buffer.size():
-                break
-
-            y = i * self._line_h
-            data = self._buffer.read(offset, bpl)
-            data_len = len(data)
-
-            # Offset gutter
-            painter.fillRect(QRect(0, y, self._offset_width, self._line_h), self._offset_bg)
-            painter.setPen(self._offset_text)
-            painter.drawText(
-                QRect(0, y, self._offset_width - self._char_w, self._line_h),
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-                f"{offset:08X}"
-            )
-
-            # Marker triangles
-            line_end = offset + data_len - 1
-            tri_x = 2
-            tri_size = self._line_h // 3
-            tri_cy = y + self._line_h // 2
-            if self._marker_start >= 0 and offset <= self._marker_start <= line_end:
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor("#22bb45"))
-                painter.drawPolygon(QPolygon([
-                    QPoint(tri_x, tri_cy - tri_size),
-                    QPoint(tri_x + tri_size, tri_cy),
-                    QPoint(tri_x, tri_cy + tri_size),
-                ]))
-            if self._marker_end >= 0 and offset <= self._marker_end <= line_end:
-                painter.setPen(Qt.PenStyle.NoPen)
-                painter.setBrush(QColor("#dd3333"))
-                painter.drawPolygon(QPolygon([
-                    QPoint(tri_x, tri_cy - tri_size),
-                    QPoint(tri_x + tri_size, tri_cy),
-                    QPoint(tri_x, tri_cy + tri_size),
-                ]))
-
-            # Separator
-            painter.setPen(QPen(self._separator, 1))
-            painter.drawLine(self._offset_width, y, self._offset_width, y + self._line_h)
-
-            # Text characters
-            for j in range(data_len):
-                byte_offset = offset + j
-                ch = data[j]
-                x = text_start + j * self._char_w
-                char_rect = QRect(x, y, self._char_w, self._line_h)
-
-                # Selection highlight
-                if sel_min <= byte_offset <= sel_max:
-                    painter.fillRect(char_rect, self._selection_bg)
-                # Cursor highlight
-                if byte_offset == self._cursor_offset:
-                    painter.fillRect(char_rect, self._cursor_bg)
-                    painter.setPen(QColor("#ffffff"))
-                elif 32 <= ch <= 126:
-                    painter.setPen(self._ascii_text)
-                else:
-                    painter.setPen(self._ascii_nonprint)
-
-                display = chr(ch) if 32 <= ch <= 126 else "\u00b7"
-                painter.drawText(char_rect, Qt.AlignmentFlag.AlignCenter, display)
-
-        painter.end()
-
-    # ── Selection helpers ───────────────────────────────────────────
+    # ── Selection helpers (public API preserved) ───────────────────
 
     def _ordered_selection(self):
-        if self._selection_start < 0 or self._selection_end < 0:
-            return (-1, -1)
-        return (min(self._selection_start, self._selection_end),
-                max(self._selection_start, self._selection_end))
+        return self._selection.ordered_selection()
 
     def has_selection(self) -> bool:
-        return self._selection_start >= 0 and self._selection_end >= 0
+        return self._selection.has_selection()
 
     def selected_bytes(self) -> bytes:
         if not self.has_selection() or not self._buffer:
@@ -483,101 +388,49 @@ class HexWidget(QAbstractScrollArea):
         lo, hi = self._ordered_selection()
         return self._buffer.read(lo, hi - lo + 1)
 
-    # ── Coordinate mapping ──────────────────────────────────────────
-
-    def _offset_from_point(self, pos: QPoint) -> int:
-        """Map viewport (x, y) to byte offset, or -1."""
-        if not self._buffer:
-            return -1
-
-        bpl = self._bytes_per_line()
-        line = self.verticalScrollBar().value() + pos.y() // self._line_h
-        offset_base = line * bpl
-        x = pos.x()
-
-        if self._text_mode:
-            # Text mode: single text column after offset gutter
-            text_start = self._offset_width + self._char_w
-            if x >= text_start:
-                col = int((x - text_start) // self._char_w)
-                col = max(0, min(col, bpl - 1))
-                off = offset_base + col
-                return min(off, self._buffer.size() - 1)
-            return -1
-
-        # Hex mode: check hex column
-        if self._hex_start <= x < self._ascii_start - self._char_w // 2:
-            rel = x - self._hex_start
-            # Account for mid gap (only present when bpl > 8)
-            col = int(rel // (3 * self._char_w))
-            if bpl > 8 and col >= 8:
-                # Adjust for mid-gap
-                rel2 = x - self._hex_start - self._char_w
-                col = int(rel2 // (3 * self._char_w))
-                if col < 8:
-                    col = 8
-            col = max(0, min(col, bpl - 1))
-            off = offset_base + col
-            return min(off, self._buffer.size() - 1)
-
-        # Check ASCII column
-        if self._ascii_start <= x < self._ascii_start + self._ascii_width:
-            col = (x - self._ascii_start) // self._char_w
-            col = max(0, min(col, bpl - 1))
-            off = offset_base + col
-            return min(off, self._buffer.size() - 1)
-
-        return -1
-
-    # ── Mouse events ────────────────────────────────────────────────
+    # ── Mouse events ───────────────────────────────────────────────
 
     def mousePressEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            off = self._offset_from_point(event.position().toPoint())
+            off = self._layout.offset_from_point(
+                event.position().toPoint(),
+                self.verticalScrollBar().value(),
+                self._buffer, self._text_mode, self._text_escape_mode,
+                self._text_line_starts, self._rebuild_text_line_starts)
             if off >= 0:
-                # Determine if click is in ASCII area
                 if self._text_mode:
-                    self._focus_ascii = True
+                    self._selection.focus_ascii = True
                 else:
                     x = event.position().toPoint().x()
-                    self._focus_ascii = x >= self._ascii_start
+                    self._selection.focus_ascii = self._layout.is_in_ascii_area(x)
 
                 if event.modifiers() & Qt.KeyboardModifier.ShiftModifier:
-                    self._selection_end = off
+                    self._selection.extend_selection(off)
                 else:
-                    self._cursor_offset = off
-                    self._selection_start = off
-                    self._selection_end = off
-                    self._selecting = True
-                self.cursor_moved.emit(self._cursor_offset)
+                    self._selection.begin_selection(off)
                 self.viewport().update()
         super().mousePressEvent(event)
 
     def mouseMoveEvent(self, event: QMouseEvent):
-        if self._selecting:
-            off = self._offset_from_point(event.position().toPoint())
+        if self._selection.selecting:
+            off = self._layout.offset_from_point(
+                event.position().toPoint(),
+                self.verticalScrollBar().value(),
+                self._buffer, self._text_mode, self._text_escape_mode,
+                self._text_line_starts, self._rebuild_text_line_starts)
             if off >= 0:
-                self._selection_end = off
-                self._cursor_offset = off
-                self.cursor_moved.emit(off)
+                self._selection.extend_selection(off)
                 self.viewport().update()
         super().mouseMoveEvent(event)
 
     def mouseReleaseEvent(self, event: QMouseEvent):
         if event.button() == Qt.MouseButton.LeftButton:
-            self._selecting = False
-            if self._selection_start == self._selection_end:
-                self._selection_start = -1
-                self._selection_end = -1
-                # Emit a zero-length selection so observers (e.g. the
-                # data inspector) know to clear any prior range.
-                self.selection_changed.emit(self._cursor_offset, 0)
-            else:
-                lo, hi = self._ordered_selection()
-                self.selection_changed.emit(lo, hi - lo + 1)
+            self._selection.finish_selection()
         super().mouseReleaseEvent(event)
 
-    # ── Keyboard events ─────────────────────────────────────────────
+    # ── Keyboard events ────────────────────────────────────────────
+
+    _HEX_CHARS = set("0123456789abcdefABCDEF")
 
     def keyPressEvent(self, event: QKeyEvent):
         if not self._buffer or self._buffer.size() == 0:
@@ -587,310 +440,449 @@ class HexWidget(QAbstractScrollArea):
         max_off = self._buffer.size() - 1
         shift = bool(event.modifiers() & Qt.KeyboardModifier.ShiftModifier)
         ctrl = bool(event.modifiers() & Qt.KeyboardModifier.ControlModifier)
-
         key = event.key()
-        new_off = self._cursor_offset
+        cur = self._selection.cursor
+        new_off = cur
+        ch = event.text()
 
-        bpl = self._bytes_per_line()
+        bpl = self._layout.bytes_per_line(self._text_mode)
+        notepad = self._text_mode and not self._text_escape_mode
 
-        if key == Qt.Key.Key_Right:
-            new_off = min(self._cursor_offset + 1, max_off)
-        elif key == Qt.Key.Key_Left:
-            new_off = max(self._cursor_offset - 1, 0)
-        elif key == Qt.Key.Key_Down:
-            new_off = min(self._cursor_offset + bpl, max_off)
-        elif key == Qt.Key.Key_Up:
-            new_off = max(self._cursor_offset - bpl, 0)
-        elif key == Qt.Key.Key_PageDown:
-            new_off = min(self._cursor_offset + self._visible_lines() * bpl, max_off)
-        elif key == Qt.Key.Key_PageUp:
-            new_off = max(self._cursor_offset - self._visible_lines() * bpl, 0)
-        elif key == Qt.Key.Key_Home:
-            if ctrl:
-                new_off = 0
-            else:
-                new_off = (self._cursor_offset // bpl) * bpl
-        elif key == Qt.Key.Key_End:
-            if ctrl:
-                new_off = max_off
-            else:
-                new_off = min((self._cursor_offset // bpl) * bpl + bpl - 1, max_off)
-        elif key == Qt.Key.Key_Tab:
-            self._focus_ascii = not self._focus_ascii
-            self.viewport().update()
+        # ── Edit hotkeys (Ctrl combos first) ───────────────────────
+        # All mutating actions are gated on _check_editable().
+
+        if key == Qt.Key.Key_Z and ctrl and shift:
+            if self._check_editable():
+                self._do_redo()
             return
-        elif key == Qt.Key.Key_C and ctrl:
-            self._copy_selection()
+        if key == Qt.Key.Key_Z and ctrl:
+            if self._check_editable():
+                self._do_undo()
             return
-        elif key == Qt.Key.Key_Y and ctrl and shift:
+        if key == Qt.Key.Key_V and ctrl:
+            if self._check_editable():
+                self._do_paste()
+            return
+        if key == Qt.Key.Key_I and ctrl:
+            if self._check_editable():
+                self._do_insert_dialog()
+            return
+        if key == Qt.Key.Key_F and ctrl and shift:
+            if self._check_editable():
+                self._do_fill_dialog()
+            return
+
+        # ── Standard hotkeys ───────────────────────────────────────
+
+        if key == Qt.Key.Key_C and ctrl:
+            self._exporter.copy_smart(self._selection.focus_ascii)
+            return
+        if key == Qt.Key.Key_Y and ctrl and shift:
             self.send_to_yara_editor()
             return
-        elif key == Qt.Key.Key_Y and ctrl:
-            self.copy_as_yara_hex()
+        if key == Qt.Key.Key_Y and ctrl:
+            self._exporter.copy("yara_hex")
+            return
+
+        # ── Insert mode toggle ─────────────────────────────────────
+
+        if key == Qt.Key.Key_Insert:
+            if self._check_editable():
+                self._editor.toggle_insert_mode()
+                self.viewport().update()
+            return
+
+        # ── Delete / Backspace ─────────────────────────────────────
+
+        if key == Qt.Key.Key_Delete:
+            if not self._check_editable():
+                return
+            if self._selection.has_selection():
+                lo, hi = self._selection.ordered_selection()
+                cmd = self._editor.delete_selection(lo, hi)
+            else:
+                cmd = self._editor.delete_at(cur, 1)
+            if cmd:
+                self._selection.clear_selection()
+                self._selection.set_cursor(cmd.cursor_after, emit=False)
+                self._after_edit()
+            return
+
+        if key == Qt.Key.Key_Backspace:
+            if not self._check_editable():
+                return
+            if self._selection.has_selection():
+                lo, hi = self._selection.ordered_selection()
+                cmd = self._editor.delete_selection(lo, hi)
+                if cmd:
+                    self._selection.clear_selection()
+                    self._selection.set_cursor(cmd.cursor_after, emit=False)
+                    self._after_edit()
+            else:
+                cmd = self._editor.backspace(cur)
+                if cmd:
+                    self._selection.set_cursor(cmd.cursor_after, emit=False)
+                    self._after_edit()
+            return
+
+        # ── Hex digit typing (in hex column, not text mode) ────────
+
+        if (not self._text_mode and not self._selection.focus_ascii
+                and not ctrl and not shift
+                and len(ch) == 1 and ch in self._HEX_CHARS):
+            if not self._check_editable():
+                return
+            nibble = int(ch, 16)
+            cmd = self._editor.type_hex_nibble(cur, nibble)
+            if cmd:
+                self._selection.clear_selection()
+                self._selection.set_cursor(cmd.cursor_after, emit=False)
+                self._after_edit()
+            return
+
+        # ── ASCII typing (in ASCII column or text mode) ────────────
+
+        if ((self._selection.focus_ascii or self._text_mode)
+                and not ctrl and len(ch) == 1 and ch.isprintable()):
+            if not self._check_editable():
+                return
+            cmd = self._editor.type_ascii_char(cur, ch)
+            if cmd:
+                self._selection.clear_selection()
+                self._selection.set_cursor(cmd.cursor_after, emit=False)
+                self._after_edit()
+            return
+
+        # ── Navigation keys ────────────────────────────────────────
+
+        if notepad and key in (Qt.Key.Key_Up, Qt.Key.Key_Down,
+                                Qt.Key.Key_PageUp, Qt.Key.Key_PageDown,
+                                Qt.Key.Key_Home, Qt.Key.Key_End):
+            starts = self._text_line_starts
+            if not starts:
+                self._rebuild_text_line_starts()
+                starts = self._text_line_starts
+            cur_line = self._byte_to_text_line(cur)
+            cur_col = cur - starts[cur_line]
+            if key == Qt.Key.Key_Up:
+                new_off = self._line_col_to_offset(max(0, cur_line - 1), cur_col)
+            elif key == Qt.Key.Key_Down:
+                new_off = self._line_col_to_offset(min(len(starts) - 1, cur_line + 1), cur_col)
+            elif key == Qt.Key.Key_PageDown:
+                step = max(1, self._visible_lines())
+                new_off = self._line_col_to_offset(min(len(starts) - 1, cur_line + step), cur_col)
+            elif key == Qt.Key.Key_PageUp:
+                step = max(1, self._visible_lines())
+                new_off = self._line_col_to_offset(max(0, cur_line - step), cur_col)
+            elif key == Qt.Key.Key_Home:
+                new_off = 0 if ctrl else starts[cur_line]
+            elif key == Qt.Key.Key_End:
+                new_off = max_off if ctrl else self._line_col_to_offset(cur_line, 1 << 30)
+        elif key == Qt.Key.Key_Right:
+            new_off = min(cur + 1, max_off)
+        elif key == Qt.Key.Key_Left:
+            new_off = max(cur - 1, 0)
+        elif key == Qt.Key.Key_Down:
+            new_off = min(cur + bpl, max_off)
+        elif key == Qt.Key.Key_Up:
+            new_off = max(cur - bpl, 0)
+        elif key == Qt.Key.Key_PageDown:
+            new_off = min(cur + self._visible_lines() * bpl, max_off)
+        elif key == Qt.Key.Key_PageUp:
+            new_off = max(cur - self._visible_lines() * bpl, 0)
+        elif key == Qt.Key.Key_Home:
+            new_off = 0 if ctrl else (cur // bpl) * bpl
+        elif key == Qt.Key.Key_End:
+            new_off = max_off if ctrl else min((cur // bpl) * bpl + bpl - 1, max_off)
+        elif key == Qt.Key.Key_Tab:
+            self._selection.focus_ascii = not self._selection.focus_ascii
+            self.viewport().update()
             return
         else:
             super().keyPressEvent(event)
             return
 
-        # Update selection
-        had_selection = self.has_selection()
+        # Clear nibble state on any navigation
+        self._editor._clear_nibble()
+
+        had_selection = self._selection.has_selection()
         if shift:
-            if self._selection_start < 0:
-                self._selection_start = self._cursor_offset
-            self._selection_end = new_off
+            self._selection.shift_extend(new_off)
         else:
-            self._selection_start = -1
-            self._selection_end = -1
+            self._selection.clear_selection()
 
-        self._cursor_offset = new_off
+        self._selection.set_cursor(new_off)
         self._ensure_visible(new_off)
-        self.cursor_moved.emit(new_off)
 
-        # Keep observers (inspector, etc.) in sync with selection state.
-        if shift and self.has_selection():
-            lo, hi = self._ordered_selection()
+        if shift and self._selection.has_selection():
+            lo, hi = self._selection.ordered_selection()
             self.selection_changed.emit(lo, hi - lo + 1)
         elif had_selection:
             self.selection_changed.emit(new_off, 0)
 
         self.viewport().update()
 
-    def _copy_selection(self):
-        """Copy selected bytes (or cursor byte) to clipboard as hex or ASCII."""
-        data = self._get_active_bytes()
+    # ── Edit action helpers ────────────────────────────────────────
+
+    def _after_edit(self):
+        """Refresh everything after a byte edit."""
+        self.refresh_after_data_change()
+        self._ensure_visible(self._selection.cursor)
+        self.data_edited.emit()
+
+    def _do_undo(self):
+        if not self._check_editable():
+            return
+        cmd = self._editor.undo()
+        if cmd:
+            self._selection.clear_selection()
+            self._selection.set_cursor(cmd.cursor_before, emit=False)
+            self._after_edit()
+
+    def _do_redo(self):
+        if not self._check_editable():
+            return
+        cmd = self._editor.redo()
+        if cmd:
+            self._selection.clear_selection()
+            self._selection.set_cursor(cmd.cursor_after, emit=False)
+            self._after_edit()
+
+    def _do_paste(self):
+        """Paste from clipboard — parse hex if in hex column, ASCII otherwise."""
+        if not self._check_editable():
+            return
+        text = QApplication.clipboard().text()
+        if not text:
+            return
+        cur = self._selection.cursor
+
+        if self._selection.focus_ascii or self._text_mode:
+            data = text.encode("utf-8", errors="replace")
+        else:
+            # Try to parse as hex (space-separated, compact, or 0x-prefixed)
+            cleaned = text.strip().replace("0x", "").replace(",", " ")
+            cleaned = " ".join(cleaned.split())
+            try:
+                if " " in cleaned:
+                    data = bytes(int(b, 16) for b in cleaned.split())
+                else:
+                    data = bytes.fromhex(cleaned)
+            except (ValueError, IndexError):
+                data = text.encode("utf-8", errors="replace")
+
         if not data:
             return
-        if self._focus_ascii:
-            text = "".join(chr(b) if 32 <= b <= 126 else "." for b in data)
+
+        if self._editor.insert_mode:
+            cmd = self._editor.paste_insert(cur, data)
         else:
-            text = " ".join(f"{b:02X}" for b in data)
-        QApplication.clipboard().setText(text)
+            cmd = self._editor.paste_overwrite(cur, data)
+        if cmd:
+            self._selection.clear_selection()
+            self._selection.set_cursor(cmd.cursor_after, emit=False)
+            self._after_edit()
 
-    # ── Active bytes (unified source for all copy ops) ───────────
+    def _do_insert_dialog(self):
+        """Show a dialog to insert N bytes at the cursor."""
+        if not self._check_editable():
+            return
+        text, ok = QInputDialog.getText(
+            self, "Insert Bytes",
+            "Hex bytes to insert (e.g. 00 00 00 or 4D5A90):",
+        )
+        if not ok or not text.strip():
+            return
+        cleaned = text.strip().replace("0x", "").replace(",", " ")
+        cleaned = " ".join(cleaned.split())
+        try:
+            if " " in cleaned:
+                data = bytes(int(b, 16) for b in cleaned.split())
+            else:
+                data = bytes.fromhex(cleaned)
+        except (ValueError, IndexError):
+            QMessageBox.warning(self, "Invalid hex",
+                                f"Could not parse hex: {text}")
+            return
+        if not data:
+            return
+        cmd = self._editor.insert_bytes(self._selection.cursor, data)
+        if cmd:
+            self._selection.clear_selection()
+            self._selection.set_cursor(cmd.cursor_after, emit=False)
+            self._after_edit()
 
-    def _get_active_bytes(self) -> bytes:
-        """Return bytes from: markers range > drag selection > cursor byte."""
-        if not self._buffer:
-            return b""
-        if self._marker_start >= 0 and self._marker_end >= 0:
-            lo = min(self._marker_start, self._marker_end)
-            hi = max(self._marker_start, self._marker_end)
-            return self._buffer.read(lo, hi - lo + 1)
-        if self.has_selection():
-            return self.selected_bytes()
-        return self._buffer.read(self._cursor_offset, 1)
+    def _do_fill_dialog(self):
+        """Fill selection with a repeating byte pattern."""
+        if not self._check_editable():
+            return
+        if not self._selection.has_selection():
+            QMessageBox.information(self, "No selection",
+                                    "Select a byte range first, then Ctrl+Shift+F to fill.")
+            return
+        lo, hi = self._selection.ordered_selection()
+        length = hi - lo + 1
+        text, ok = QInputDialog.getText(
+            self, "Fill Selection",
+            f"Fill {length} byte(s) at 0x{lo:X}-0x{hi:X} with pattern\n"
+            f"(e.g. 00, 90, CC, DEADBEEF):",
+            text="00",
+        )
+        if not ok or not text.strip():
+            return
+        cleaned = text.strip().replace("0x", "").replace(",", " ").replace(" ", "")
+        try:
+            pattern = bytes.fromhex(cleaned)
+        except ValueError:
+            QMessageBox.warning(self, "Invalid hex",
+                                f"Could not parse hex pattern: {text}")
+            return
+        if not pattern:
+            return
+        cmd = self._editor.fill_range(lo, hi, pattern)
+        if cmd:
+            self._after_edit()
 
-    # ── Copy format methods ──────────────────────────────────────
+    # ── Copy methods (delegate to exporter, preserve public API) ───
 
     def copy_as_hex(self):
-        """Copy as space-separated hex: 4D 5A 90 00"""
-        data = self._get_active_bytes()
-        if data:
-            QApplication.clipboard().setText(" ".join(f"{b:02X}" for b in data))
+        self._exporter.copy("hex")
 
     def copy_as_yara_hex(self):
-        """Copy as YARA hex string: { 4D 5A 90 00 }"""
-        data = self._get_active_bytes()
-        if data:
-            QApplication.clipboard().setText("{ " + " ".join(f"{b:02X}" for b in data) + " }")
+        self._exporter.copy("yara_hex")
 
     def copy_as_c_escape(self):
-        r"""Copy as C escape sequence: \x4D\x5A\x90\x00"""
-        data = self._get_active_bytes()
-        if data:
-            QApplication.clipboard().setText("".join(f"\\x{b:02X}" for b in data))
+        self._exporter.copy("c_escape")
 
     def copy_as_python_bytes(self):
-        r"""Copy as Python bytes literal: b'\x4d\x5a\x90\x00'"""
-        data = self._get_active_bytes()
-        if data:
-            QApplication.clipboard().setText("b'" + "".join(f"\\x{b:02x}" for b in data) + "'")
+        self._exporter.copy("python_bytes")
 
     def copy_as_ascii(self):
-        """Copy as ASCII with dots for non-printable: MZ.."""
-        data = self._get_active_bytes()
-        if data:
-            text = "".join(chr(b) if 32 <= b <= 126 else "." for b in data)
-            QApplication.clipboard().setText(text)
+        self._exporter.copy("ascii")
 
     def copy_as_hex_compact(self):
-        """Copy as compact hex (no spaces): 4D5A9000"""
-        data = self._get_active_bytes()
-        if data:
-            QApplication.clipboard().setText("".join(f"{b:02X}" for b in data))
+        self._exporter.copy("hex_compact")
 
     def copy_hex_to_text(self):
-        r"""Copy bytes decoded as UTF-8 text with escapes for non-printable: MZ\x90\x00"""
-        data = self._get_active_bytes()
-        if data:
-            parts = []
-            for b in data:
-                if 32 <= b <= 126:
-                    parts.append(chr(b))
-                elif b == 0x0a:
-                    parts.append("\\n")
-                elif b == 0x0d:
-                    parts.append("\\r")
-                elif b == 0x09:
-                    parts.append("\\t")
-                elif b == 0x00:
-                    parts.append("\\0")
-                else:
-                    parts.append(f"\\x{b:02x}")
-            QApplication.clipboard().setText("".join(parts))
+        self._exporter.copy("hex_to_text")
 
     def copy_text_to_hex(self):
-        """Copy the ASCII text of selected bytes as hex pairs: 4D5A2E2E"""
-        data = self._get_active_bytes()
-        if data:
-            # Represent each byte as hex — same as compact, labelled for text→hex workflow
-            QApplication.clipboard().setText(" ".join(f"0x{b:02X}" for b in data))
+        self._exporter.copy("text_to_hex")
 
     def copy_as_base64(self):
-        """Copy selected bytes as Base64 encoded string."""
-        import base64
-        data = self._get_active_bytes()
-        if data:
-            QApplication.clipboard().setText(base64.b64encode(data).decode("ascii"))
+        self._exporter.copy("base64")
+
+    # ── YARA methods (delegate to exporter) ────────────────────────
 
     def generate_yara_pattern(self) -> str:
-        """Generate a YARA hex pattern string like: $hex_1 = { 4D 5A 90 00 }  // 0x00000000, 4 bytes"""
-        data = self._get_active_bytes()
-        if not data:
-            return ""
-        self._yara_counter += 1
-        hex_str = " ".join(f"{b:02X}" for b in data)
-        # Determine offset of selected region for the comment
-        if self._marker_start >= 0 and self._marker_end >= 0:
-            start_off = min(self._marker_start, self._marker_end)
-        elif self.has_selection():
-            start_off, _ = self._ordered_selection()
-        else:
-            start_off = self._cursor_offset
-        return f"$hex_{self._yara_counter} = {{ {hex_str} }}  // 0x{start_off:08X}, {len(data)} bytes"
+        return self._exporter.generate_yara_pattern()
 
     def send_to_yara_editor(self):
-        """Generate a YARA pattern and emit yara_pattern_requested."""
-        pattern = self.generate_yara_pattern()
+        pattern = self._exporter.generate_yara_pattern()
         if pattern:
             self.yara_pattern_requested.emit(pattern)
 
-    # ── Marker methods ───────────────────────────────────────────
-
-    def set_marker_start(self):
-        """Set the start marker at the current cursor offset."""
-        self._marker_start = self._cursor_offset
-        if self._marker_end >= 0:
-            lo = min(self._marker_start, self._marker_end)
-            hi = max(self._marker_start, self._marker_end)
-            self._selection_start = lo
-            self._selection_end = hi
-        self.viewport().update()
-
-    def set_marker_end(self):
-        """Set the end marker at the current cursor offset."""
-        self._marker_end = self._cursor_offset
-        if self._marker_start >= 0:
-            lo = min(self._marker_start, self._marker_end)
-            hi = max(self._marker_start, self._marker_end)
-            self._selection_start = lo
-            self._selection_end = hi
-        self.viewport().update()
-
-    def clear_markers(self):
-        """Clear both markers and the selection they define."""
-        self._marker_start = -1
-        self._marker_end = -1
-        self._selection_start = -1
-        self._selection_end = -1
-        self.viewport().update()
-
-    # ── Wildcard pattern builder ─────────────────────────────────
-
-    def _get_active_range(self) -> tuple[int, int]:
-        """Return (lo, hi) inclusive byte range from markers > selection > cursor."""
-        if self._marker_start >= 0 and self._marker_end >= 0:
-            return (min(self._marker_start, self._marker_end),
-                    max(self._marker_start, self._marker_end))
-        if self.has_selection():
-            return self._ordered_selection()
-        return (self._cursor_offset, self._cursor_offset)
-
-    def add_pattern_region(self, lo: int = -1, hi: int = -1):
-        """Append a byte range as a pattern region.
-
-        If *lo*/*hi* are not given, the current selection/markers/cursor are used.
-        """
-        if lo < 0 or hi < 0:
-            lo, hi = self._get_active_range()
-
-        # Merge with overlapping/adjacent existing regions
-        new_regions = []
-        for rs, re_ in self._pattern_regions:
-            if lo <= re_ + 1 and hi >= rs - 1:
-                lo = min(lo, rs)
-                hi = max(hi, re_)
-            else:
-                new_regions.append((rs, re_))
-        new_regions.append((lo, hi))
-        new_regions.sort()
-        self._pattern_regions = new_regions
-        self.pattern_regions_changed.emit(len(self._pattern_regions))
-        self.viewport().update()
-
-    def clear_pattern_regions(self):
-        """Reset all pattern regions."""
-        self._pattern_regions.clear()
-        self.pattern_regions_changed.emit(0)
-        self.viewport().update()
-
-    def build_wildcard_pattern(self) -> str:
-        """Generate a YARA hex pattern with [N] wildcards between regions."""
-        if not self._pattern_regions or not self._buffer:
-            return ""
-        regions = sorted(self._pattern_regions)
-        parts = []
-        for i, (start, end) in enumerate(regions):
-            data = self._buffer.read(start, end - start + 1)
-            hex_bytes = " ".join(f"{b:02X}" for b in data)
-            if i > 0:
-                prev_end = regions[i - 1][1]
-                gap = start - (prev_end + 1)
-                if gap > 0:
-                    parts.append(f"[{gap}]")
-                # gap == 0: adjacent, no wildcard needed
-                # gap < 0 should not happen after merge
-            parts.append(hex_bytes)
-
-        self._yara_counter += 1
-        origin = regions[0][0]
-        return (f"$wildcard_{self._yara_counter} = {{ {' '.join(parts)} }}"
-                f"  // {len(regions)} regions from 0x{origin:08X}")
-
     def send_wildcard_to_yara_editor(self):
-        """Build wildcard pattern and emit via yara_pattern_requested."""
-        pattern = self.build_wildcard_pattern()
+        pattern = self._exporter.build_wildcard_pattern()
         if pattern:
             self.yara_pattern_requested.emit(pattern)
 
     def send_all_regions_to_yara_editor(self):
-        """Send each pattern region as a separate $hex_N pattern."""
-        if not self._pattern_regions or not self._buffer:
+        patterns = self._exporter.generate_all_region_patterns()
+        if patterns:
+            self.yara_pattern_requested.emit(patterns)
+
+    # ── Marker methods (delegate to selection model) ───────────────
+
+    def set_marker_start(self):
+        self._selection.set_marker_start()
+        self.viewport().update()
+
+    def set_marker_end(self):
+        self._selection.set_marker_end()
+        self.viewport().update()
+
+    def clear_markers(self):
+        self._selection.clear_markers()
+        self.viewport().update()
+
+    # ── Pattern region methods (delegate to selection model) ───────
+
+    def add_pattern_region(self, lo: int = -1, hi: int = -1):
+        count = self._selection.add_pattern_region(lo, hi)
+        self.pattern_regions_changed.emit(count)
+        self.viewport().update()
+
+    def clear_pattern_regions(self):
+        self._selection.clear_pattern_regions()
+        self.pattern_regions_changed.emit(0)
+        self.viewport().update()
+
+    def pattern_regions(self) -> list[tuple[int, int]]:
+        return self._selection.pattern_regions
+
+    def build_wildcard_pattern(self) -> str:
+        return self._exporter.build_wildcard_pattern()
+
+    # ── Navigation ─────────────────────────────────────────────────
+
+    def _ensure_visible(self, offset: int):
+        line = self._layout.line_for_offset(
+            offset, self._text_mode, self._text_escape_mode,
+            self._byte_to_text_line)
+        first = self.verticalScrollBar().value()
+        visible = self._visible_lines()
+        if line < first or line >= first + visible:
+            target = max(0, line - visible // 3)
+            self.verticalScrollBar().setValue(target)
+
+    def navigate_to_offset(self, offset: int, length: int = 0):
+        if not self._buffer:
             return
-        lines = []
-        for start, end in sorted(self._pattern_regions):
-            data = self._buffer.read(start, end - start + 1)
-            hex_str = " ".join(f"{b:02X}" for b in data)
-            self._yara_counter += 1
-            lines.append(f"$hex_{self._yara_counter} = {{ {hex_str} }}"
-                         f"  // 0x{start:08X}, {len(data)} bytes")
-        if lines:
-            self.yara_pattern_requested.emit("\n    ".join(lines))
+        offset = max(0, min(offset, self._buffer.size() - 1))
+        had_selection = self._selection.has_selection()
+        self._selection.set_cursor(offset, emit=False)
+        if length > 0:
+            end = min(offset + length - 1, self._buffer.size() - 1)
+            self._selection.set_selection(offset, end)
+            self.selection_changed.emit(offset, end - offset + 1)
+        else:
+            self._selection.clear_selection()
+            if had_selection:
+                self.selection_changed.emit(offset, 0)
+
+        line = self._layout.line_for_offset(
+            offset, self._text_mode, self._text_escape_mode,
+            self._byte_to_text_line)
+        visible = self._visible_lines()
+        target = max(0, line - visible // 3)
+        self.verticalScrollBar().setValue(target)
+        self.cursor_moved.emit(offset)
+        self.viewport().update()
+
+    # ── Post-transform refresh ─────────────────────────────────────
+
+    def refresh_after_data_change(self):
+        if self._buffer is None:
+            self.viewport().update()
+            return
+        self._selection.clamp_to_size(self._buffer.size())
+        prev_count = self._selection.pattern_region_count
+        self._selection.clamp_to_size(self._buffer.size())
+        if self._selection.pattern_region_count != prev_count:
+            self.pattern_regions_changed.emit(self._selection.pattern_region_count)
+        self._text_line_starts = []
+        if self._text_mode and not self._text_escape_mode:
+            self._rebuild_text_line_starts()
+        self._update_scrollbar()
+        self.cursor_moved.emit(self._selection.cursor)
+        self.viewport().update()
 
     # ── Context menu ─────────────────────────────────────────────
 
     def contextMenuEvent(self, event):
         menu = QMenu(self)
+        sel = self._selection
 
         act_hex = menu.addAction("Copy as Hex                Ctrl+C")
         act_hex.triggered.connect(self.copy_as_hex)
@@ -942,12 +934,12 @@ class HexWidget(QAbstractScrollArea):
         menu.addSeparator()
 
         act_xform = menu.addAction("Apply Transform\u2026")
-        act_xform.triggered.connect(self._request_transform)
+        act_xform.triggered.connect(lambda: self.transform_requested.emit())
 
         menu.addSeparator()
 
-        # Capture the active range NOW, before menu event loop can change state
-        rgn_lo, rgn_hi = self._get_active_range()
+        # Capture active range before menu event loop
+        rgn_lo, rgn_hi = sel.active_range()
 
         act_add_region = menu.addAction("Mark Region")
         act_add_region.triggered.connect(lambda: self.add_pattern_region(rgn_lo, rgn_hi))
@@ -963,123 +955,105 @@ class HexWidget(QAbstractScrollArea):
 
         menu.addSeparator()
 
-        # Capture range for disassemble
-        disasm_lo, disasm_hi = self._get_active_range()
+        disasm_lo, disasm_hi = sel.active_range()
         act_disasm = menu.addAction("Disassemble Selection")
-        act_disasm.triggered.connect(
-            lambda: self._emit_disassemble(disasm_lo, disasm_hi))
+        act_disasm.triggered.connect(lambda: self._emit_disassemble(disasm_lo, disasm_hi))
 
-        # Disable actions if no data loaded
+        # ── Edit operations ────────────────────────────────────────
+        menu.addSeparator()
+        edit_lo, edit_hi = sel.active_range()
+        edit_len = edit_hi - edit_lo + 1
+
+        act_nop = menu.addAction(f"NOP Selection (0x90, {edit_len} bytes)")
+        act_nop.triggered.connect(lambda: self._do_nop(edit_lo, edit_hi))
+
+        act_zero = menu.addAction(f"Zero Selection (0x00, {edit_len} bytes)")
+        act_zero.triggered.connect(lambda: self._do_zero(edit_lo, edit_hi))
+
+        act_fill = menu.addAction("Fill Selection\u2026        Ctrl+Shift+F")
+        act_fill.triggered.connect(self._do_fill_dialog)
+
+        act_insert = menu.addAction("Insert Bytes\u2026          Ctrl+I")
+        act_insert.triggered.connect(self._do_insert_dialog)
+
+        act_delete = menu.addAction("Delete Selection         Del")
+        act_delete.triggered.connect(lambda: self._do_delete_selection())
+
+        menu.addSeparator()
+
+        act_undo = menu.addAction("Undo                     Ctrl+Z")
+        act_undo.triggered.connect(self._do_undo)
+
+        act_redo = menu.addAction("Redo                     Ctrl+Shift+Z")
+        act_redo.triggered.connect(self._do_redo)
+
+        act_paste = menu.addAction("Paste                    Ctrl+V")
+        act_paste.triggered.connect(self._do_paste)
+
+        mode_label = "Insert" if self._editor.insert_mode else "Overwrite"
+        act_mode = menu.addAction(f"Mode: {mode_label}         Ins")
+        act_mode.triggered.connect(lambda: self._editor.toggle_insert_mode())
+
+        # Enable/disable based on state
         has_data = self._buffer is not None and self._buffer.size() > 0
-        copy_acts = (act_hex, act_hex_compact, act_yara, act_h2t, act_t2h,
-                     act_c, act_py, act_ascii, act_b64, act_send)
-        for act in copy_acts:
+        has_sel = sel.has_selection()
+        for act in (act_hex, act_hex_compact, act_yara, act_h2t, act_t2h,
+                    act_c, act_py, act_ascii, act_b64, act_send):
             act.setEnabled(has_data)
-        for act in (act_start, act_end):
-            act.setEnabled(has_data)
-        act_clear.setEnabled(self._marker_start >= 0 or self._marker_end >= 0)
+        act_start.setEnabled(has_data)
+        act_end.setEnabled(has_data)
+        act_clear.setEnabled(sel.marker_start >= 0 or sel.marker_end >= 0)
         act_add_region.setEnabled(has_data)
         act_xform.setEnabled(has_data)
-        has_regions = len(self._pattern_regions) >= 1
-        act_build_wc.setEnabled(len(self._pattern_regions) >= 2)
+        has_regions = sel.pattern_region_count >= 1
+        act_build_wc.setEnabled(sel.pattern_region_count >= 2)
         act_send_regions.setEnabled(has_regions)
         act_clear_regions.setEnabled(has_regions)
         act_disasm.setEnabled(has_data and disasm_hi > disasm_lo)
+        editable = not self._read_only
+        act_nop.setEnabled(has_data and has_sel and editable)
+        act_zero.setEnabled(has_data and has_sel and editable)
+        act_fill.setEnabled(has_data and has_sel and editable)
+        act_delete.setEnabled(has_data and has_sel and editable)
+        act_insert.setEnabled(has_data and editable)
+        act_undo.setEnabled(self._editor.has_undo() and editable)
+        act_redo.setEnabled(self._editor.has_redo() and editable)
+        act_paste.setEnabled(has_data and editable)
+        act_mode.setEnabled(editable)
+        act_xform.setEnabled(has_data and editable)
 
         menu.exec(event.globalPos())
+
+    def _do_nop(self, lo: int, hi: int):
+        """Fill selection with 0x90 (x86 NOP)."""
+        if not self._check_editable():
+            return
+        cmd = self._editor.fill_range(lo, hi, b"\x90")
+        if cmd:
+            self._after_edit()
+
+    def _do_zero(self, lo: int, hi: int):
+        """Fill selection with 0x00."""
+        if not self._check_editable():
+            return
+        cmd = self._editor.fill_range(lo, hi, b"\x00")
+        if cmd:
+            self._after_edit()
+
+    def _do_delete_selection(self):
+        if not self._check_editable():
+            return
+        if not self._selection.has_selection():
+            return
+        lo, hi = self._selection.ordered_selection()
+        cmd = self._editor.delete_selection(lo, hi)
+        if cmd:
+            self._selection.clear_selection()
+            self._selection.set_cursor(cmd.cursor_after, emit=False)
+            self._after_edit()
 
     def _emit_disassemble(self, lo: int, hi: int):
         if self._buffer is None or hi <= lo:
             return
         data = self._buffer.read(lo, hi - lo)
         self.disassemble_requested.emit(bytes(data), lo)
-
-    def _request_transform(self):
-        """Ask the window to open the transform dialog for us."""
-        self.transform_requested.emit()
-
-    def pattern_regions(self) -> list[tuple[int, int]]:
-        """Return the current pattern regions as a sorted list."""
-        return sorted(self._pattern_regions)
-
-    def refresh_after_data_change(self):
-        """Called by the window after a transform/undo/redo.
-
-        Clamps cursor/selection to the (possibly shorter) buffer and
-        forces a repaint.  The window is responsible for pushing the
-        buffer into the other docks.
-        """
-        if self._buffer is None:
-            self.viewport().update()
-            return
-        size = self._buffer.size()
-        max_off = max(0, size - 1)
-        if self._cursor_offset > max_off:
-            self._cursor_offset = max_off
-        if self._selection_start > max_off:
-            self._selection_start = -1
-        if self._selection_end > max_off:
-            self._selection_end = max_off if self._selection_start >= 0 else -1
-        if self._marker_start > max_off:
-            self._marker_start = -1
-        if self._marker_end > max_off:
-            self._marker_end = -1
-        # Clamp pattern regions to the new size
-        new_regions: list[tuple[int, int]] = []
-        for lo, hi in self._pattern_regions:
-            if lo > max_off:
-                continue
-            new_regions.append((lo, min(hi, max_off)))
-        if new_regions != self._pattern_regions:
-            self._pattern_regions = new_regions
-            self.pattern_regions_changed.emit(len(new_regions))
-        self._update_scrollbar()
-        self.cursor_moved.emit(self._cursor_offset)
-        self.viewport().update()
-
-    # ── Scrolling / navigation ──────────────────────────────────────
-
-    def _ensure_visible(self, offset: int):
-        """Scroll so *offset* is visible — keeps it near the top third for keyboard nav."""
-        bpl = self._bytes_per_line()
-        line = offset // bpl
-        first = self.verticalScrollBar().value()
-        visible = self._visible_lines()
-        if line < first or line >= first + visible:
-            target = max(0, line - visible // 3)
-            self.verticalScrollBar().setValue(target)
-
-    def _scroll_to_center(self, offset: int):
-        """Scroll so *offset* line is centred vertically (used by navigate_to_offset)."""
-        bpl = self._bytes_per_line()
-        line = offset // bpl
-        visible = self._visible_lines()
-        target = max(0, line - visible // 3)
-        self.verticalScrollBar().setValue(target)
-
-    def navigate_to_offset(self, offset: int, length: int = 0):
-        """Scroll to and highlight a byte range."""
-        if not self._buffer:
-            return
-        offset = max(0, min(offset, self._buffer.size() - 1))
-        had_selection = self.has_selection()
-        self._cursor_offset = offset
-        if length > 0:
-            self._selection_start = offset
-            self._selection_end = min(offset + length - 1, self._buffer.size() - 1)
-            self.selection_changed.emit(self._selection_start,
-                                        self._selection_end - self._selection_start + 1)
-        else:
-            self._selection_start = -1
-            self._selection_end = -1
-            if had_selection:
-                self.selection_changed.emit(offset, 0)
-        self._scroll_to_center(offset)
-        self.cursor_moved.emit(offset)
-        self.viewport().update()
-
-    def wheelEvent(self, event: QWheelEvent):
-        delta = event.angleDelta().y()
-        steps = -delta // 40  # 3 lines per notch
-        self.verticalScrollBar().setValue(self.verticalScrollBar().value() + steps)
-        event.accept()

@@ -87,12 +87,20 @@ class DataInspectorWidget(QWidget):
         if not self._buffer or self._buffer.size() == 0:
             return
 
-        off = self._offset
         be = self._is_big_endian()
         bo = ">" if be else "<"
 
-        # Read up to 8 bytes from cursor (used for type interpretations)
-        raw = self._buffer.read(off, 8)
+        # Decide the anchor for type interpretations:
+        #   - Selection active: start at _sel_start, cap width at _sel_len
+        #     so a 4-byte selection shows uint32 but not uint64.
+        #   - Otherwise: cursor offset, up to 8 bytes.
+        if self._sel_len > 0 and self._sel_start >= 0:
+            base_off = self._sel_start
+            max_width = min(self._sel_len, 8)
+        else:
+            base_off = self._offset
+            max_width = 8
+        raw = self._buffer.read(base_off, max_width)
         if not raw:
             return
 
@@ -120,7 +128,7 @@ class DataInspectorWidget(QWidget):
             rows.append(("ASCII", ascii_str))
         else:
             # Single cursor byte
-            rows.append(("Offset", f"0x{off:X} ({off:,})"))
+            rows.append(("Offset", f"0x{base_off:X} ({base_off:,})"))
             rows.append(("Hex", f"{raw[0]:02X}"))
 
         # 1-byte

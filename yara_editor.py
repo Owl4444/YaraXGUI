@@ -52,7 +52,7 @@ class YaraTextEdit(QTextEdit):
         self._completion_popup.completion_selected.connect(self._insert_completion)
         self._completion_timer = QTimer(self)
         self._completion_timer.setSingleShot(True)
-        self._completion_timer.setInterval(300)
+        self._completion_timer.setInterval(400)
         self._completion_timer.timeout.connect(lambda: self._trigger_completion(force=False))
 
         # --- Scrollbar / editor optimizations ---
@@ -601,22 +601,73 @@ class YaraTextEdit(QTextEdit):
         cursor = self.textCursor()
         pos = cursor.position()
 
+        # ── Suppress in contexts where completions are noise ───────
+        if self._cursor_in_noncode_context(text, pos):
+            self._completion_popup.hide()
+            return
+
         # Get the current word prefix
         before = text[:pos]
         word_match = re.search(r'[\$#@!]?\w*$', before)
         prefix = word_match.group(0) if word_match else ""
 
-        # Require 2+ chars unless forced or after "."
-        if not force and len(prefix) < 2 and not before.endswith("."):
+        # Require 3+ chars for automatic popup (reduces noise);
+        # 1+ char is fine after "." (module member) or when forced.
+        min_chars = 1 if (force or before.endswith(".")) else 3
+        if len(prefix) < min_chars:
             self._completion_popup.hide()
             return
 
         items = self._completion_engine.get_completions(text, pos)
 
+        # Don't show the popup if the only match is an exact match of
+        # what's already typed — there's nothing to complete.
+        if (len(items) == 1
+                and items[0].label.lower() == prefix.lower()
+                and items[0].insert_text.rstrip() == prefix):
+            self._completion_popup.hide()
+            return
+
         if items:
             self._completion_popup.show_completions(items, prefix)
         else:
             self._completion_popup.hide()
+
+    def _cursor_in_noncode_context(self, text: str, pos: int) -> bool:
+        """Return True if cursor is inside a string, hex block, or comment."""
+        before = text[:pos]
+
+        # Inside a single-line comment (// ... up to EOL)
+        line_start = before.rfind("\n") + 1
+        line_before = before[line_start:]
+        # Strip strings to avoid matching // inside "http://..."
+        stripped = re.sub(r'"(?:[^"\\]|\\.)*"', '""', line_before)
+        if "//" in stripped:
+            return True
+
+        # Inside a block comment (/* ... */)
+        last_open = before.rfind("/*")
+        last_close = before.rfind("*/")
+        if last_open >= 0 and last_open > last_close:
+            return True
+
+        # Inside a quoted string — count unescaped quotes on the line
+        if self._is_inside_string(text, pos):
+            return True
+
+        # Inside a hex string { ... }
+        # Walk backwards to find if we're between { and } in a strings
+        # section (not a rule opening brace). Hex strings always follow
+        # a pattern like:  $name = { ... }
+        last_open_brace = before.rfind("{")
+        last_close_brace = before.rfind("}")
+        if last_open_brace >= 0 and last_open_brace > last_close_brace:
+            # Check if this brace is a hex string (preceded by = on the same logical line)
+            pre_brace = before[:last_open_brace].rstrip()
+            if pre_brace.endswith("="):
+                return True
+
+        return False
 
     def _insert_completion(self, insert_text: str, is_snippet: bool):
         """Replace the current prefix with the completion text."""

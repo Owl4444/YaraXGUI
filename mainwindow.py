@@ -35,6 +35,7 @@ from ui_form import Ui_MainWindow
 from yara_editor import YaraTextEdit
 from yara_highlighter import YaraHighlighter
 from hex_editor import HexEditorWindow
+from yara_rule_browser import YaraRuleBrowser
 
 
 class MainWindow(QMainWindow):
@@ -100,6 +101,20 @@ class MainWindow(QMainWindow):
 
         # Invalidate compiled rules when editor text changes
         self.ui.te_yara_editor.textChanged.connect(self.on_yara_text_changed)
+
+        # ── YARA Rule Browser (tree with preview tooltips) ─────────
+        self._yara_browser = YaraRuleBrowser(self)
+        self._yara_browser.file_requested.connect(self._on_yara_file_requested)
+        self._yara_browser.files_requested.connect(self._on_yara_files_requested)
+        # Insert at top of the left-side vertical splitter so the
+        # layout becomes: [rule browser] / [editor+buttons] / [compilation]
+        self.ui.splitter_4.insertWidget(0, self._yara_browser)
+        # Start collapsed — user opens it via "Browse YARA"
+        self._yara_browser.setVisible(False)
+        # Set splitter proportions: browser 30%, editor 50%, compilation 20%
+        self.ui.splitter_4.setStretchFactor(0, 30)
+        self.ui.splitter_4.setStretchFactor(1, 50)
+        self.ui.splitter_4.setStretchFactor(2, 20)
 
         # File system model
         self.fs_model = CheckableFsModel(self)
@@ -305,27 +320,9 @@ class MainWindow(QMainWindow):
                 pass
 
     def reset_interface_on_startup(self):
-        """Reset the interface to default state when application starts"""
-        # Reset all tab focus to default states (same as Reset button)
-        # Main tabs: Focus on Scan Dir tab (index 0)
-        self.ui.tabWidget.setCurrentIndex(0)  # Switch to Scan Dir tab
-        
-        # Scan Results sub-tabs: Focus on Hits tab (index 0) 
-        if hasattr(self.ui, 'tabWidget_2'):
-            self.ui.tabWidget_2.setCurrentIndex(0)  # Focus on Hits tab
-        
-        # Details sub-tabs: Focus on Rule Details tab (index 0)
-        if hasattr(self.ui, 'tabWidget_3'):
-            self.ui.tabWidget_3.setCurrentIndex(0)  # Focus on Rule Details tab
-        
-        # Match Details tabs: If there are match details sub-tabs, focus on default
-        if hasattr(self.ui, 'tabWidget_4'):  # In case there's a 4th level of tabs
-            self.ui.tabWidget_4.setCurrentIndex(0)
-        
-        # Initialize similar tags widget with instruction message
+        """Reset the interface to default state when application starts."""
+        self._reset_all_tabs()
         self.results.initialize_similar_tags_widget()
-        
-        # Set status message
         self.statusBar().showMessage("Application ready - select directory and YARA rules to begin", 4000)
 
     def setup_application_icon(self):
@@ -863,8 +860,10 @@ class MainWindow(QMainWindow):
                     settings = json.load(f)
                 current_theme = settings.get('theme', 'Light')
                 vim_enabled = settings.get('vim_mode', False)
+                yara_folder = settings.get('yara_rules_folder', '')
         except Exception as e:
             print(f"Error loading theme settings: {e}")
+            yara_folder = ''
 
         # Set theme in combo box and apply
         if current_theme in [self.theme_combo.itemText(i) for i in range(self.theme_combo.count())]:
@@ -874,29 +873,14 @@ class MainWindow(QMainWindow):
 
         # Restore vim mode setting (after theme is applied)
         self.vim_checkbox.setChecked(vim_enabled)
+
+        # Restore YARA rules folder (browser stays hidden until user clicks Browse)
+        if yara_folder and Path(yara_folder).is_dir():
+            self._yara_browser.set_root(yara_folder)
     
     def save_theme_settings(self, theme_name):
-        """Save theme preference to config file"""
-        config_path = Path(__file__).parent / "config" / "settings.json"
-        
-        try:
-            # Load existing settings or create new
-            settings = {}
-            if config_path.exists():
-                import json
-                with open(config_path, 'r', encoding='utf-8') as f:
-                    settings = json.load(f)
-            
-            # Update theme setting
-            settings['theme'] = theme_name
-            
-            # Save settings
-            import json
-            with open(config_path, 'w', encoding='utf-8') as f:
-                json.dump(settings, f, indent=2)
-                
-        except Exception as e:
-            print(f"Error saving theme settings: {e}")
+        """Save theme preference to config file."""
+        self._save_setting('theme', theme_name)
     
     def on_theme_changed(self, theme_name):
         """Handle theme change from combo box"""
@@ -915,21 +899,28 @@ class MainWindow(QMainWindow):
         """Update vim mode indicator label."""
         self.vim_mode_label.setText(text)
 
-    def _save_vim_setting(self, enabled):
-        """Persist vim_mode to config/settings.json."""
+    def _save_setting(self, key: str, value):
+        """Persist a single key to config/settings.json."""
         config_path = Path(__file__).parent / "config" / "settings.json"
         try:
+            import json
             settings = {}
             if config_path.exists():
-                import json
                 with open(config_path, 'r', encoding='utf-8') as f:
                     settings = json.load(f)
-            settings['vim_mode'] = enabled
-            import json
+            settings[key] = value
             with open(config_path, 'w', encoding='utf-8') as f:
                 json.dump(settings, f, indent=2)
         except Exception as e:
-            print(f"Error saving vim setting: {e}")
+            print(f"Error saving setting {key}: {e}")
+
+    def _save_vim_setting(self, enabled):
+        """Persist vim_mode to config/settings.json."""
+        self._save_setting('vim_mode', enabled)
+
+    def _save_yara_folder(self, folder: str):
+        """Persist YARA rules folder to config/settings.json."""
+        self._save_setting('yara_rules_folder', folder)
     
     def apply_theme(self, theme_name):
         """Apply the selected theme to the entire application."""
@@ -1135,9 +1126,37 @@ class MainWindow(QMainWindow):
             return
 
     def on_browse_yara(self):
+        """Toggle the YARA rule browser panel.
+
+        If the browser has no root folder set yet, prompt the user to
+        pick one.  Otherwise just toggle visibility so repeated clicks
+        show/hide the panel.
+        """
+        if self._yara_browser.isVisible():
+            self._yara_browser.setVisible(False)
+            return
+
+        # Show the browser
+        self._yara_browser.setVisible(True)
+
+        # If no root set yet, prompt immediately
+        if not self._yara_browser.root_path():
+            folder = QFileDialog.getExistingDirectory(
+                self, "Select YARA rules folder", self.last_dir)
+            if folder:
+                self._yara_browser.set_root(folder)
+                self.last_dir = folder
+                self._save_yara_folder(folder)
+            else:
+                # Also offer single-file fallback
+                self._open_single_yara_file()
+                return
+
+    def _open_single_yara_file(self):
+        """Open a single YARA file via the classic file dialog."""
         path, _ = QFileDialog.getOpenFileName(
-            self, "Open YARA rule", self.last_dir, "YARA files (*.yar *.yara);;All files (*)"
-        )
+            self, "Open YARA rule", self.last_dir,
+            "YARA files (*.yar *.yara);;All files (*)")
         if not path:
             return
         try:
@@ -1145,8 +1164,46 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Open failed", f"Could not read file:\n{e}")
             return
-        # Use helper to load text into editor with size check to avoid UI hangs
         self._load_text_to_editor(text, source_path=path)
+
+    def _on_yara_file_requested(self, filepath: str):
+        """Handle double-click on a rule file in the browser."""
+        try:
+            text = Path(filepath).read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            QMessageBox.critical(self, "Open failed", f"Could not read file:\n{e}")
+            return
+        self._load_text_to_editor(text, source_path=filepath)
+
+    def _on_yara_files_requested(self, filepaths: list):
+        """Handle 'Load All Rules' from a folder — concatenate into editor."""
+        if not filepaths:
+            return
+        if len(filepaths) > 50:
+            reply = QMessageBox.question(
+                self, "Load many files",
+                f"This will concatenate {len(filepaths)} YARA files into "
+                f"the editor.\n\nContinue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        parts: list[str] = []
+        errors: list[str] = []
+        for fp in filepaths:
+            try:
+                parts.append(Path(fp).read_text(encoding="utf-8", errors="replace"))
+            except Exception as e:
+                errors.append(f"{Path(fp).name}: {e}")
+        if not parts:
+            QMessageBox.warning(self, "No rules loaded",
+                                "Could not read any of the selected files.")
+            return
+        combined = "\n\n".join(parts)
+        self._load_text_to_editor(combined, source_path=str(Path(filepaths[0]).parent))
+        msg = f"Loaded {len(parts)} YARA file(s)"
+        if errors:
+            msg += f" ({len(errors)} failed)"
+        self.statusBar().showMessage(msg, 4000)
 
     def on_yara_text_changed(self):
         """Invalidate compiled rules when YARA text is modified"""
@@ -1247,66 +1304,66 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, "Save failed", f"Could not save file:\n{e}")
 
+    def _reset_all_tabs(self):
+        """Reset every tab widget to its default index."""
+        self.ui.tabWidget.setCurrentIndex(0)
+        self.ui.tabWidget_2.setCurrentIndex(0)
+        self.ui.tabWidget_3.setCurrentIndex(0)
+        self.ui.tabWidget_4.setCurrentIndex(0)
+
     def on_reset(self):
         """Reset everything to a completely fresh start"""
         reply = self._show_reset_confirmation_dialog()
-        
-        if reply == QMessageBox.StandardButton.Yes:
-            # Clear YARA editor and compilation
-            self.ui.te_yara_editor.clear()
-            self.compiled_rules = None
-            
-            # Clear all scan data
-            self.scan_hits = []
-            self.scan_misses = []
-            self.scan_root = None
 
-            # Clear all results views
-            self.results.clear_all()
-            
-            # Clear exclusion list
-            self.ui.listWidget.clear()
-            
-            # Reset directory tree
-            self.fs_view.setRootIndex(QModelIndex())  # Empty tree
-            self.fs_model._unchecked.clear()  # Clear exclusions
-            
-            # Clear and reset compilation output with helpful message
-            self.ui.tb_compilation_output.clear()  # Explicitly clear first
-            self.ui.tb_compilation_output.setHtml(
-                '<span style="color: gray;"><b>Complete reset performed</b></span><br><br>'
-                '<b>Steps to get started:</b><br>'
-                '1. Load or write YARA rules in the editor above<br>'
-                '2. Click <b>"Compile"</b> to validate your rules<br>'
-                '3. Click <b>"Select Scan Dir"</b> to choose what to scan<br>'
-                '4. Click <b>"SCAN"</b> to start the scan<br>'
-            )
-            
-            # Reset AST highlighting settings
-            if hasattr(self, 'highlighter') and self.highlighter:
-                self.highlighter.set_ast_enabled(True)  # Re-enable AST highlighting
-                self.highlighter.clear_ast_cache()      # Clear any cached data
-            
-            # Reset size warning flag so it can show again for large files
-            self._size_warning_shown = False
-            
-            # Reset all tab focus to default states
-            # Main tabs: Focus on Scan Dir tab (index 0)
-            self.ui.tabWidget.setCurrentIndex(0)  # Switch to Scan Dir tab
-            
-            # Scan Results sub-tabs: Focus on Hits tab (index 0) 
-            if hasattr(self.ui, 'tabWidget_2'):
-                self.ui.tabWidget_2.setCurrentIndex(0)  # Focus on Hits tab
-            
-            # Details sub-tabs: Focus on Rule Details tab (index 0)
-            if hasattr(self.ui, 'tabWidget_3'):
-                self.ui.tabWidget_3.setCurrentIndex(0)  # Focus on Rule Details tab
-            
-            # Match Details tabs: If there are match details sub-tabs, focus on default
-            if hasattr(self.ui, 'tabWidget_4'):  # In case there's a 4th level of tabs
-                self.ui.tabWidget_4.setCurrentIndex(0)
-            
-            self.statusBar().showMessage("Complete reset - ready for fresh start", 5000)
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Clear YARA editor and compilation
+        self.ui.te_yara_editor.clear()
+        self.compiled_rules = None
+
+        # Reset document-modified tracking so close won't prompt
+        self._last_saved_text = ""
+        self._document_modified = False
+
+        # Clear all scan data
+        self.scan_hits = []
+        self.scan_misses = []
+        self.scan_root = None
+
+        # Clear all results views
+        self.results.clear_all()
+
+        # Clear exclusion list
+        self.ui.listWidget.clear()
+
+        # Reset directory tree
+        self.fs_view.setRootIndex(QModelIndex())
+        self.fs_model._unchecked.clear()
+
+        # Clear and reset compilation output with helpful message
+        self.ui.tb_compilation_output.clear()
+        self.ui.tb_compilation_output.setHtml(
+            '<span style="color: gray;"><b>Complete reset performed</b></span><br><br>'
+            '<b>Steps to get started:</b><br>'
+            '1. Load or write YARA rules in the editor above<br>'
+            '2. Click <b>"Select Scan Dir"</b> to choose what to scan<br>'
+            '3. Click <b>"SCAN"</b> to start the scan<br>'
+        )
+
+        # Reset AST highlighting settings
+        if hasattr(self, 'highlighter') and self.highlighter:
+            self.highlighter.set_ast_enabled(True)
+            self.highlighter.clear_ast_cache()
+
+        # Reset size warning flag so it can show again for large files
+        self._size_warning_shown = False
+
+        # Collapse the YARA rule browser
+        self._yara_browser.setVisible(False)
+
+        self._reset_all_tabs()
+        self.statusBar().showMessage("Complete reset - ready for fresh start", 5000)
 
     def on_format_yara(self) -> None:
         """Format the YARA rule in the editor using yara-x Formatter."""

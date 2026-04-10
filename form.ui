@@ -295,21 +295,6 @@ li.checked::marker { content: &quot;\2612&quot;; }
    </property>
   </widget>
   <widget class="QStatusBar" name="statusbar"/>
-  <action name="actionsfdgh">
-   <property name="text">
-    <string>sfdgh</string>
-   </property>
-  </action>
-  <action name="actionsdf">
-   <property name="text">
-    <string>sdf</string>
-   </property>
-  </action>
-  <action name="actionasdf">
-   <property name="text">
-    <string>asdf</string>
-   </property>
-  </action>
  </widget>
  <resources/>
  <connections/>

@@ -28,12 +28,6 @@ class Ui_MainWindow(object):
         if not MainWindow.objectName():
             MainWindow.setObjectName(u"MainWindow")
         MainWindow.resize(963, 597)
-        self.actionsfdgh = QAction(MainWindow)
-        self.actionsfdgh.setObjectName(u"actionsfdgh")
-        self.actionsdf = QAction(MainWindow)
-        self.actionsdf.setObjectName(u"actionsdf")
-        self.actionasdf = QAction(MainWindow)
-        self.actionasdf.setObjectName(u"actionasdf")
         self.centralwidget = QWidget(MainWindow)
         self.centralwidget.setObjectName(u"centralwidget")
         self.verticalLayout = QVBoxLayout(self.centralwidget)
@@ -245,9 +239,6 @@ class Ui_MainWindow(object):
 
     def retranslateUi(self, MainWindow):
         MainWindow.setWindowTitle(QCoreApplication.translate("MainWindow", u"MainWindow", None))
-        self.actionsfdgh.setText(QCoreApplication.translate("MainWindow", u"sfdgh", None))
-        self.actionsdf.setText(QCoreApplication.translate("MainWindow", u"sdf", None))
-        self.actionasdf.setText(QCoreApplication.translate("MainWindow", u"asdf", None))
         self.pb_browse_yara.setText(QCoreApplication.translate("MainWindow", u"Browse  YARA", None))
         self.pb_select_scan_dir.setText(QCoreApplication.translate("MainWindow", u"Select Scan Dir", None))
         self.pb_save_rule.setText(QCoreApplication.translate("MainWindow", u"Save Rule", None))

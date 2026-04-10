@@ -39,93 +39,207 @@ class CompletionItem:
 # ── Keyword / builtin data ───────────────────────────────────────
 
 _YARA_KEYWORDS = [
-    CompletionItem("rule", 'rule rule_name {\n    meta:\n        author = ""\n        description = ""\n    strings:\n        $s1 = "$0"\n    condition:\n        any of them\n}', "snippet", "Rule template", snippet=True),
-    CompletionItem("import", 'import "$0"', "keyword", "Import module", snippet=True),
-    CompletionItem("include", 'include "$0"', "keyword", "Include file", snippet=True),
-    CompletionItem("private", "private ", "keyword", "Private rule modifier"),
-    CompletionItem("global", "global ", "keyword", "Global rule modifier"),
-    CompletionItem("true", "true", "keyword", "Boolean true"),
-    CompletionItem("false", "false", "keyword", "Boolean false"),
+    CompletionItem("rule", 'rule rule_name {\n    meta:\n        author = ""\n        description = ""\n    strings:\n        $s1 = "$0"\n    condition:\n        any of them\n}', "snippet",
+                   "Full rule template | rule suspicious_pdf { ... }",
+                   snippet=True),
+    CompletionItem("import", 'import "$0"', "keyword",
+                   'Import a YARA module | import "pe"  import "math"',
+                   snippet=True),
+    CompletionItem("include", 'include "$0"', "keyword",
+                   'Include another .yar file | include "common_rules.yar"',
+                   snippet=True),
+    CompletionItem("private", "private ", "keyword",
+                   "Rule won't appear in scan output | private rule helper { ... }"),
+    CompletionItem("global", "global ", "keyword",
+                   "Rule must match for all other rules | global rule is_pe { ... }"),
+    CompletionItem("true", "true", "keyword", "Boolean literal"),
+    CompletionItem("false", "false", "keyword", "Boolean literal"),
 ]
 
 _CONDITION_KEYWORDS = [
-    CompletionItem("and", "and ", "keyword", "Logical AND"),
-    CompletionItem("or", "or ", "keyword", "Logical OR"),
-    CompletionItem("not", "not ", "keyword", "Logical NOT"),
-    CompletionItem("any of them", "any of them", "snippet", "Any string matches"),
-    CompletionItem("any of", "any of ($0)", "snippet", "Any of specified strings", snippet=True),
-    CompletionItem("all of them", "all of them", "snippet", "All strings match"),
-    CompletionItem("all of", "all of ($0)", "snippet", "All of specified strings", snippet=True),
-    CompletionItem("none of them", "none of them", "snippet", "No strings match"),
-    CompletionItem("none of", "none of ($0)", "snippet", "None of specified strings", snippet=True),
-    CompletionItem("any", "any ", "keyword", "Quantifier: any"),
-    CompletionItem("all", "all ", "keyword", "Quantifier: all"),
-    CompletionItem("none", "none ", "keyword", "Quantifier: none (zero matches)"),
-    CompletionItem("of", "of ", "keyword", "Quantifier: of"),
-    CompletionItem("them", "them", "keyword", "All string identifiers"),
-    CompletionItem("for any of them", "for any of them : ($0)", "snippet", "Iterate: for any string", snippet=True),
-    CompletionItem("for all of them", "for all of them : ($0)", "snippet", "Iterate: for all strings", snippet=True),
-    CompletionItem("for", "for $0 of them : ( )", "snippet", "Loop: for N of them", snippet=True),
-    CompletionItem("with", "with $0 = : ( )", "snippet", "Scoped variable binding (YARA-X)", snippet=True),
-    CompletionItem("in", "in ", "keyword", "Range operator"),
-    CompletionItem("at", "at ", "keyword", "Position operator"),
-    CompletionItem("matches", "matches ", "keyword", "Regex match"),
-    CompletionItem("contains", "contains ", "keyword", "String contains"),
-    CompletionItem("startswith", "startswith ", "keyword", "String starts with"),
-    CompletionItem("endswith", "endswith ", "keyword", "String ends with"),
-    CompletionItem("icontains", "icontains ", "keyword", "Case-insensitive contains"),
-    CompletionItem("istartswith", "istartswith ", "keyword", "Case-insensitive startswith"),
-    CompletionItem("iendswith", "iendswith ", "keyword", "Case-insensitive endswith"),
-    CompletionItem("iequals", "iequals ", "keyword", "Case-insensitive equals"),
-    CompletionItem("defined", "defined ", "keyword", "Check if defined"),
-    CompletionItem("filesize", "filesize", "builtin", "File size in bytes"),
-    CompletionItem("entrypoint", "entrypoint", "builtin", "Entry point offset (deprecated — use pe.entry_point)"),
-    CompletionItem("KB", "KB", "keyword", "Size suffix: multiply by 1024"),
-    CompletionItem("MB", "MB", "keyword", "Size suffix: multiply by 1048576"),
-    CompletionItem("uint8", "uint8($0)", "function", "Read uint8 at offset", snippet=True),
-    CompletionItem("uint16", "uint16($0)", "function", "Read uint16 at offset", snippet=True),
-    CompletionItem("uint32", "uint32($0)", "function", "Read uint32 at offset", snippet=True),
-    CompletionItem("uint64", "uint64($0)", "function", "Read uint64 at offset", snippet=True),
-    CompletionItem("int8", "int8($0)", "function", "Read int8 at offset", snippet=True),
-    CompletionItem("int16", "int16($0)", "function", "Read int16 at offset", snippet=True),
-    CompletionItem("int32", "int32($0)", "function", "Read int32 at offset", snippet=True),
-    CompletionItem("int64", "int64($0)", "function", "Read int64 at offset", snippet=True),
-    CompletionItem("uint8be", "uint8be($0)", "function", "Read uint8 big-endian", snippet=True),
-    CompletionItem("uint16be", "uint16be($0)", "function", "Read uint16 big-endian", snippet=True),
-    CompletionItem("uint32be", "uint32be($0)", "function", "Read uint32 big-endian", snippet=True),
-    CompletionItem("uint64be", "uint64be($0)", "function", "Read uint64 big-endian", snippet=True),
-    CompletionItem("int8be", "int8be($0)", "function", "Read int8 big-endian", snippet=True),
-    CompletionItem("int16be", "int16be($0)", "function", "Read int16 big-endian", snippet=True),
-    CompletionItem("int32be", "int32be($0)", "function", "Read int32 big-endian", snippet=True),
-    CompletionItem("int64be", "int64be($0)", "function", "Read int64 big-endian", snippet=True),
-    CompletionItem("float32", "float32($0)", "function", "Read 32-bit IEEE 754 float", snippet=True),
-    CompletionItem("float64", "float64($0)", "function", "Read 64-bit IEEE 754 float", snippet=True),
-    CompletionItem("float32be", "float32be($0)", "function", "Read 32-bit float big-endian", snippet=True),
-    CompletionItem("float64be", "float64be($0)", "function", "Read 64-bit float big-endian", snippet=True),
+    CompletionItem("and", "and ", "keyword",
+                   "Logical AND | $s1 and $s2 and filesize < 1MB"),
+    CompletionItem("or", "or ", "keyword",
+                   "Logical OR | $s1 or $s2"),
+    CompletionItem("not", "not ", "keyword",
+                   "Logical NOT | not $s1"),
+    CompletionItem("any of them", "any of them", "snippet",
+                   "True if any defined string matches | condition: any of them"),
+    CompletionItem("any of", "any of ($0)", "snippet",
+                   "Any of named strings | any of ($s1, $s2)  any of ($s*)",
+                   snippet=True),
+    CompletionItem("all of them", "all of them", "snippet",
+                   "True if every defined string matches | condition: all of them"),
+    CompletionItem("all of", "all of ($0)", "snippet",
+                   "All of named strings | all of ($api*)  all of ($s1, $s2)",
+                   snippet=True),
+    CompletionItem("none of them", "none of them", "snippet",
+                   "True if zero strings match | condition: none of them"),
+    CompletionItem("none of", "none of ($0)", "snippet",
+                   "None of named strings | none of ($false_pos*)",
+                   snippet=True),
+    CompletionItem("any", "any ", "keyword",
+                   "Quantifier: at least one | any of them"),
+    CompletionItem("all", "all ", "keyword",
+                   "Quantifier: every one | all of them"),
+    CompletionItem("none", "none ", "keyword",
+                   "Quantifier: zero matches | none of them"),
+    CompletionItem("of", "of ", "keyword",
+                   "Pairs with a quantifier | 2 of ($s*)  any of them"),
+    CompletionItem("them", "them", "keyword",
+                   "Refers to all string identifiers | any of them"),
+    CompletionItem("for any of them", "for any of them : ($0)", "snippet",
+                   "Iterate strings with a sub-condition | for any of them : ($ at 0)",
+                   snippet=True),
+    CompletionItem("for all of them", "for all of them : ($0)", "snippet",
+                   "Every string must satisfy sub-condition | for all of them : (# > 2)",
+                   snippet=True),
+    CompletionItem("for", "for $0 of them : ( )", "snippet",
+                   "Count-based loop | for 2 of them : ($ at pe.entry_point)",
+                   snippet=True),
+    CompletionItem("with", "with $0 = : ( )", "snippet",
+                   "YARA-X scoped variable | with $x = \"test\" : ($x at 0)",
+                   snippet=True),
+    CompletionItem("in", "in ", "keyword",
+                   "Byte range operator | $s1 in (0..1024)  $s1 in (pe.entry_point..filesize)"),
+    CompletionItem("at", "at ", "keyword",
+                   "Exact offset match | $mz at 0  $sig at pe.entry_point"),
+    CompletionItem("matches", "matches ", "keyword",
+                   "Regex match on string | pe.pdb_path matches /\\\\Release\\\\/"),
+    CompletionItem("contains", "contains ", "keyword",
+                   "Substring check | pe.dll_name contains \"kernel\""),
+    CompletionItem("startswith", "startswith ", "keyword",
+                   "String prefix check | pe.pdb_path startswith \"C:\\\\\""),
+    CompletionItem("endswith", "endswith ", "keyword",
+                   "String suffix check | pe.dll_name endswith \".dll\""),
+    CompletionItem("icontains", "icontains ", "keyword",
+                   "Case-insensitive contains | pe.dll_name icontains \"KERNEL\""),
+    CompletionItem("istartswith", "istartswith ", "keyword",
+                   "Case-insensitive startswith | pe.pdb_path istartswith \"c:\\\\\""),
+    CompletionItem("iendswith", "iendswith ", "keyword",
+                   "Case-insensitive endswith | pe.dll_name iendswith \".DLL\""),
+    CompletionItem("iequals", "iequals ", "keyword",
+                   "Case-insensitive equals | pe.dll_name iequals \"kernel32.dll\""),
+    CompletionItem("defined", "defined ", "keyword",
+                   "True if value exists (not undefined) | defined pe.dll_name"),
+    CompletionItem("filesize", "filesize", "builtin",
+                   "Size of the scanned file in bytes | filesize < 500KB  filesize > 1MB"),
+    CompletionItem("entrypoint", "entrypoint", "builtin",
+                   "Deprecated \u2014 use pe.entry_point | $mz at entrypoint"),
+    CompletionItem("KB", "KB", "keyword",
+                   "Multiply by 1024 | filesize < 500KB"),
+    CompletionItem("MB", "MB", "keyword",
+                   "Multiply by 1048576 | filesize < 10MB"),
+    CompletionItem("uint8", "uint8($0)", "function",
+                   "Read unsigned 8-bit int (LE) | uint8(0) == 0x4D",
+                   snippet=True),
+    CompletionItem("uint16", "uint16($0)", "function",
+                   "Read unsigned 16-bit int (LE) | uint16(0) == 0x5A4D",
+                   snippet=True),
+    CompletionItem("uint32", "uint32($0)", "function",
+                   "Read unsigned 32-bit int (LE) | uint32(0) == 0x00905A4D",
+                   snippet=True),
+    CompletionItem("uint64", "uint64($0)", "function",
+                   "Read unsigned 64-bit int (LE) | uint64(offset)",
+                   snippet=True),
+    CompletionItem("int8", "int8($0)", "function",
+                   "Read signed 8-bit int (LE) | int8(0) < 0",
+                   snippet=True),
+    CompletionItem("int16", "int16($0)", "function",
+                   "Read signed 16-bit int (LE) | int16(pe.entry_point)",
+                   snippet=True),
+    CompletionItem("int32", "int32($0)", "function",
+                   "Read signed 32-bit int (LE) | int32(0x3C)",
+                   snippet=True),
+    CompletionItem("int64", "int64($0)", "function",
+                   "Read signed 64-bit int (LE) | int64(offset)",
+                   snippet=True),
+    CompletionItem("uint8be", "uint8be($0)", "function",
+                   "Read unsigned 8-bit int (BE) | uint8be(0)",
+                   snippet=True),
+    CompletionItem("uint16be", "uint16be($0)", "function",
+                   "Read unsigned 16-bit int (BE) | uint16be(0) == 0x4D5A",
+                   snippet=True),
+    CompletionItem("uint32be", "uint32be($0)", "function",
+                   "Read unsigned 32-bit int (BE) | uint32be(0) == 0x7F454C46",
+                   snippet=True),
+    CompletionItem("uint64be", "uint64be($0)", "function",
+                   "Read unsigned 64-bit int (BE) | uint64be(offset)",
+                   snippet=True),
+    CompletionItem("int8be", "int8be($0)", "function",
+                   "Read signed 8-bit int (BE) | int8be(0)",
+                   snippet=True),
+    CompletionItem("int16be", "int16be($0)", "function",
+                   "Read signed 16-bit int (BE) | int16be(offset)",
+                   snippet=True),
+    CompletionItem("int32be", "int32be($0)", "function",
+                   "Read signed 32-bit int (BE) | int32be(0)",
+                   snippet=True),
+    CompletionItem("int64be", "int64be($0)", "function",
+                   "Read signed 64-bit int (BE) | int64be(offset)",
+                   snippet=True),
+    CompletionItem("float32", "float32($0)", "function",
+                   "Read 32-bit IEEE 754 float | float32(offset) > 1.0",
+                   snippet=True),
+    CompletionItem("float64", "float64($0)", "function",
+                   "Read 64-bit IEEE 754 float | float64(offset) > 1.0",
+                   snippet=True),
+    CompletionItem("float32be", "float32be($0)", "function",
+                   "Read 32-bit float (BE) | float32be(offset)",
+                   snippet=True),
+    CompletionItem("float64be", "float64be($0)", "function",
+                   "Read 64-bit float (BE) | float64be(offset)",
+                   snippet=True),
 ]
 
 _STRING_MODIFIERS = [
-    CompletionItem("ascii", "ascii", "keyword", "ASCII encoding (default)"),
-    CompletionItem("wide", "wide", "keyword", "UTF-16 encoding"),
-    CompletionItem("nocase", "nocase", "keyword", "Case-insensitive"),
-    CompletionItem("fullword", "fullword", "keyword", "Full word match"),
-    CompletionItem("xor", "xor", "keyword", "XOR with single-byte keys (0x00-0xFF)"),
-    CompletionItem("xor(range)", "xor($0)", "snippet", "XOR with key range, e.g. xor(0x01-0xFF)", snippet=True),
-    CompletionItem("base64", "base64", "keyword", "Base64 encoded"),
-    CompletionItem("base64(alphabet)", 'base64("$0")', "snippet", "Base64 with custom alphabet", snippet=True),
-    CompletionItem("base64wide", "base64wide", "keyword", "Base64 wide encoded"),
-    CompletionItem("base64wide(alphabet)", 'base64wide("$0")', "snippet", "Base64wide with custom alphabet", snippet=True),
-    CompletionItem("private", "private", "keyword", "Private string (not reported in matches)"),
+    CompletionItem("ascii", "ascii", "keyword",
+                   "Match ASCII encoding (default) | $s = \"cmd\" ascii wide"),
+    CompletionItem("wide", "wide", "keyword",
+                   "Match UTF-16LE encoding | $s = \"cmd\" wide  (finds c\\x00m\\x00d\\x00)"),
+    CompletionItem("nocase", "nocase", "keyword",
+                   "Case-insensitive matching | $s = \"malware\" nocase"),
+    CompletionItem("fullword", "fullword", "keyword",
+                   'Match only at word boundaries | $s = "evil" fullword  (won\'t match "medieval")'),
+    CompletionItem("xor", "xor", "keyword",
+                   "XOR each byte with keys 0x00-0xFF | $s = \"This program\" xor"),
+    CompletionItem("xor(range)", "xor($0)", "snippet",
+                   "XOR with a specific key range | $s = \"secret\" xor(0x01-0xFF)",
+                   snippet=True),
+    CompletionItem("base64", "base64", "keyword",
+                   "Match Base64-encoded form | $s = \"admin\" base64"),
+    CompletionItem("base64(alphabet)", 'base64("$0")', "snippet",
+                   "Base64 with custom alphabet | base64(\"A-Za-z0-9+/\")",
+                   snippet=True),
+    CompletionItem("base64wide", "base64wide", "keyword",
+                   "Match Base64-encoded UTF-16 form | $s = \"admin\" base64wide"),
+    CompletionItem("base64wide(alphabet)", 'base64wide("$0")', "snippet",
+                   "Base64wide with custom alphabet | base64wide(\"A-Za-z0-9+/\")",
+                   snippet=True),
+    CompletionItem("private", "private", "keyword",
+                   "String won't show in match output | $helper = \"MZ\" private"),
 ]
 
 _META_KEYS = [
-    CompletionItem("author", 'author = "$0"', "meta_key", "Rule author", snippet=True),
-    CompletionItem("description", 'description = "$0"', "meta_key", "Rule description", snippet=True),
-    CompletionItem("date", 'date = "$0"', "meta_key", "Creation date", snippet=True),
-    CompletionItem("reference", 'reference = "$0"', "meta_key", "Reference URL", snippet=True),
-    CompletionItem("hash", 'hash = "$0"', "meta_key", "Sample hash", snippet=True),
-    CompletionItem("tlp", 'tlp = "$0"', "meta_key", "Traffic Light Protocol", snippet=True),
-    CompletionItem("severity", 'severity = "$0"', "meta_key", "Detection severity", snippet=True),
+    CompletionItem("author", 'author = "$0"', "meta_key",
+                   'Rule author | author = "YARA Team"', snippet=True),
+    CompletionItem("description", 'description = "$0"', "meta_key",
+                   'What the rule detects | description = "Detects Cobalt Strike beacon"',
+                   snippet=True),
+    CompletionItem("date", 'date = "$0"', "meta_key",
+                   'Creation/update date | date = "2025-03-15"', snippet=True),
+    CompletionItem("reference", 'reference = "$0"', "meta_key",
+                   'Link to report or source | reference = "https://example.com/report"',
+                   snippet=True),
+    CompletionItem("hash", 'hash = "$0"', "meta_key",
+                   'Known sample hash | hash = "d41d8cd98f00b204e9800998ecf8427e"',
+                   snippet=True),
+    CompletionItem("tlp", 'tlp = "$0"', "meta_key",
+                   'Traffic Light Protocol level | tlp = "WHITE"  tlp = "AMBER"',
+                   snippet=True),
+    CompletionItem("severity", 'severity = "$0"', "meta_key",
+                   'Detection severity level | severity = "high"  severity = "critical"',
+                   snippet=True),
 ]
 
 _MODULE_NAMES = [
@@ -138,10 +252,14 @@ _MODULE_MEMBERS = {
     # ── PE ────────────────────────────────────────────────────────
     "pe": [
         # Attributes
-        CompletionItem("is_pe", "is_pe", "attribute", "bool — file is a PE"),
-        CompletionItem("is_signed", "is_signed", "attribute", "bool — Authenticode signature present"),
-        CompletionItem("machine", "machine", "attribute", "Machine enum"),
-        CompletionItem("subsystem", "subsystem", "attribute", "Subsystem enum"),
+        CompletionItem("is_pe", "is_pe", "attribute",
+                       "True if file is a valid PE | pe.is_pe"),
+        CompletionItem("is_signed", "is_signed", "attribute",
+                       "True if Authenticode sig present | pe.is_signed"),
+        CompletionItem("machine", "machine", "attribute",
+                       "CPU architecture enum | pe.machine == pe.MACHINE_AMD64"),
+        CompletionItem("subsystem", "subsystem", "attribute",
+                       "PE subsystem enum | pe.subsystem == pe.SUBSYSTEM_WINDOWS_GUI"),
         CompletionItem("os_version", "os_version", "attribute", "Version (major, minor)"),
         CompletionItem("subsystem_version", "subsystem_version", "attribute", "Version (major, minor)"),
         CompletionItem("image_version", "image_version", "attribute", "Version (major, minor)"),
@@ -154,9 +272,12 @@ _MODULE_MEMBERS = {
         CompletionItem("checksum", "checksum", "attribute", "PE checksum value"),
         CompletionItem("base_of_code", "base_of_code", "attribute", "Code section base address"),
         CompletionItem("base_of_data", "base_of_data", "attribute", "Data section base address"),
-        CompletionItem("entry_point", "entry_point", "attribute", "Entry point file offset"),
-        CompletionItem("entry_point_raw", "entry_point_raw", "attribute", "Entry point RVA"),
-        CompletionItem("dll_name", "dll_name", "attribute", "DLL name string"),
+        CompletionItem("entry_point", "entry_point", "attribute",
+                       "Entry point file offset | $code at pe.entry_point"),
+        CompletionItem("entry_point_raw", "entry_point_raw", "attribute",
+                       "Entry point RVA (before offset conversion)"),
+        CompletionItem("dll_name", "dll_name", "attribute",
+                       "DLL export name | pe.dll_name contains \"malware\""),
         CompletionItem("export_timestamp", "export_timestamp", "attribute", "Export table timestamp"),
         CompletionItem("section_alignment", "section_alignment", "attribute", "Section alignment"),
         CompletionItem("file_alignment", "file_alignment", "attribute", "File alignment"),
@@ -175,8 +296,10 @@ _MODULE_MEMBERS = {
         CompletionItem("win32_version_value", "win32_version_value", "attribute", "Win32 version value"),
         CompletionItem("number_of_symbols", "number_of_symbols", "attribute", "Symbol count"),
         CompletionItem("number_of_rva_and_sizes", "number_of_rva_and_sizes", "attribute", "RVA/size entries"),
-        CompletionItem("number_of_sections", "number_of_sections", "attribute", "Section count"),
-        CompletionItem("number_of_imported_functions", "number_of_imported_functions", "attribute", "Total imported functions"),
+        CompletionItem("number_of_sections", "number_of_sections", "attribute",
+                       "Section count | pe.number_of_sections > 5"),
+        CompletionItem("number_of_imported_functions", "number_of_imported_functions", "attribute",
+                       "Total imported functions | pe.number_of_imported_functions < 10"),
         CompletionItem("number_of_delayed_imported_functions", "number_of_delayed_imported_functions", "attribute", "Delayed import count"),
         CompletionItem("number_of_resources", "number_of_resources", "attribute", "Resource count"),
         CompletionItem("number_of_version_infos", "number_of_version_infos", "attribute", "Version info entries"),
@@ -199,16 +322,31 @@ _MODULE_MEMBERS = {
         CompletionItem("signatures", "signatures", "attribute", "Signature[]"),
         CompletionItem("overlay", "overlay", "attribute", "Overlay (offset, size)"),
         # Functions
-        CompletionItem("imports", "imports($0)", "function", "imports(dll, fn) -> bool", snippet=True),
-        CompletionItem("exports", "exports($0)", "function", "exports(name|ordinal) -> bool", snippet=True),
-        CompletionItem("exports_index", "exports_index($0)", "function", "exports_index(name|ordinal) -> int", snippet=True),
-        CompletionItem("imphash", "imphash()", "function", "Import hash string"),
-        CompletionItem("is_dll", "is_dll()", "function", "True if DLL"),
-        CompletionItem("is_32bit", "is_32bit()", "function", "True if 32-bit PE"),
-        CompletionItem("is_64bit", "is_64bit()", "function", "True if 64-bit PE"),
-        CompletionItem("rva_to_offset", "rva_to_offset($0)", "function", "Convert RVA to file offset", snippet=True),
-        CompletionItem("calculate_checksum", "calculate_checksum()", "function", "Calculate PE checksum"),
-        CompletionItem("section_index", "section_index($0)", "function", "Section index by name or offset", snippet=True),
+        CompletionItem("imports", "imports($0)", "function",
+                       'Check if PE imports a function | pe.imports("kernel32.dll", "CreateFileA")',
+                       snippet=True),
+        CompletionItem("exports", "exports($0)", "function",
+                       'Check if PE exports a name/ordinal | pe.exports("DllMain")  pe.exports(1)',
+                       snippet=True),
+        CompletionItem("exports_index", "exports_index($0)", "function",
+                       'Get export index by name/ordinal | pe.exports_index("DllMain") == 0',
+                       snippet=True),
+        CompletionItem("imphash", "imphash()", "function",
+                       'Import hash (Mandiant style) | pe.imphash() == "abc123..."'),
+        CompletionItem("is_dll", "is_dll()", "function",
+                       "True if IMAGE_FILE_DLL set | pe.is_dll()"),
+        CompletionItem("is_32bit", "is_32bit()", "function",
+                       "True if PE32 (not PE32+) | pe.is_32bit()"),
+        CompletionItem("is_64bit", "is_64bit()", "function",
+                       "True if PE32+ (64-bit) | pe.is_64bit()"),
+        CompletionItem("rva_to_offset", "rva_to_offset($0)", "function",
+                       "Convert RVA to file offset | uint32(pe.rva_to_offset(0x1000))",
+                       snippet=True),
+        CompletionItem("calculate_checksum", "calculate_checksum()", "function",
+                       "Recompute PE checksum | pe.checksum != pe.calculate_checksum()"),
+        CompletionItem("section_index", "section_index($0)", "function",
+                       'Section index by name or RVA | pe.section_index(".text") == 0',
+                       snippet=True),
         # Common constants
         CompletionItem("MACHINE_I386", "MACHINE_I386", "attribute", "Machine constant 0x014C"),
         CompletionItem("MACHINE_AMD64", "MACHINE_AMD64", "attribute", "Machine constant 0x8664"),
@@ -280,29 +418,62 @@ _MODULE_MEMBERS = {
     ],
     # ── Math ──────────────────────────────────────────────────────
     "math": [
-        CompletionItem("MEAN_BYTES", "MEAN_BYTES", "attribute", "float — mean of uniform bytes (127.5)"),
-        CompletionItem("entropy", "entropy($0)", "function", "entropy(offset, size) -> float", snippet=True),
-        CompletionItem("mean", "mean($0)", "function", "mean(offset, size) -> float", snippet=True),
-        CompletionItem("deviation", "deviation($0)", "function", "deviation(offset, size, mean) -> float", snippet=True),
-        CompletionItem("serial_correlation", "serial_correlation($0)", "function", "serial_correlation(offset, size) -> float", snippet=True),
-        CompletionItem("monte_carlo_pi", "monte_carlo_pi($0)", "function", "monte_carlo_pi(offset, size) -> float", snippet=True),
-        CompletionItem("mode", "mode($0)", "function", "mode(offset, size) -> float", snippet=True),
-        CompletionItem("in_range", "in_range($0)", "function", "in_range(test, lower, upper) -> bool", snippet=True),
+        CompletionItem("MEAN_BYTES", "MEAN_BYTES", "attribute",
+                       "Constant 127.5 \u2014 expected mean of random bytes | math.deviation(0, filesize, math.MEAN_BYTES) > 50"),
+        CompletionItem("entropy", "entropy($0)", "function",
+                       "Shannon entropy (0.0\u20138.0) | math.entropy(0, filesize) > 7.5",
+                       snippet=True),
+        CompletionItem("mean", "mean($0)", "function",
+                       "Arithmetic mean of bytes | math.mean(0, filesize) < 60",
+                       snippet=True),
+        CompletionItem("deviation", "deviation($0)", "function",
+                       "Std deviation from expected mean | math.deviation(0, filesize, math.MEAN_BYTES) < 20",
+                       snippet=True),
+        CompletionItem("serial_correlation", "serial_correlation($0)", "function",
+                       "Byte-to-byte correlation | math.serial_correlation(0, filesize) > 0.8",
+                       snippet=True),
+        CompletionItem("monte_carlo_pi", "monte_carlo_pi($0)", "function",
+                       "Pi approximation (randomness test) | math.monte_carlo_pi(0, filesize) < 0.3",
+                       snippet=True),
+        CompletionItem("mode", "mode($0)", "function",
+                       "Most frequent byte value | math.mode(0, filesize)",
+                       snippet=True),
+        CompletionItem("in_range", "in_range($0)", "function",
+                       "Check value in [lo, hi] | math.in_range(math.entropy(0, filesize), 7.0, 8.0)",
+                       snippet=True),
         CompletionItem("max", "max($0)", "function", "max(a, b) -> int", snippet=True),
         CompletionItem("min", "min($0)", "function", "min(a, b) -> int", snippet=True),
-        CompletionItem("count", "count($0)", "function", "count(byte, offset, size) -> int", snippet=True),
-        CompletionItem("percentage", "percentage($0)", "function", "percentage(byte, offset, size) -> float", snippet=True),
-        CompletionItem("to_number", "to_number($0)", "function", "to_number(bool) -> int", snippet=True),
-        CompletionItem("to_string", "to_string($0)", "function", "to_string(int[, base]) -> string", snippet=True),
-        CompletionItem("abs", "abs($0)", "function", "abs(int) -> int", snippet=True),
+        CompletionItem("count", "count($0)", "function",
+                       "Count occurrences of a byte | math.count(0x00, 0, filesize)",
+                       snippet=True),
+        CompletionItem("percentage", "percentage($0)", "function",
+                       "Byte frequency as percentage | math.percentage(0x00, 0, filesize) > 50.0",
+                       snippet=True),
+        CompletionItem("to_number", "to_number($0)", "function",
+                       "Convert bool to int | math.to_number(pe.is_dll())",
+                       snippet=True),
+        CompletionItem("to_string", "to_string($0)", "function",
+                       "Convert int to string | math.to_string(pe.timestamp, 16)",
+                       snippet=True),
+        CompletionItem("abs", "abs($0)", "function", "Absolute value | math.abs(int_val)", snippet=True),
     ],
     # ── Hash ──────────────────────────────────────────────────────
     "hash": [
-        CompletionItem("md5", "md5($0)", "function", "md5(offset, size) -> string", snippet=True),
-        CompletionItem("sha1", "sha1($0)", "function", "sha1(offset, size) -> string", snippet=True),
-        CompletionItem("sha256", "sha256($0)", "function", "sha256(offset, size) -> string", snippet=True),
-        CompletionItem("checksum32", "checksum32($0)", "function", "checksum32(offset, size) -> int", snippet=True),
-        CompletionItem("crc32", "crc32($0)", "function", "crc32(offset, size) -> int", snippet=True),
+        CompletionItem("md5", "md5($0)", "function",
+                       'MD5 hash of byte range | hash.md5(0, filesize) == "abc..."',
+                       snippet=True),
+        CompletionItem("sha1", "sha1($0)", "function",
+                       'SHA-1 hash of byte range | hash.sha1(0, filesize)',
+                       snippet=True),
+        CompletionItem("sha256", "sha256($0)", "function",
+                       'SHA-256 hash of byte range | hash.sha256(0, filesize) == "abc..."',
+                       snippet=True),
+        CompletionItem("checksum32", "checksum32($0)", "function",
+                       "32-bit checksum of byte range | hash.checksum32(0, filesize)",
+                       snippet=True),
+        CompletionItem("crc32", "crc32($0)", "function",
+                       "CRC32 of byte range | hash.crc32(0, filesize)",
+                       snippet=True),
     ],
     # ── Dotnet ────────────────────────────────────────────────────
     "dotnet": [
@@ -520,10 +691,13 @@ class CompletionEngine:
 
             return self._filter(items, prefix_text)
 
-        # 7. Default → all keywords
+        # 7. Default (top-level, outside any section) → only top-level
+        # keywords like rule/import/include/private/global.  Don't dump
+        # the massive condition keyword list here — it's irrelevant
+        # outside a condition: block and just creates noise.
         word = re.search(r'\b(\w*)$', current_line)
         prefix_text = word.group(1) if word else ""
-        return self._filter(_YARA_KEYWORDS + _CONDITION_KEYWORDS, prefix_text)
+        return self._filter(_YARA_KEYWORDS, prefix_text)
 
     def _detect_section(self, before: str) -> Optional[str]:
         """Walk backwards to find which section the cursor is in."""
@@ -569,7 +743,13 @@ class CompletionEngine:
 
     @staticmethod
     def _filter(items: List[CompletionItem], prefix: str) -> List[CompletionItem]:
-        """Fuzzy filter items by prefix (case-insensitive subsequence match)."""
+        """Filter items by prefix match (case-insensitive).
+
+        Only prefix and contains matching — no subsequence matching,
+        which produces too much noise (e.g. "fi" matching "float32"
+        via f...i).  Exact matches where the label equals the prefix
+        are excluded since there's nothing left to complete.
+        """
         if not prefix:
             return items
         prefix_lower = prefix.lower()
@@ -577,25 +757,16 @@ class CompletionEngine:
         for item in items:
             label_lower = item.label.lower()
             if label_lower == prefix_lower:
-                # Exact match → best
-                scored.append((0, len(label_lower), item))
+                # Already fully typed — skip (nothing to gain)
+                continue
             elif label_lower.startswith(prefix_lower):
-                # Prefix match → shorter labels rank higher (more precise)
-                scored.append((1, len(label_lower), item))
+                # Prefix match — shorter labels rank higher
+                scored.append((0, len(label_lower), item))
             elif prefix_lower in label_lower:
                 # Contains match
-                scored.append((2, len(label_lower), item))
-            elif _is_subsequence(prefix_lower, label_lower):
-                # Subsequence match
-                scored.append((3, len(label_lower), item))
+                scored.append((1, len(label_lower), item))
         scored.sort(key=lambda x: (x[0], x[1], x[2].label))
         return [item for _, _, item in scored]
-
-
-def _is_subsequence(needle: str, haystack: str) -> bool:
-    """Check if needle is a subsequence of haystack."""
-    it = iter(haystack)
-    return all(c in it for c in needle)
 
 
 # ── Completion Popup ──────────────────────────────────────────────
@@ -612,6 +783,7 @@ class CompletionPopup(QWidget):
         self._editor = editor
         self._prefix = ""
         self._items: List[CompletionItem] = []
+        self._navigated = False  # True once user presses Up/Down in the list
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(1, 1, 1, 1)
@@ -627,10 +799,12 @@ class CompletionPopup(QWidget):
 
         self._detail = QLabel()
         self._detail.setWordWrap(True)
-        self._detail.setContentsMargins(4, 2, 4, 2)
+        self._detail.setTextFormat(Qt.TextFormat.RichText)
+        self._detail.setContentsMargins(6, 4, 6, 4)
+        self._detail.setStyleSheet("font-size: 9pt;")
         layout.addWidget(self._detail)
 
-        self.setFixedWidth(320)
+        self.setFixedWidth(420)
         self.hide()
 
     def set_theme_manager(self, theme_manager):
@@ -668,6 +842,7 @@ class CompletionPopup(QWidget):
         """Populate and show the popup."""
         self._items = items
         self._prefix = prefix
+        self._navigated = False
         self._list.clear()
 
         if not items:
@@ -711,9 +886,26 @@ class CompletionPopup(QWidget):
     def _on_row_changed(self, row: int):
         if 0 <= row < len(self._items):
             item = self._items[row]
-            self._detail.setText(f"{item.kind}: {item.detail}" if item.detail else item.kind)
+            self._detail.setText(self._format_detail(item))
         else:
             self._detail.setText("")
+
+    @staticmethod
+    def _format_detail(item: CompletionItem) -> str:
+        """Render the detail pane as rich HTML with description + example."""
+        import html as _html
+        parts = [f"<b>{_html.escape(item.kind)}</b>"]
+        if item.detail:
+            # Split on " | " — text before is description, after is example
+            if " | " in item.detail:
+                desc, example = item.detail.split(" | ", 1)
+                parts.append(f" &mdash; {_html.escape(desc)}")
+                parts.append(
+                    f'<br><code style="color:#6a9955;">'
+                    f'{_html.escape(example)}</code>')
+            else:
+                parts.append(f" &mdash; {_html.escape(item.detail)}")
+        return "".join(parts)
 
     def _accept_current(self, *_args):
         row = self._list.currentRow()
@@ -733,20 +925,31 @@ class CompletionPopup(QWidget):
             self.hide()
             return True
 
-        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter, Qt.Key.Key_Tab):
+        if key in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
             self._accept_current()
             return True
+
+        # Tab only accepts if user has explicitly navigated the list
+        if key == Qt.Key.Key_Tab:
+            if self._navigated:
+                self._accept_current()
+                return True
+            # Otherwise dismiss and let Tab indent normally
+            self.hide()
+            return False
 
         if key == Qt.Key.Key_Down:
             row = self._list.currentRow()
             if row < self._list.count() - 1:
                 self._list.setCurrentRow(row + 1)
+            self._navigated = True
             return True
 
         if key == Qt.Key.Key_Up:
             row = self._list.currentRow()
             if row > 0:
                 self._list.setCurrentRow(row - 1)
+            self._navigated = True
             return True
 
         return False

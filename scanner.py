@@ -440,6 +440,10 @@ class YaraScanner:
         try:
             from io import BytesIO, StringIO
 
+            # Strip leading/trailing whitespace so stray indentation
+            # from pasting doesn't leak into the formatted output.
+            text = text.strip()
+
             # First, try to compile the rule to validate syntax
             yara_x.compile(text)
 
@@ -454,7 +458,7 @@ class YaraScanner:
             input_buffer.close()
             output_buffer.close()
 
-            return formatted.rstrip()
+            return formatted.strip()
 
         except Exception as e:
             raise Exception(f"yara-x formatting failed: {str(e)}")
@@ -477,7 +481,7 @@ class YaraScanner:
             ast = parser.parse(text)
             codegen = CodeGenerator()
             formatted = codegen.generate(ast)
-            return formatted.rstrip()
+            return formatted.strip()
         except Exception as e:
             raise Exception(f"yaraast parsing failed: {str(e)}")
 
@@ -590,6 +594,7 @@ class YaraScanner:
         base = {
             'filename': filename,
             'filepath': filepath,
+            'file_size': len(data),
             'md5': md5_hash,
             'sha1': sha1_hash,
             'sha256': sha256_hash,

@@ -589,11 +589,11 @@ class HexEditorWindow(QMainWindow):
         self._inspector.set_buffer(self._buffer)
         self._status_size.setText(f"Size: {self._buffer.size():,}")
 
-        # Refresh the edit log table
+        # Refresh the edit log table with current-coordinate history
         editor = self._hex_widget._editor
-        history = editor.edit_history
-        self._edit_log.refresh(history)
-        if history:
+        entries = editor.get_history_view()
+        self._edit_log.refresh(entries)
+        if entries:
             self._edit_log_dock.show()
 
     def _on_undo_to_entry(self, target_count: int):

@@ -9,6 +9,7 @@ and optional vim-style keybindings.
 import re
 
 from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QMimeData
 from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTextCursor, QTextFormat
 from PySide6.QtWidgets import QApplication, QTextEdit, QWidget
 
@@ -426,6 +427,15 @@ class YaraTextEdit(QTextEdit):
     _CLOSE_CHARS = {")", "]", "}"}
     _QUOTE_CHARS = {'"'}
     _PAIR_MAP = {"(": ")", "[": "]", "{": "}", '"': '"'}
+
+    def insertFromMimeData(self, source):
+        """Always paste as plain text, stripping any rich-text formatting."""
+        if source.hasText():
+            plain = QMimeData()
+            plain.setText(source.text())
+            super().insertFromMimeData(plain)
+        else:
+            super().insertFromMimeData(source)
 
     def keyPressEvent(self, event):
         # 1. Completion popup consumes navigation/accept keys when visible

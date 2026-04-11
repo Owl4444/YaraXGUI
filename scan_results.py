@@ -7,9 +7,11 @@ Handles hits/misses tables, rule details, similar files/tags, and match details.
 Deduplicates near-identical single/multi-selection methods into unified APIs.
 """
 
+from pathlib import Path
 from typing import Dict, List, Optional, Set
 
 from PySide6.QtCore import QObject, Qt, Signal
+from scanner import format_size
 from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
 from PySide6.QtWidgets import (QAbstractItemView, QHeaderView, QMenu,
                                QTableWidgetItem, QTreeWidgetItem)
@@ -40,10 +42,10 @@ class ScanResultsManager(QObject):
 
         # Models owned by this manager
         self.hits_model = QStandardItemModel()
-        self.hits_model.setHorizontalHeaderLabels(['File', 'Path'])
+        self.hits_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
 
         self.misses_model = QStandardItemModel()
-        self.misses_model.setHorizontalHeaderLabels(['File', 'Path'])
+        self.misses_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
 
         self.rule_details_model = QStandardItemModel()
         self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
@@ -71,11 +73,11 @@ class ScanResultsManager(QObject):
         self._make_table_compact(self.ui.tv_file_hits)
 
         hits_header = self.ui.tv_file_hits.horizontalHeader()
-        hits_header.setStretchLastSection(True)
-        hits_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        hits_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        hits_header.setDefaultSectionSize(150)
-        hits_header.setMinimumSectionSize(80)
+        hits_header.setStretchLastSection(False)
+        hits_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hits_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hits_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hits_header.setMinimumSectionSize(40)
         self.ui.tv_file_hits.setWordWrap(False)
         self.ui.tv_file_hits.setTextElideMode(Qt.TextElideMode.ElideMiddle)
 
@@ -85,11 +87,11 @@ class ScanResultsManager(QObject):
         self.ui.tv_file_misses.setSortingEnabled(True)
 
         misses_header = self.ui.tv_file_misses.horizontalHeader()
-        misses_header.setStretchLastSection(True)
-        misses_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
-        misses_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
-        misses_header.setDefaultSectionSize(150)
-        misses_header.setMinimumSectionSize(80)
+        misses_header.setStretchLastSection(False)
+        misses_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        misses_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        misses_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        misses_header.setMinimumSectionSize(40)
         self.ui.tv_file_misses.setWordWrap(False)
         self.ui.tv_file_misses.setTextElideMode(Qt.TextElideMode.ElideMiddle)
 
@@ -269,9 +271,9 @@ class ScanResultsManager(QObject):
     def clear_all(self):
         """Clear all results views (used by Reset)."""
         self.hits_model.clear()
-        self.hits_model.setHorizontalHeaderLabels(['File', 'Path'])
+        self.hits_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
         self.misses_model.clear()
-        self.misses_model.setHorizontalHeaderLabels(['File', 'Path'])
+        self.misses_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
         self.clear_rule_details()
         self.clear_similar_files()
         self.clear_match_details()
@@ -610,27 +612,31 @@ class ScanResultsManager(QObject):
             return
 
         self.misses_model.clear()
-        self.misses_model.setHorizontalHeaderLabels(['File', 'Path'])
+        self.misses_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
 
         for miss_data in scan_misses:
-            filename_display = f"\U0001f921 {miss_data['filename']}"
-            filename_item = QStandardItem(filename_display)
-            filename_item.setToolTip(f"File: {miss_data['filename']}\nStatus: Clean (no threats)")
-
+            filename = miss_data['filename']
             filepath = miss_data['filepath']
-            if len(filepath) > 50:
-                path_display = f"...{filepath[-47:]}"
-            else:
-                path_display = filepath
-            filepath_item = QStandardItem(path_display)
-            filepath_item.setToolTip(filepath)
-            filepath_item.setData(filepath, Qt.ItemDataRole.UserRole)
+            file_size = miss_data.get('file_size', 0)
 
-            self.misses_model.appendRow([filename_item, filepath_item])
+            filename_display = f"\U0001f921 {filename}"
+            filename_item = QStandardItem(filename_display)
+            filename_item.setToolTip(f"File: {filename}\nPath: {filepath}\nStatus: Clean (no threats)")
+            filename_item.setData(filepath, Qt.ItemDataRole.UserRole)
+
+            size_item = QStandardItem(format_size(file_size))
+            size_item.setData(file_size, Qt.ItemDataRole.UserRole)
+            size_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+            ext = Path(filename).suffix.lower() if '.' in filename else ''
+            ext_item = QStandardItem(ext)
+
+            self.misses_model.appendRow([filename_item, size_item, ext_item])
 
         header = self.ui.tv_file_misses.horizontalHeader()
-        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
-        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
 
         self._force_thin_rows(self.ui.tv_file_misses)
         self.misses_loaded = True
@@ -771,13 +777,13 @@ class ScanResultsManager(QObject):
 
         source_index = self.misses_proxy.mapToSource(index)
         row = source_index.row()
-        filepath_item = self.misses_model.item(row, 1)
-        if not filepath_item:
+        filename_item = self.misses_model.item(row, 0)
+        if not filename_item:
             return
 
-        filepath = filepath_item.data(Qt.ItemDataRole.UserRole)
+        filepath = filename_item.data(Qt.ItemDataRole.UserRole)
         if not filepath:
-            filepath = filepath_item.toolTip()  # fallback
+            filepath = filename_item.toolTip()  # fallback
         if not filepath:
             return
 

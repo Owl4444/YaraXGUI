@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
 # Local imports
 from checkable_fs_model import CheckableFsModel
 from scan_results import ScanResultsManager
-from scanner import YaraScanner, YARA_X_AVAILABLE, YARAAST_AVAILABLE
+from scanner import YaraScanner, YARA_X_AVAILABLE, YARAAST_AVAILABLE, format_size
 from scanner_worker import ScanWorker
 from themes import theme_manager
 from ui_form import Ui_MainWindow
@@ -1580,7 +1580,8 @@ class MainWindow(QMainWindow):
         # Process hits
         for hit in result['hits']:
             self.scan_hits.append(hit)
-            self._add_hit_to_table(hit['filename'], hit['filepath'], hit['matched_rules'])
+            self._add_hit_to_table(hit['filename'], hit['filepath'],
+                                  hit['matched_rules'], hit.get('file_size', 0))
 
         # Stash misses (displayed lazily via the tab-change hook)
         for miss in result['misses']:
@@ -1639,27 +1640,36 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(
             "Cancelling scan \u2014 finishing current file...", 0)
     
-    def _add_hit_to_table(self, filename: str, filepath: str, matched_rules: List[Dict]) -> None:
+    def _add_hit_to_table(self, filename: str, filepath: str,
+                          matched_rules: List[Dict],
+                          file_size: int = 0) -> None:
         """Add a hit to the hits table with appropriate styling."""
         rules_count = len(matched_rules)
-        
+
         # Choose display based on severity
         if rules_count == 1:
-            filename_display = f"⚠ {filename}"
+            filename_display = f"\u26a0 {filename}"
         elif rules_count <= 3:
-            filename_display = f"🔴 {filename} ({rules_count})"
+            filename_display = f"\U0001f534 {filename} ({rules_count})"
         else:
-            filename_display = f"🚨 {filename} ({rules_count})"
-        
+            filename_display = f"\U0001f6a8 {filename} ({rules_count})"
+
         filename_item = QStandardItem(filename_display)
         filename_item.setToolTip(
-            f"File: {filename}\nRules matched: {', '.join([r['identifier'] for r in matched_rules])}"
+            f"File: {filename}\nPath: {filepath}\n"
+            f"Rules matched: {', '.join([r['identifier'] for r in matched_rules])}"
         )
-        
-        filepath_item = QStandardItem(filepath)
-        filepath_item.setToolTip(filepath)
-        
-        self.results.hits_model.appendRow([filename_item, filepath_item])
+        # Store filepath in UserRole so consumers can retrieve it without a Path column
+        filename_item.setData(filepath, Qt.ItemDataRole.UserRole)
+
+        size_item = QStandardItem(format_size(file_size))
+        size_item.setData(file_size, Qt.ItemDataRole.UserRole)  # for sorting
+        size_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        ext = Path(filename).suffix.lower() if '.' in filename else ''
+        ext_item = QStandardItem(ext)
+
+        self.results.hits_model.appendRow([filename_item, size_item, ext_item])
     
     def _finalize_scan_results(self, stats: Dict[str, int]) -> None:
         """Finalize scan results and update UI."""
@@ -2251,10 +2261,12 @@ class MainWindow(QMainWindow):
         for index in selected_indexes:
             source_index = self.results.hits_proxy.mapToSource(index)
             row = source_index.row()
-            filepath_item = self.results.hits_model.item(row, 1)
-            if not filepath_item:
+            filename_item = self.results.hits_model.item(row, 0)
+            if not filename_item:
                 continue
-            filepath = filepath_item.text()
+            filepath = filename_item.data(Qt.ItemDataRole.UserRole)
+            if not filepath:
+                continue
             for hit in self.scan_hits:
                 if hit.get('filepath') == filepath:
                     selected_hits.append(hit)
@@ -2385,10 +2397,12 @@ class MainWindow(QMainWindow):
 
         source_index = self.results.hits_proxy.mapToSource(index)
         row = source_index.row()
-        filepath_item = self.results.hits_model.item(row, 1)
-        if not filepath_item:
+        filename_item = self.results.hits_model.item(row, 0)
+        if not filename_item:
             return
-        filepath = filepath_item.text()
+        filepath = filename_item.data(Qt.ItemDataRole.UserRole)
+        if not filepath:
+            return
 
         menu = QMenu(self)
         hex_action = menu.addAction("Open in Hex Editor")

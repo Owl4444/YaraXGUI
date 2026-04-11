@@ -51,6 +51,22 @@ class EditCommand:
     _coalesce_key: str = ""  # non-empty → eligible for coalescing with same key
 
 
+@dataclass
+class HistoryEntry:
+    """An EditCommand projected onto the *current* buffer coordinates.
+
+    Built by ``EditController.get_history_view()`` so the edit log table
+    can show where the edit's bytes ARE NOW (after subsequent
+    inserts/deletes shifted them) — or that they no longer exist at all.
+    """
+    cmd: EditCommand
+    current_offset: int | None  # current-buffer start of surviving fragment, or None
+    current_length: int         # total length of surviving fragments
+    is_delete: bool             # True if the original op was a pure delete
+    is_consumed: bool           # True if all the cmd's bytes were lost to later edits
+    fragments: list[tuple[int, int]] = field(default_factory=list)
+
+
 class EditController:
     """Manages byte edits with undo/redo stacks.
 
@@ -109,6 +125,82 @@ class EditController:
         """Read-only view of the undo stack (oldest first)."""
         return list(self._undo_stack)
 
+    def get_history_view(self) -> list[HistoryEntry]:
+        """Return per-cmd history projected onto current buffer coordinates.
+
+        Walks the undo stack and tracks each individual command's surviving
+        bytes through subsequent inserts and deletes.  Used by the edit
+        log table so it can:
+          1. Show the *current* offset (not the original) for shifted edits
+          2. Mark fully-consumed edits as "(deleted)" so the user knows the
+             bytes no longer exist in the buffer
+          3. Pick the right action on double-click (navigate vs. show diff)
+        """
+        if not self._buffer:
+            return [HistoryEntry(cmd=c, current_offset=None,
+                                 current_length=0,
+                                 is_delete=(c.size_changed and not c.new_bytes),
+                                 is_consumed=False)
+                    for c in self._undo_stack]
+
+        # Per-cmd surviving fragment list, indexed by undo stack position
+        cmd_fragments: dict[int, list[tuple[int, int]]] = {}
+
+        for i, cmd in enumerate(self._undo_stack):
+            if cmd.size_changed:
+                old_start = cmd.offset
+                old_len = len(cmd.old_bytes)
+                old_end = old_start + old_len
+                new_len = len(cmd.new_bytes)
+                shift = new_len - old_len
+
+                # Apply this op to every previously-recorded cmd's fragments
+                for j in cmd_fragments:
+                    new_frags: list[tuple[int, int]] = []
+                    for r_off, r_len in cmd_fragments[j]:
+                        r_end = r_off + r_len
+                        if r_end <= old_start:
+                            new_frags.append((r_off, r_len))
+                        elif r_off >= old_end:
+                            new_frags.append((r_off + shift, r_len))
+                        else:
+                            if r_off < old_start:
+                                new_frags.append((r_off, old_start - r_off))
+                            if r_end > old_end:
+                                post_len = r_end - old_end
+                                new_frags.append((old_start + new_len, post_len))
+                    cmd_fragments[j] = new_frags
+
+                # Record this cmd's own bytes (the new_bytes that were inserted)
+                if new_len > 0:
+                    cmd_fragments[i] = [(cmd.offset, new_len)]
+                else:
+                    cmd_fragments[i] = []  # Pure delete — no surviving bytes
+            elif cmd.new_bytes:
+                # Pure overwrite
+                cmd_fragments[i] = [(cmd.offset, len(cmd.new_bytes))]
+
+        # Build the result
+        result: list[HistoryEntry] = []
+        for i, cmd in enumerate(self._undo_stack):
+            frags = cmd_fragments.get(i, [])
+            is_delete = cmd.size_changed and not cmd.new_bytes
+            original_len = len(cmd.new_bytes) if not is_delete else len(cmd.old_bytes)
+
+            current_length = sum(f[1] for f in frags)
+            current_offset = frags[0][0] if frags else None
+            is_consumed = (not is_delete) and (current_length == 0)
+
+            result.append(HistoryEntry(
+                cmd=cmd,
+                current_offset=current_offset,
+                current_length=current_length,
+                is_delete=is_delete,
+                is_consumed=is_consumed,
+                fragments=list(frags),
+            ))
+        return result
+
     def has_undo(self) -> bool:
         return len(self._undo_stack) > 0
 
@@ -145,17 +237,74 @@ class EditController:
         pass
 
     def _rebuild_modified(self):
-        """Rebuild _modified_offsets by comparing dirty_offsets against
-        the current buffer contents."""
+        """Rebuild _modified_offsets from the current undo stack.
+
+        Walks the undo stack chronologically, maintaining a list of
+        "live" highlighted byte ranges in the current-buffer coordinate
+        system.  Each later size-changing operation can shift or split
+        earlier ranges, or even fully consume them (e.g. a delete that
+        swallows a region the user previously edited).
+
+        After this runs, _modified_offsets contains exactly the set of
+        byte offsets in the current buffer that the user touched and
+        whose data still survives.
+        """
         self._modified_offsets.clear()
         if not self._buffer:
             return
-        for off, orig_val in self._dirty_offsets.items():
-            if off < self._buffer.size():
-                cur = self._buffer.read(off, 1)
-                if cur and cur[0] != orig_val:
-                    self._modified_offsets.add(off)
-            # Offsets beyond buffer size (deleted bytes) are not shown
+        size = self._buffer.size()
+
+        # Each entry: (offset, length) — both in current-buffer coords
+        # at the point in the walk we've reached.
+        live_ranges: list[tuple[int, int]] = []
+
+        for cmd in self._undo_stack:
+            if cmd.size_changed:
+                # General size-changing op: bytes [off, off+old_len)
+                # are replaced by bytes [off, off+new_len).
+                # Net shift for everything after = new_len - old_len.
+                old_start = cmd.offset
+                old_len = len(cmd.old_bytes)
+                old_end = old_start + old_len
+                new_len = len(cmd.new_bytes)
+                shift = new_len - old_len
+
+                new_ranges: list[tuple[int, int]] = []
+                for r_off, r_len in live_ranges:
+                    r_end = r_off + r_len
+                    if r_end <= old_start:
+                        # Entirely before — unaffected
+                        new_ranges.append((r_off, r_len))
+                    elif r_off >= old_end:
+                        # Entirely after — shifted
+                        new_ranges.append((r_off + shift, r_len))
+                    else:
+                        # Overlap — split into surviving fragments
+                        if r_off < old_start:
+                            # Pre-edit fragment survives at original offset
+                            new_ranges.append((r_off, old_start - r_off))
+                        if r_end > old_end:
+                            # Post-edit fragment survives, shifted to right
+                            # after the new bytes the operation inserted
+                            post_len = r_end - old_end
+                            new_ranges.append((old_start + new_len, post_len))
+                        # The portion strictly inside [old_start, old_end)
+                        # was deleted/replaced — no longer the user's bytes
+                if new_len > 0:
+                    # The bytes the operation just wrote are themselves a
+                    # highlighted range
+                    new_ranges.append((cmd.offset, new_len))
+                live_ranges = new_ranges
+            elif cmd.new_bytes:
+                # Pure overwrite (no size change) — append directly
+                live_ranges.append((cmd.offset, len(cmd.new_bytes)))
+
+        # Materialise into the offset set, clamped to current buffer
+        for r_off, r_len in live_ranges:
+            start = max(0, r_off)
+            end = min(r_off + r_len, size)
+            for off in range(start, end):
+                self._modified_offsets.add(off)
 
     # ── Nibble state ───────────────────────────────────────────────
 
@@ -166,14 +315,17 @@ class EditController:
     # ── Core edit operations ───────────────────────────────────────
 
     def overwrite_byte(self, offset: int, value: int) -> EditCommand | None:
-        """Overwrite a single byte at *offset*."""
+        """Overwrite a single byte at *offset*.
+
+        An overwrite with the same value as the original still records an
+        undo entry — the user explicitly touched that byte, and the edit
+        log / dirty highlight should reflect that.
+        """
         if not self._buffer or offset < 0 or offset >= self._buffer.size():
             return None
         self._record_originals(offset, 1)
         old = self._buffer.read(offset, 1)
         new = bytes([value & 0xFF])
-        if old == new:
-            return None
         self._buffer.write_bytes(offset, new)
         cmd = EditCommand(
             description=f"Overwrite 0x{offset:X}: {old[0]:02X} -> {value:02X}",
@@ -200,12 +352,21 @@ class EditController:
                 value = (self._pending_nibble << 4) | (nibble & 0x0F)
                 # The byte was already inserted with high nibble; overwrite it
                 self._buffer.write_bytes(offset, bytes([value]))
-                # Amend the last undo entry
+                # Amend the last undo entry — the pending byte is the LAST
+                # byte of new_bytes (works whether the entry is single-byte
+                # or coalesced multi-byte).
                 if self._undo_stack:
-                    self._undo_stack[-1].new_bytes = bytes([value])
-                    self._undo_stack[-1].cursor_after = offset + 1
-                    self._undo_stack[-1].description = f"Insert 0x{offset:X}: {value:02X}"
+                    prev = self._undo_stack[-1]
+                    prev.new_bytes = prev.new_bytes[:-1] + bytes([value])
+                    prev.cursor_after = offset + 1
+                    n = len(prev.new_bytes)
+                    if n > 1:
+                        prev.description = (
+                            f"Insert {n} byte(s) at 0x{prev.offset:X}")
+                    else:
+                        prev.description = f"Insert 0x{offset:X}: {value:02X}"
                 self._clear_nibble()
+                self._rebuild_modified()
                 return self._undo_stack[-1] if self._undo_stack else None
             else:
                 # First nibble — insert a new byte with high nibble set
@@ -228,13 +389,24 @@ class EditController:
             if offset >= self._buffer.size():
                 return None
             if self._pending_nibble is not None and self._pending_nibble_offset == offset:
-                # Second nibble — complete the byte (originals already recorded)
+                # Second nibble — complete the byte (originals already recorded).
+                # The pending byte is the LAST byte of new_bytes; replace just
+                # that, preserving any earlier coalesced bytes.
                 value = (self._pending_nibble << 4) | (nibble & 0x0F)
                 self._buffer.write_bytes(offset, bytes([value]))
                 if self._undo_stack:
-                    self._undo_stack[-1].new_bytes = bytes([value])
-                    self._undo_stack[-1].cursor_after = offset + 1
-                    self._undo_stack[-1].description = f"Overwrite 0x{offset:X}: {self._undo_stack[-1].old_bytes[0]:02X} -> {value:02X}"
+                    prev = self._undo_stack[-1]
+                    prev.new_bytes = prev.new_bytes[:-1] + bytes([value])
+                    prev.cursor_after = offset + 1
+                    n = len(prev.new_bytes)
+                    if n > 1:
+                        prev.description = (
+                            f"Overwrite {n} byte(s) at "
+                            f"0x{prev.offset:X}\u20130x{prev.offset + n - 1:X}")
+                    else:
+                        prev.description = (
+                            f"Overwrite 0x{offset:X}: "
+                            f"{prev.old_bytes[0]:02X} -> {value:02X}")
                 self._clear_nibble()
                 self._rebuild_modified()
                 return self._undo_stack[-1] if self._undo_stack else None

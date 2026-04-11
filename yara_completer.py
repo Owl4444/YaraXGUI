@@ -54,6 +54,9 @@ _YARA_KEYWORDS = [
                    "Rule must match for all other rules | global rule is_pe { ... }"),
     CompletionItem("true", "true", "keyword", "Boolean literal"),
     CompletionItem("false", "false", "keyword", "Boolean literal"),
+    CompletionItem("with", "with $0 : ( )", "snippet",
+                   "Scoped variable binding (YARA-X) | with x = 100 : ( x == 100 )",
+                   snippet=True),
 ]
 
 _CONDITION_KEYWORDS = [
@@ -97,8 +100,8 @@ _CONDITION_KEYWORDS = [
     CompletionItem("for", "for $0 of them : ( )", "snippet",
                    "Count-based loop | for 2 of them : ($ at pe.entry_point)",
                    snippet=True),
-    CompletionItem("with", "with $0 = : ( )", "snippet",
-                   "YARA-X scoped variable | with $x = \"test\" : ($x at 0)",
+    CompletionItem("with", "with $0 : ( )", "snippet",
+                   "Scoped variable binding (YARA-X) | with x = 100 : ( x == 100 )",
                    snippet=True),
     CompletionItem("in", "in ", "keyword",
                    "Byte range operator | $s1 in (0..1024)  $s1 in (pe.entry_point..filesize)"),
@@ -756,9 +759,13 @@ class CompletionEngine:
         scored = []
         for item in items:
             label_lower = item.label.lower()
-            if label_lower == prefix_lower:
-                # Already fully typed — skip (nothing to gain)
+            if label_lower == prefix_lower and not item.snippet:
+                # Already fully typed — skip (nothing to gain).
+                # Snippets are kept because they expand a template.
                 continue
+            elif label_lower == prefix_lower and item.snippet:
+                # Exact match but it's a snippet — rank highest
+                scored.append((-1, len(label_lower), item))
             elif label_lower.startswith(prefix_lower):
                 # Prefix match — shorter labels rank higher
                 scored.append((0, len(label_lower), item))

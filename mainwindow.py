@@ -20,10 +20,11 @@ from PySide6.QtCore import QDir, QEvent, QModelIndex, QTimer, Qt
 from PySide6.QtGui import (QIcon, QPainter, QPen, QPixmap, QStandardItem,
                            QTextCursor)
 from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
-                               QFileDialog, QHBoxLayout, QHeaderView, QLabel,
-                               QLineEdit, QListWidgetItem, QMenu, QMainWindow,
-                               QMessageBox, QProgressBar, QPushButton,
-                               QToolButton, QTreeView, QVBoxLayout, QWidget)
+                               QDockWidget, QFileDialog, QHBoxLayout,
+                               QHeaderView, QLabel, QLineEdit, QListWidgetItem,
+                               QMenu, QMainWindow, QMessageBox, QProgressBar,
+                               QPushButton, QSplitter, QToolButton, QTreeView,
+                               QVBoxLayout, QWidget)
 
 # Local imports
 from checkable_fs_model import CheckableFsModel
@@ -103,18 +104,10 @@ class MainWindow(QMainWindow):
         self.ui.te_yara_editor.textChanged.connect(self.on_yara_text_changed)
 
         # ── YARA Rule Browser (tree with preview tooltips) ─────────
+        # Created here; placed into a QDockWidget by _setup_dock_layout()
         self._yara_browser = YaraRuleBrowser(self)
         self._yara_browser.file_requested.connect(self._on_yara_file_requested)
         self._yara_browser.files_requested.connect(self._on_yara_files_requested)
-        # Insert at top of the left-side vertical splitter so the
-        # layout becomes: [rule browser] / [editor+buttons] / [compilation]
-        self.ui.splitter_4.insertWidget(0, self._yara_browser)
-        # Start collapsed — user opens it via "Browse YARA"
-        self._yara_browser.setVisible(False)
-        # Set splitter proportions: browser 30%, editor 50%, compilation 20%
-        self.ui.splitter_4.setStretchFactor(0, 30)
-        self.ui.splitter_4.setStretchFactor(1, 50)
-        self.ui.splitter_4.setStretchFactor(2, 20)
 
         # File system model
         self.fs_model = CheckableFsModel(self)
@@ -277,11 +270,16 @@ class MainWindow(QMainWindow):
         # Setup context menu for compilation output
         self.setup_compilation_output_context_menu()
         
+        # Convert fixed splitter layout to dockable panels (must happen
+        # before load_theme_settings which restores dock state, and before
+        # reset_interface_on_startup which references dock widgets)
+        self._setup_dock_layout()
+
         # Initialize theming system
         self.theme_manager = theme_manager
         self.setup_theming()
         self.load_theme_settings()
-        
+
         # Reset interface to default state on application startup
         self.reset_interface_on_startup()
 
@@ -289,6 +287,122 @@ class MainWindow(QMainWindow):
         # Done at the end of __init__ so every child (including widgets
         # built by ScanResultsManager) is already parented under self.
         self._install_drop_filter_recursive()
+
+    # ── Dockable layout ────────────────────────────────────────────────
+
+    def _setup_dock_layout(self):
+        """Convert the fixed splitter layout into movable QDockWidgets.
+
+        Central widget: editor (buttons + text editor) + compilation output.
+        Dock widgets: Rule Browser (left, hidden), Scan Directory (right),
+        Scan Results (right, tabified with Scan Directory).
+        """
+        # -- Central widget: editor + compilation in a vertical splitter --
+        central = QWidget()
+        central.setObjectName("central_editor_panel")
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._central_splitter = QSplitter(Qt.Orientation.Vertical)
+        self._central_splitter.addWidget(self.ui.layoutWidget)
+        # Remove the fixed max-height so the user can resize freely
+        self.ui.tb_compilation_output.setMaximumSize(16777215, 16777215)
+        self._central_splitter.addWidget(self.ui.tb_compilation_output)
+        self._central_splitter.setStretchFactor(0, 80)
+        self._central_splitter.setStretchFactor(1, 20)
+        self._central_splitter.setChildrenCollapsible(False)
+
+        central_layout.addWidget(self._central_splitter)
+        self.setCentralWidget(central)
+
+        # -- Dock: Scan Results (right, upper) --
+        self.dock_scan_results = QDockWidget("Scan Results", self)
+        self.dock_scan_results.setObjectName("dock_scan_results")
+        scan_results_container = QWidget()
+        scan_results_layout = QVBoxLayout(scan_results_container)
+        scan_results_layout.setContentsMargins(0, 0, 0, 0)
+        scan_results_layout.addWidget(self.ui.splitter_2)
+        self.dock_scan_results.setWidget(scan_results_container)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_scan_results)
+
+        # -- Dock: Scan Directory (right, tabified with Scan Results) --
+        self.dock_scan_dir = QDockWidget("Scan Directory", self)
+        self.dock_scan_dir.setObjectName("dock_scan_dir")
+        scan_dir_container = QWidget()
+        scan_dir_layout = QVBoxLayout(scan_dir_container)
+        scan_dir_layout.setContentsMargins(0, 0, 0, 0)
+        scan_dir_layout.addWidget(self.ui.splitter_3)
+        self.dock_scan_dir.setWidget(scan_dir_container)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_scan_dir)
+
+        # Tabify Scan Results and Scan Directory; Scan Results is active
+        self.tabifyDockWidget(self.dock_scan_results, self.dock_scan_dir)
+        self.dock_scan_results.raise_()
+
+        # -- Dock: Rule Browser (right, below the tabified pair) --
+        self.dock_rule_browser = QDockWidget("Rule Browser", self)
+        self.dock_rule_browser.setObjectName("dock_rule_browser")
+        self._yara_browser.setVisible(True)
+        self.dock_rule_browser.setWidget(self._yara_browser)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_rule_browser)
+        # Place Rule Browser below the Scan Results/Directory pair
+        self.splitDockWidget(self.dock_scan_results,
+                             self.dock_rule_browser,
+                             Qt.Orientation.Vertical)
+
+        # Right docks span full height
+        self.setCorner(Qt.Corner.BottomRightCorner,
+                       Qt.DockWidgetArea.RightDockWidgetArea)
+        self.setCorner(Qt.Corner.TopRightCorner,
+                       Qt.DockWidgetArea.RightDockWidgetArea)
+
+        # Hide the now-empty old tabWidget (its children were reparented)
+        self.ui.tabWidget.setVisible(False)
+
+        # View menu for toggling docks
+        self._setup_view_menu()
+
+    def _setup_view_menu(self):
+        """Add a View menu with dock toggle actions and layout reset."""
+        view_menu = self.ui.menubar.addMenu("View")
+
+        view_menu.addAction(self.dock_rule_browser.toggleViewAction())
+        view_menu.addAction(self.dock_scan_dir.toggleViewAction())
+        view_menu.addAction(self.dock_scan_results.toggleViewAction())
+
+        view_menu.addSeparator()
+
+        reset_action = view_menu.addAction("Reset Layout")
+        reset_action.triggered.connect(self._reset_dock_layout)
+
+    def _reset_dock_layout(self):
+        """Restore all dock widgets to their default positions."""
+        for dock in (self.dock_rule_browser, self.dock_scan_dir,
+                     self.dock_scan_results):
+            self.removeDockWidget(dock)
+
+        # Right upper: Scan Results + Scan Directory (tabified)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_scan_results)
+        self.dock_scan_results.setVisible(True)
+
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_scan_dir)
+        self.dock_scan_dir.setVisible(True)
+
+        self.tabifyDockWidget(self.dock_scan_results, self.dock_scan_dir)
+        self.dock_scan_results.raise_()
+
+        # Right lower: Rule Browser (below the tabified pair)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_rule_browser)
+        self.dock_rule_browser.setVisible(True)
+        self.splitDockWidget(self.dock_scan_results,
+                             self.dock_rule_browser,
+                             Qt.Orientation.Vertical)
 
     def _install_drop_filter_recursive(self) -> None:
         """Make every descendant widget accept URL drops and forward them
@@ -423,6 +537,13 @@ class MainWindow(QMainWindow):
             if not self._scan_worker.wait(3000):
                 self._scan_worker.terminate()
                 self._scan_worker.wait(1000)
+
+        # Persist dock layout so the user's arrangement is restored next time
+        import base64
+        state_bytes = self.saveState().data()
+        self._save_setting("dock_state", base64.b64encode(state_bytes).decode("ascii"))
+        geometry_bytes = self.saveGeometry().data()
+        self._save_setting("window_geometry", base64.b64encode(geometry_bytes).decode("ascii"))
 
         event.accept()
 
@@ -877,6 +998,21 @@ class MainWindow(QMainWindow):
         # Restore YARA rules folder (browser stays hidden until user clicks Browse)
         if yara_folder and Path(yara_folder).is_dir():
             self._yara_browser.set_root(yara_folder)
+
+        # Restore dock layout and window geometry from previous session
+        try:
+            if config_path.exists():
+                import json, base64
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+                dock_state = settings.get('dock_state', '')
+                if dock_state:
+                    self.restoreState(base64.b64decode(dock_state))
+                win_geo = settings.get('window_geometry', '')
+                if win_geo:
+                    self.restoreGeometry(base64.b64decode(win_geo))
+        except Exception:
+            pass  # Use default layout on error
     
     def save_theme_settings(self, theme_name):
         """Save theme preference to config file."""
@@ -1132,12 +1268,13 @@ class MainWindow(QMainWindow):
         pick one.  Otherwise just toggle visibility so repeated clicks
         show/hide the panel.
         """
-        if self._yara_browser.isVisible():
-            self._yara_browser.setVisible(False)
+        if self.dock_rule_browser.isVisible():
+            self.dock_rule_browser.setVisible(False)
             return
 
-        # Show the browser
-        self._yara_browser.setVisible(True)
+        # Show the Rule Browser dock
+        self.dock_rule_browser.setVisible(True)
+        self.dock_rule_browser.raise_()
 
         # If no root set yet, prompt immediately
         if not self._yara_browser.root_path():
@@ -1305,8 +1442,8 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Save failed", f"Could not save file:\n{e}")
 
     def _reset_all_tabs(self):
-        """Reset every tab widget to its default index."""
-        self.ui.tabWidget.setCurrentIndex(0)
+        """Reset every tab widget and dock to its default state."""
+        self.dock_scan_dir.raise_()
         self.ui.tabWidget_2.setCurrentIndex(0)
         self.ui.tabWidget_3.setCurrentIndex(0)
         self.ui.tabWidget_4.setCurrentIndex(0)
@@ -1359,9 +1496,6 @@ class MainWindow(QMainWindow):
         # Reset size warning flag so it can show again for large files
         self._size_warning_shown = False
 
-        # Collapse the YARA rule browser
-        self._yara_browser.setVisible(False)
-
         self._reset_all_tabs()
         self.statusBar().showMessage("Complete reset - ready for fresh start", 5000)
 
@@ -1377,7 +1511,25 @@ class MainWindow(QMainWindow):
         if YARA_X_AVAILABLE:
             try:
                 formatted_text = self.scanner.format_with_yara_x(text)
+                # DEBUG: detect extra closing brace
+                fmt_lines = formatted_text.split('\n')
+                inp_lines = text.split('\n')
+                fmt_braces = formatted_text.count('}')
+                inp_braces = text.count('}')
+                if fmt_braces != inp_braces:
+                    print(f"[FORMAT DEBUG] Brace count changed: {inp_braces} -> {fmt_braces}")
+                print(f"[FORMAT DEBUG] Input: {len(inp_lines)} lines, "
+                      f"Output: {len(fmt_lines)} lines, "
+                      f"last={repr(fmt_lines[-1])}")
                 self._load_text_to_editor(formatted_text)
+                # DEBUG: check what ended up in the editor
+                final = self.ui.te_yara_editor.toPlainText()
+                final_lines = final.split('\n')
+                if len(final_lines) != len(fmt_lines):
+                    print(f"[FORMAT DEBUG] MISMATCH! Editor has {len(final_lines)} lines "
+                          f"but formatter produced {len(fmt_lines)}")
+                    for ln in final_lines[len(fmt_lines):]:
+                        print(f"[FORMAT DEBUG]   extra: {repr(ln)}")
                 self.statusBar().showMessage("YARA rule formatted with yara-x", 3000)
                 return
             except Exception as e:
@@ -1503,8 +1655,9 @@ class MainWindow(QMainWindow):
     
     def _prepare_scan_ui(self) -> None:
         """Prepare the UI for scanning by switching tabs and clearing results."""
-        # Switch to Scan Result tab and focus on Hits
-        self.ui.tabWidget.setCurrentWidget(self.ui.tab_scan_results)
+        # Switch to Scan Results dock and focus on Hits
+        self.dock_scan_results.setVisible(True)
+        self.dock_scan_results.raise_()
         self.ui.tabWidget_2.setCurrentIndex(0)  # Focus on Hits tab
         
         # Clear previous results
@@ -1677,8 +1830,9 @@ class MainWindow(QMainWindow):
         self.results._force_thin_rows(self.ui.tv_file_hits)
         self.ui.tv_file_hits.resizeColumnToContents(0)
 
-        # Switch to results tab
-        self.ui.tabWidget.setCurrentIndex(1)
+        # Switch to results dock
+        self.dock_scan_results.setVisible(True)
+        self.dock_scan_results.raise_()
         self.ui.tabWidget_2.setCurrentIndex(0)
 
         # Populate additional views
@@ -2041,8 +2195,9 @@ class MainWindow(QMainWindow):
             f"Selected root: {path} (all files selected by default)", 4000)
         self.update_exclusion_list()
 
-        # Focus on the file tree tab
-        self.ui.tabWidget.setCurrentWidget(self.ui.tab_scan_dir)
+        # Focus on the Scan Directory dock
+        self.dock_scan_dir.setVisible(True)
+        self.dock_scan_dir.raise_()
 
     def _handle_input_paths(self, paths) -> None:
         """Dispatch a list of path-like inputs from drag/drop or the CLI.

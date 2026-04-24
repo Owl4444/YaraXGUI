@@ -43,6 +43,10 @@ class PaintContext:
         "selection_bg", "separator", "pattern_region_color",
         # edit tracking
         "modified_offsets", "edited_hex_text", "edited_ascii_text",
+        # gutter
+        "gutter_mode",  # "offset" | "line"
+        # binary diff
+        "diff_offsets", "diff_bg",
     )
 
     def __init__(self, *, buffer, layout, selection, font,
@@ -51,7 +55,9 @@ class PaintContext:
                  ascii_text, ascii_nonprint, cursor_bg,
                  selection_bg, separator, pattern_region_color,
                  modified_offsets=None,
-                 edited_hex_text=None, edited_ascii_text=None):
+                 edited_hex_text=None, edited_ascii_text=None,
+                 gutter_mode="offset",
+                 diff_offsets=None, diff_bg=None):
         self.buffer: HexDataBuffer = buffer
         self.layout: HexLayout = layout
         self.selection: SelectionModel = selection
@@ -74,21 +80,29 @@ class PaintContext:
         self.modified_offsets: set[int] = modified_offsets or set()
         self.edited_hex_text: QColor = edited_hex_text or QColor("#e05050")
         self.edited_ascii_text: QColor = edited_ascii_text or QColor("#e05050")
+        self.gutter_mode: str = gutter_mode
+        # Binary diff highlighting (yellow background distinct from edited red)
+        self.diff_offsets: set[int] = diff_offsets or set()
+        self.diff_bg: QColor = diff_bg or QColor(255, 220, 80, 110)
 
 
 # ── Shared rendering helpers ───────────────────────────────────────
 
 
 def _paint_offset_gutter(painter: QPainter, ctx: PaintContext,
-                         y: int, offset: int):
-    """Render the offset column background and hex address."""
+                         y: int, offset: int, line_idx: int = 0):
+    """Render the offset column — hex offset or line number."""
     L = ctx.layout
     painter.fillRect(QRect(0, y, L.offset_width, L.line_h), ctx.offset_bg)
     painter.setPen(ctx.offset_text)
+    if ctx.gutter_mode == "line":
+        label = str(line_idx + 1)  # 1-based line numbers
+    else:
+        label = f"{offset:08X}"
     painter.drawText(
         QRect(0, y, L.offset_width - L.char_w, L.line_h),
         Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
-        f"{offset:08X}",
+        label,
     )
 
 
@@ -142,6 +156,10 @@ def _paint_cell_highlights(painter: QPainter, ctx: PaintContext,
                 painter.fillRect(rect, ctx.pattern_region_color)
                 break
 
+    # Diff highlight (yellow tint) — above pattern regions, below selection
+    if byte_offset in ctx.diff_offsets:
+        painter.fillRect(rect, ctx.diff_bg)
+
     if ctx.sel_min <= byte_offset <= ctx.sel_max:
         painter.fillRect(rect, ctx.selection_bg)
 
@@ -176,7 +194,7 @@ class BasePaintStrategy(ABC):
             offset, data, data_len = line_info
             y = i * ctx.layout.line_h
 
-            _paint_offset_gutter(painter, ctx, y, offset)
+            _paint_offset_gutter(painter, ctx, y, offset, line_idx)
             _paint_marker_triangles(painter, ctx, y, offset,
                                     offset + max(data_len - 1, 0))
             _paint_separator(painter, ctx, ctx.layout.offset_width, y)

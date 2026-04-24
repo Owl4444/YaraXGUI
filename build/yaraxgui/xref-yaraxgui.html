@@ -175,6 +175,7 @@ imports:
  &#8226;   <a href="#_collections_abc">_collections_abc</a>
  &#8226;   <a href="#_weakrefset">_weakrefset</a>
  &#8226;   <a href="#abc">abc</a>
+ &#8226;   <a href="#base64">base64</a>
  &#8226;   <a href="#checkable_fs_model">checkable_fs_model</a>
  &#8226;   <a href="#codecs">codecs</a>
  &#8226;   <a href="#collections">collections</a>
@@ -4015,6 +4016,7 @@ imported by:
  &#8226;   <a href="#PySide6.QtNetwork">PySide6.QtNetwork</a>
  &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
  &#8226;   <a href="#checkable_fs_model">checkable_fs_model</a>
+ &#8226;   <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
  &#8226;   <a href="#hex_editor.data_inspector">hex_editor.data_inspector</a>
  &#8226;   <a href="#hex_editor.disasm_widget">hex_editor.disasm_widget</a>
  &#8226;   <a href="#hex_editor.edit_log_widget">hex_editor.edit_log_widget</a>
@@ -4065,6 +4067,7 @@ imports:
 imported by:
     <a href="#PySide6.QtGui">PySide6.QtGui</a>
  &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
+ &#8226;   <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
  &#8226;   <a href="#hex_editor.disasm_widget">hex_editor.disasm_widget</a>
  &#8226;   <a href="#hex_editor.edit_log_widget">hex_editor.edit_log_widget</a>
  &#8226;   <a href="#hex_editor.entropy_widget">hex_editor.entropy_widget</a>
@@ -4131,6 +4134,7 @@ imports:
 imported by:
     <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
  &#8226;   <a href="#checkable_fs_model">checkable_fs_model</a>
+ &#8226;   <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
  &#8226;   <a href="#hex_editor.clipboard_exporter">hex_editor.clipboard_exporter</a>
  &#8226;   <a href="#hex_editor.data_inspector">hex_editor.data_inspector</a>
  &#8226;   <a href="#hex_editor.disasm_widget">hex_editor.disasm_widget</a>
@@ -4231,6 +4235,8 @@ imported by:
  &#8226;   <a href="#attr._make">attr._make</a>
  &#8226;   <a href="#attr.exceptions">attr.exceptions</a>
  &#8226;   <a href="#codeop">codeop</a>
+ &#8226;   <a href="#hex_editor.binary_diff">hex_editor.binary_diff</a>
+ &#8226;   <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
  &#8226;   <a href="#hex_editor.clipboard_exporter">hex_editor.clipboard_exporter</a>
  &#8226;   <a href="#hex_editor.edit_controller">hex_editor.edit_controller</a>
  &#8226;   <a href="#hex_editor.edit_log_widget">hex_editor.edit_log_widget</a>
@@ -7756,6 +7762,7 @@ imported by:
  &#8226;   <a href="#hex_editor.transform_ops.encoding">hex_editor.transform_ops.encoding</a>
  &#8226;   <a href="#hex_editor.transform_ops.hashing">hex_editor.transform_ops.hashing</a>
  &#8226;   <a href="#http.server">http.server</a>
+ &#8226;   <a href="#mainwindow.py">mainwindow.py</a>
  &#8226;   <a href="#pycparser.ply.yacc">pycparser.ply.yacc</a>
  &#8226;   <a href="#secrets">secrets</a>
  &#8226;   <a href="#setuptools._vendor.wheel.util">setuptools._vendor.wheel.util</a>
@@ -13656,12 +13663,15 @@ imported by:
   <a target="code" href="///R:/YaraXGUI_Qt/YaraXGUI/hex_editor/__init__.py" type="text/plain"><tt>hex_editor</tt></a>
 <span class="moduletype">Package</span>  <div class="import">
 imports:
-    <a href="#hex_editor.hex_editor_window">hex_editor.hex_editor_window</a>
+    <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
+ &#8226;   <a href="#hex_editor.hex_editor_window">hex_editor.hex_editor_window</a>
 
   </div>
   <div class="import">
 imported by:
-    <a href="#hex_editor.clipboard_exporter">hex_editor.clipboard_exporter</a>
+    <a href="#hex_editor.binary_diff">hex_editor.binary_diff</a>
+ &#8226;   <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
+ &#8226;   <a href="#hex_editor.clipboard_exporter">hex_editor.clipboard_exporter</a>
  &#8226;   <a href="#hex_editor.data_inspector">hex_editor.data_inspector</a>
  &#8226;   <a href="#hex_editor.disasm_widget">hex_editor.disasm_widget</a>
  &#8226;   <a href="#hex_editor.edit_controller">hex_editor.edit_controller</a>
@@ -13685,6 +13695,49 @@ imported by:
  &#8226;   <a href="#hex_editor.transforms">hex_editor.transforms</a>
  &#8226;   <a href="#hex_editor.xor_scanner">hex_editor.xor_scanner</a>
  &#8226;   <a href="#mainwindow.py">mainwindow.py</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="hex_editor.binary_diff"></a>
+  <a target="code" href="///R:/YaraXGUI_Qt/YaraXGUI/hex_editor/binary_diff.py" type="text/plain"><tt>hex_editor.binary_diff</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#__future__">__future__</a>
+ &#8226;   <a href="#hex_editor">hex_editor</a>
+ &#8226;   <a href="#hex_editor.hex_data_buffer">hex_editor.hex_data_buffer</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
+
+  </div>
+
+</div>
+
+<div class="node">
+  <a name="hex_editor.binary_diff_window"></a>
+  <a target="code" href="///R:/YaraXGUI_Qt/YaraXGUI/hex_editor/binary_diff_window.py" type="text/plain"><tt>hex_editor.binary_diff_window</tt></a>
+<span class="moduletype">SourceModule</span>  <div class="import">
+imports:
+    <a href="#PySide6.QtCore">PySide6.QtCore</a>
+ &#8226;   <a href="#PySide6.QtGui">PySide6.QtGui</a>
+ &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
+ &#8226;   <a href="#__future__">__future__</a>
+ &#8226;   <a href="#hex_editor">hex_editor</a>
+ &#8226;   <a href="#hex_editor.binary_diff">hex_editor.binary_diff</a>
+ &#8226;   <a href="#hex_editor.hex_data_buffer">hex_editor.hex_data_buffer</a>
+ &#8226;   <a href="#hex_editor.hex_widget">hex_editor.hex_widget</a>
+ &#8226;   <a href="#pathlib">pathlib</a>
+
+  </div>
+  <div class="import">
+imported by:
+    <a href="#hex_editor">hex_editor</a>
+ &#8226;   <a href="#hex_editor.hex_editor_window">hex_editor.hex_editor_window</a>
 
   </div>
 
@@ -13788,6 +13841,8 @@ imports:
  &#8226;   <a href="#__future__">__future__</a>
  &#8226;   <a href="#hex_editor">hex_editor</a>
  &#8226;   <a href="#hex_editor.edit_controller">hex_editor.edit_controller</a>
+ &#8226;   <a href="#hex_editor.hex_data_buffer">hex_editor.hex_data_buffer</a>
+ &#8226;   <a href="#html">html</a>
 
   </div>
   <div class="import">
@@ -13896,9 +13951,12 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#hex_editor.clipboard_exporter">hex_editor.clipboard_exporter</a>
+    <a href="#hex_editor.binary_diff">hex_editor.binary_diff</a>
+ &#8226;   <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
+ &#8226;   <a href="#hex_editor.clipboard_exporter">hex_editor.clipboard_exporter</a>
  &#8226;   <a href="#hex_editor.data_inspector">hex_editor.data_inspector</a>
  &#8226;   <a href="#hex_editor.edit_controller">hex_editor.edit_controller</a>
+ &#8226;   <a href="#hex_editor.edit_log_widget">hex_editor.edit_log_widget</a>
  &#8226;   <a href="#hex_editor.elf_parser">hex_editor.elf_parser</a>
  &#8226;   <a href="#hex_editor.entropy_widget">hex_editor.entropy_widget</a>
  &#8226;   <a href="#hex_editor.format_viewer">hex_editor.format_viewer</a>
@@ -13925,6 +13983,7 @@ imports:
  &#8226;   <a href="#PySide6.QtWidgets">PySide6.QtWidgets</a>
  &#8226;   <a href="#datetime">datetime</a>
  &#8226;   <a href="#hex_editor">hex_editor</a>
+ &#8226;   <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
  &#8226;   <a href="#hex_editor.data_inspector">hex_editor.data_inspector</a>
  &#8226;   <a href="#hex_editor.disasm_widget">hex_editor.disasm_widget</a>
  &#8226;   <a href="#hex_editor.edit_log_widget">hex_editor.edit_log_widget</a>
@@ -14034,7 +14093,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#hex_editor.hex_editor_window">hex_editor.hex_editor_window</a>
+    <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
+ &#8226;   <a href="#hex_editor.hex_editor_window">hex_editor.hex_editor_window</a>
 
   </div>
 
@@ -14403,7 +14463,8 @@ imports:
   </div>
   <div class="import">
 imported by:
-    <a href="#html.entities">html.entities</a>
+    <a href="#hex_editor.edit_log_widget">hex_editor.edit_log_widget</a>
+ &#8226;   <a href="#html.entities">html.entities</a>
  &#8226;   <a href="#http.server">http.server</a>
  &#8226;   <a href="#mainwindow.py">mainwindow.py</a>
  &#8226;   <a href="#yara_completer">yara_completer</a>
@@ -17423,6 +17484,7 @@ imported by:
     <a href="#PySide6">PySide6</a>
  &#8226;   <a href="#capstone">capstone</a>
  &#8226;   <a href="#checkable_fs_model">checkable_fs_model</a>
+ &#8226;   <a href="#hex_editor.binary_diff_window">hex_editor.binary_diff_window</a>
  &#8226;   <a href="#hex_editor.hex_data_buffer">hex_editor.hex_data_buffer</a>
  &#8226;   <a href="#hex_editor.hex_editor_window">hex_editor.hex_editor_window</a>
  &#8226;   <a href="#hex_editor.transform_dialog">hex_editor.transform_dialog</a>

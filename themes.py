@@ -578,6 +578,29 @@ class ThemeManager:
             height: 3px;
         }}
         
+        /* Dock Widgets */
+        QDockWidget {{
+            color: {colors.text_primary};
+        }}
+
+        QDockWidget::title {{
+            background-color: {colors.table_header_bg};
+            color: {colors.table_header_text};
+            border: 1px solid {colors.table_border};
+            padding: 4px;
+            text-align: left;
+        }}
+
+        /* Visible border on dock content panels */
+        QDockWidget > QWidget {{
+            border: 1px solid {colors.table_border};
+        }}
+
+        /* Central editor panel border */
+        #central_editor_panel {{
+            border: 1px solid {colors.table_border};
+        }}
+
         /* Scrollbars — standardized across the entire app for visibility */
         QScrollBar:vertical {{
             background-color: {colors.scrollbar_background};

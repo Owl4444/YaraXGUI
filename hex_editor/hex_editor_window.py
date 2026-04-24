@@ -34,6 +34,7 @@ from .transforms import (REGISTRY, TransformError, RecipeStep, find_spec,
                          apply_recipe, recipe_length_preserving)
 from .transform_dialog import TransformDialog
 from .transform_log import TransformLogWidget, TransformLogEntry
+from .binary_diff_window import BinaryDiffWindow
 from .edit_log_widget import EditLogWidget
 
 
@@ -300,6 +301,15 @@ class HexEditorWindow(QMainWindow):
         file_menu.addAction(revert_action)
 
         file_menu.addSeparator()
+
+        diff_action = QAction("&Compare with File... (Binary Diff)", self)
+        diff_action.setShortcut(QKeySequence("Ctrl+D"))
+        diff_action.setToolTip(
+            "Open a side-by-side diff of this file with another file")
+        diff_action.triggered.connect(self._on_open_diff)
+        file_menu.addAction(diff_action)
+
+        file_menu.addSeparator()
         close_action = QAction("&Close", self)
         close_action.setShortcut(QKeySequence("Ctrl+W"))
         close_action.triggered.connect(self.close)
@@ -392,6 +402,16 @@ class HexEditorWindow(QMainWindow):
             "Off: notepad view with real newlines. On: fixed grid, dots.")
         self._toggle_escape_action.toggled.connect(self._on_toggle_text_escape_mode)
         view_menu.addAction(self._toggle_escape_action)
+
+        view_menu.addSeparator()
+
+        self._toggle_line_numbers = QAction("&Line Numbers", self)
+        self._toggle_line_numbers.setCheckable(True)
+        self._toggle_line_numbers.setChecked(False)
+        self._toggle_line_numbers.setToolTip(
+            "Show line numbers instead of hex offsets in the gutter")
+        self._toggle_line_numbers.toggled.connect(self._on_toggle_gutter_mode)
+        view_menu.addAction(self._toggle_line_numbers)
 
         view_menu.addSeparator()
 
@@ -531,6 +551,38 @@ class HexEditorWindow(QMainWindow):
         if filepath:
             self.open_file(filepath)
 
+    def _on_open_diff(self):
+        """Open a side-by-side binary diff with another file.
+
+        Pre-loads the current file as the left side and prompts for the
+        right-side file.
+        """
+        # Pick the right-side file first so user can cancel cheaply
+        right_path, _ = QFileDialog.getOpenFileName(
+            self, "Pick file to compare against", "", "All Files (*)")
+        if not right_path:
+            return
+        diff_win = BinaryDiffWindow(theme_manager=self._theme_manager,
+                                    parent=None)
+        # Keep a reference so it isn't garbage collected
+        if not hasattr(self, "_diff_windows"):
+            self._diff_windows = []
+        self._diff_windows = [w for w in self._diff_windows if w.isVisible()]
+        self._diff_windows.append(diff_win)
+
+        # Load left side from the current buffer's file path if available;
+        # otherwise prompt for it.
+        left_path = self._buffer.filepath if self._buffer else ""
+        if left_path and left_path != "<memory>" and Path(left_path).exists():
+            diff_win.open_left_file(left_path)
+        else:
+            picked, _ = QFileDialog.getOpenFileName(
+                self, "Pick left-side file", "", "All Files (*)")
+            if picked:
+                diff_win.open_left_file(picked)
+        diff_win.open_right_file(right_path)
+        diff_win.show()
+
     def _on_toggle_view_mode(self, text_mode: bool):
         self._hex_widget.set_text_mode(text_mode)
         self._view_toggle_btn.setChecked(text_mode)
@@ -539,6 +591,10 @@ class HexEditorWindow(QMainWindow):
         self._view_toggle_btn.setText(label)
         self._view_toggle_btn.setToolTip(tooltip)
         self._toggle_view_action.setText("&Hex View" if text_mode else "&Text View")
+        # Sync the line-numbers checkbox with the auto-switched gutter mode
+        self._toggle_line_numbers.blockSignals(True)
+        self._toggle_line_numbers.setChecked(text_mode)
+        self._toggle_line_numbers.blockSignals(False)
 
     def _on_toggle_text_escape_mode(self, escape: bool):
         self._hex_widget.set_text_escape_mode(escape)
@@ -549,6 +605,9 @@ class HexEditorWindow(QMainWindow):
                     act.setChecked(escape)
                 finally:
                     act.blockSignals(False)
+
+    def _on_toggle_gutter_mode(self, line_numbers: bool):
+        self._hex_widget.gutter_mode = "line" if line_numbers else "offset"
 
     def _on_goto(self):
         if self._buffer.size() == 0:
@@ -590,6 +649,7 @@ class HexEditorWindow(QMainWindow):
         self._status_size.setText(f"Size: {self._buffer.size():,}")
 
         # Refresh the edit log table with current-coordinate history
+        self._edit_log.set_buffer(self._buffer)
         editor = self._hex_widget._editor
         entries = editor.get_history_view()
         self._edit_log.refresh(entries)

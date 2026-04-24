@@ -11,5 +11,6 @@ Architecture:
 """
 
 from .hex_editor_window import HexEditorWindow
+from .binary_diff_window import BinaryDiffWindow
 
-__all__ = ["HexEditorWindow"]
+__all__ = ["HexEditorWindow", "BinaryDiffWindow"]

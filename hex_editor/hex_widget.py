@@ -54,6 +54,8 @@ class HexWidget(QAbstractScrollArea):
         self._exporter = ClipboardExporter(None, self._selection)
         self._editor = EditController()
         self._read_only: bool = True  # locked by default — user must unlock to edit
+        self._gutter_mode: str = "offset"  # "offset" or "line"
+        self._diff_regions: list[tuple[int, int]] = []  # (start, end) for binary diff
 
         # Forward SelectionModel signals to our public API
         self._selection.cursor_moved.connect(self.cursor_moved.emit)
@@ -126,6 +128,28 @@ class HexWidget(QAbstractScrollArea):
         """Return True if editing is allowed. False = locked (read-only)."""
         return not self._read_only
 
+    def set_diff_regions(self, regions: list[tuple[int, int]]):
+        """Set sorted list of (start, end_exclusive) byte ranges to highlight as diffs."""
+        self._diff_regions = list(regions)
+        self.viewport().update()
+
+    def clear_diff_regions(self):
+        self._diff_regions = []
+        self.viewport().update()
+
+    @property
+    def gutter_mode(self) -> str:
+        """'offset' for hex addresses, 'line' for 1-based line numbers."""
+        return self._gutter_mode
+
+    @gutter_mode.setter
+    def gutter_mode(self, mode: str):
+        if mode not in ("offset", "line"):
+            return
+        if self._gutter_mode != mode:
+            self._gutter_mode = mode
+            self.viewport().update()
+
     # ── Font / metrics ─────────────────────────────────────────────
 
     def setFont(self, font):
@@ -167,6 +191,8 @@ class HexWidget(QAbstractScrollArea):
         if self._text_mode == enabled:
             return
         self._text_mode = enabled
+        # Auto-switch gutter: line numbers for text, offsets for hex
+        self._gutter_mode = "line" if enabled else "offset"
         if enabled and not self._text_escape_mode:
             self._rebuild_text_line_starts()
         self._update_scrollbar()
@@ -339,6 +365,23 @@ class HexWidget(QAbstractScrollArea):
             painter.end()
             return
 
+        # Compute the visible-window diff offsets so we don't materialise
+        # a huge set for files with millions of differing bytes.
+        diff_offsets: set[int] = set()
+        if self._diff_regions:
+            bpl = self._layout.bytes_per_line(self._text_mode)
+            first_line = self.verticalScrollBar().value()
+            visible = self._visible_lines() + 1
+            vis_lo = first_line * bpl
+            vis_hi = vis_lo + visible * bpl
+            for r_start, r_end in self._diff_regions:
+                if r_end <= vis_lo:
+                    continue
+                if r_start >= vis_hi:
+                    break
+                for off in range(max(r_start, vis_lo), min(r_end, vis_hi)):
+                    diff_offsets.add(off)
+
         ctx = PaintContext(
             buffer=self._buffer,
             layout=self._layout,
@@ -358,6 +401,8 @@ class HexWidget(QAbstractScrollArea):
             separator=self._separator,
             pattern_region_color=self._pattern_region_color,
             modified_offsets=self._editor.modified_offsets,
+            gutter_mode=self._gutter_mode,
+            diff_offsets=diff_offsets,
         )
 
         painter = QPainter(self.viewport())

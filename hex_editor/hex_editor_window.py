@@ -16,9 +16,10 @@ from pathlib import Path
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QFont, QKeySequence, QIcon
 from PySide6.QtWidgets import (QMainWindow, QFileDialog, QDockWidget,
-                               QStatusBar, QToolBar, QToolButton, QMenu,
-                               QApplication, QLabel,
-                               QMessageBox, QSpinBox, QWidget)
+                               QHeaderView, QStatusBar, QToolBar,
+                               QToolButton, QMenu, QApplication, QLabel,
+                               QMessageBox, QSpinBox, QTableWidget,
+                               QTableWidgetItem, QVBoxLayout, QWidget)
 
 from .hex_data_buffer import HexDataBuffer
 from .hex_widget import HexWidget
@@ -132,6 +133,10 @@ class HexEditorWindow(QMainWindow):
         self.resize(1200, 800)
         self.setAttribute(Qt.WidgetAttribute.WA_DeleteOnClose, True)
 
+        # File-list navigation (set via set_file_list before/after open_file)
+        self._file_list: list[str] = []
+        self._file_index: int = -1
+
         icon_path = Path(__file__).parent.parent / "assets" / "YaraXGUI.ico"
         if icon_path.exists():
             self.setWindowIcon(QIcon(str(icon_path)))
@@ -204,6 +209,39 @@ class HexEditorWindow(QMainWindow):
                            self._edit_log_dock)
         self._edit_log_dock.hide()
         self._docks["edit_log"] = self._edit_log_dock
+
+        # YARA match hits table (hidden until match data is provided)
+        self._match_table = QTableWidget(0, 5, self)
+        self._match_table.setHorizontalHeaderLabels(
+            ["Rule", "Pattern", "Offset", "Length", "Data Preview"])
+        self._match_table.setEditTriggers(
+            QTableWidget.EditTrigger.NoEditTriggers)
+        self._match_table.setSelectionBehavior(
+            QTableWidget.SelectionBehavior.SelectRows)
+        self._match_table.setAlternatingRowColors(True)
+        self._match_table.verticalHeader().setVisible(False)
+        hdr = self._match_table.horizontalHeader()
+        hdr.setStretchLastSection(True)
+        hdr.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        hdr.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        self._match_table.setColumnWidth(0, 160)
+        self._match_table.setColumnWidth(1, 120)
+        self._match_table.setColumnWidth(2, 100)
+        self._match_table.setColumnWidth(3, 60)
+        self._match_table.cellClicked.connect(self._on_match_row_clicked)
+
+        self._match_dock = QDockWidget("YARA Matches", self)
+        self._match_dock.setWidget(self._match_table)
+        self._match_dock.setAllowedAreas(
+            Qt.DockWidgetArea.BottomDockWidgetArea
+            | Qt.DockWidgetArea.TopDockWidgetArea
+            | Qt.DockWidgetArea.RightDockWidgetArea)
+        self.addDockWidget(Qt.DockWidgetArea.BottomDockWidgetArea,
+                           self._match_dock)
+        self._match_dock.hide()  # shown when match data is set
+        self._docks["yara_matches"] = self._match_dock
 
         # ── Signal wiring (Mediator pattern) ────────────────────────
         self._connect_signals()
@@ -435,6 +473,27 @@ class HexEditorWindow(QMainWindow):
             act.setToolTip(tip)
             act.triggered.connect(handler)
             toolbar.addAction(act)
+
+        toolbar.addSeparator()
+
+        # ── File-list navigation (prev / next matched file) ────────
+        self._prev_action = QAction("\u25C0 Prev", self)
+        self._prev_action.setToolTip("Previous file in results (Alt+Left)")
+        self._prev_action.setShortcut("Alt+Left")
+        self._prev_action.triggered.connect(self._nav_prev)
+        self._prev_action.setEnabled(False)
+        toolbar.addAction(self._prev_action)
+
+        self._nav_label = QLabel("")
+        self._nav_label.setToolTip("Current position in matched files list")
+        toolbar.addWidget(self._nav_label)
+
+        self._next_action = QAction("Next \u25B6", self)
+        self._next_action.setToolTip("Next file in results (Alt+Right)")
+        self._next_action.setShortcut("Alt+Right")
+        self._next_action.triggered.connect(self._nav_next)
+        self._next_action.setEnabled(False)
+        toolbar.addAction(self._next_action)
 
         toolbar.addSeparator()
 
@@ -999,6 +1058,28 @@ class HexEditorWindow(QMainWindow):
 
     # ── Public API ─────────────────────────────────────────────────
 
+    def set_file_list(self, file_paths: list[str], current_path: str = "",
+                      hits_data: list | None = None):
+        """Set a list of files for prev/next navigation.
+
+        *current_path* determines the initial index.  *hits_data* is
+        the full ``scan_hits`` list so match data can be loaded when
+        navigating between files.  Call this **after** ``open_file``.
+        """
+        self._file_list = list(file_paths)
+        self._hits_data = hits_data or []
+        self._file_index = -1
+        if current_path:
+            resolved = str(Path(current_path).resolve())
+            for i, fp in enumerate(self._file_list):
+                try:
+                    if str(Path(fp).resolve()) == resolved:
+                        self._file_index = i
+                        break
+                except Exception:
+                    continue
+        self._update_nav_ui()
+
     def open_file(self, filepath: str, offset: int = 0, length: int = 0):
         if not self._buffer.open_file(filepath):
             return
@@ -1016,6 +1097,124 @@ class HexEditorWindow(QMainWindow):
         self._status_format.setText(self._buffer.format_name)
         if offset > 0:
             self._hex_widget.navigate_to_offset(offset)
+
+    # ── YARA match data ──────────────────────────────────────────
+
+    def set_match_data(self, matched_rules: list, file_data: bytes = b""):
+        """Populate the YARA Matches dock with per-pattern hit rows.
+
+        *matched_rules* is the list from a scan hit dict.  Each entry
+        has ``identifier``, ``patterns`` → ``matches`` with offset/length.
+        *file_data* is the raw file bytes for generating data previews.
+        """
+        self._match_table.setRowCount(0)
+        if not matched_rules:
+            self._match_dock.hide()
+            return
+
+        rows: list[tuple[str, str, int, int, str]] = []
+        for rule in matched_rules:
+            rule_name = rule.get("identifier", "?")
+            for pat in rule.get("patterns", []):
+                pat_id = pat.get("identifier", "?")
+                for m in pat.get("matches", []):
+                    offset = m.get("offset", 0)
+                    length = m.get("length", 0)
+                    # Build a short hex + ASCII preview
+                    preview = ""
+                    if file_data and offset < len(file_data):
+                        chunk = file_data[offset:offset + min(length, 16)]
+                        hex_part = " ".join(f"{b:02X}" for b in chunk)
+                        ascii_part = "".join(
+                            chr(b) if 0x20 <= b < 0x7F else "." for b in chunk)
+                        preview = f"{hex_part}  {ascii_part}"
+                    rows.append((rule_name, pat_id, offset, length, preview))
+
+        # Sort by offset
+        rows.sort(key=lambda r: r[2])
+
+        self._match_table.setRowCount(len(rows))
+        for i, (rule, pat, off, ln, preview) in enumerate(rows):
+            self._match_table.setItem(i, 0, QTableWidgetItem(rule))
+            self._match_table.setItem(i, 1, QTableWidgetItem(pat))
+
+            off_item = QTableWidgetItem(f"0x{off:08X}")
+            off_item.setData(Qt.ItemDataRole.UserRole, off)
+            self._match_table.setItem(i, 2, off_item)
+
+            ln_item = QTableWidgetItem(str(ln))
+            ln_item.setData(Qt.ItemDataRole.UserRole, ln)
+            self._match_table.setItem(i, 3, ln_item)
+
+            self._match_table.setItem(i, 4, QTableWidgetItem(preview))
+
+        self._match_dock.setWindowTitle(f"YARA Matches ({len(rows)})")
+        self._match_dock.show()
+
+    def _on_match_row_clicked(self, row: int, _col: int):
+        """Navigate the hex view to the clicked match offset."""
+        off_item = self._match_table.item(row, 2)
+        ln_item = self._match_table.item(row, 3)
+        if not off_item:
+            return
+        offset = off_item.data(Qt.ItemDataRole.UserRole)
+        length = ln_item.data(Qt.ItemDataRole.UserRole) if ln_item else 0
+        if offset is not None:
+            self._hex_widget.navigate_to_offset(offset, length or 0)
+
+    # ── File-list navigation ─────────────────────────────────────
+
+    def _nav_prev(self):
+        if not self._file_list or self._file_index <= 0:
+            return
+        self._file_index -= 1
+        self._open_nav_file()
+
+    def _nav_next(self):
+        if not self._file_list or self._file_index >= len(self._file_list) - 1:
+            return
+        self._file_index += 1
+        self._open_nav_file()
+
+    def _open_nav_file(self):
+        fp = self._file_list[self._file_index]
+        if Path(fp).exists():
+            self.open_file(fp)
+            # Load match data for this file if available
+            self._load_match_data_for_path(fp)
+        self._update_nav_ui()
+
+    def _load_match_data_for_path(self, filepath: str):
+        """Find and display match data for *filepath* from cached hits."""
+        if not self._hits_data:
+            return
+        try:
+            resolved = str(Path(filepath).resolve())
+        except Exception:
+            return
+        for hit in self._hits_data:
+            hit_fp = hit.get("filepath", "")
+            try:
+                if str(Path(hit_fp).resolve()) == resolved:
+                    self.set_match_data(
+                        hit.get("matched_rules", []),
+                        hit.get("file_data", b""))
+                    return
+            except Exception:
+                continue
+        # No match data for this file
+        self.set_match_data([])
+
+    def _update_nav_ui(self):
+        has_list = len(self._file_list) > 1
+        self._prev_action.setEnabled(has_list and self._file_index > 0)
+        self._next_action.setEnabled(
+            has_list and self._file_index < len(self._file_list) - 1)
+        if has_list and self._file_index >= 0:
+            self._nav_label.setText(
+                f" {self._file_index + 1}/{len(self._file_list)} ")
+        else:
+            self._nav_label.setText("")
 
     # ── Theming ────────────────────────────────────────────────────
 

@@ -189,7 +189,7 @@ class YaraRuleBrowser(QWidget):
         # ── Tree view ──────────────────────────────────────────────
         self._tree = QTreeView(self)
         self._tree.setModel(self._proxy)
-        self._tree.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self._tree.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._tree.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
         self._tree.setSortingEnabled(True)
         self._tree.sortByColumn(0, Qt.SortOrder.AscendingOrder)
@@ -352,7 +352,7 @@ class YaraRuleBrowser(QWidget):
         p = Path(filepath)
 
         if p.is_file() and p.suffix.lower() in _YARA_EXTENSIONS:
-            act_load = menu.addAction("Load into Editor")
+            act_load = menu.addAction("Open in Tab")
             act_load.triggered.connect(lambda: self.file_requested.emit(filepath))
 
             act_copy = menu.addAction("Copy Path")
@@ -373,7 +373,7 @@ class YaraRuleBrowser(QWidget):
                 if f.is_file() and f.suffix.lower() in _YARA_EXTENSIONS
             )
             act_load_all = menu.addAction(
-                f"Load All Rules ({len(yara_files)} files)")
+                f"Open All Rules in Tabs ({len(yara_files)} files)")
             act_load_all.setEnabled(len(yara_files) > 0)
             act_load_all.triggered.connect(
                 lambda: self.files_requested.emit(yara_files))
@@ -382,8 +382,33 @@ class YaraRuleBrowser(QWidget):
             act_copy.triggered.connect(
                 lambda: QApplication.clipboard().setText(filepath))
 
+        # Multi-select: offer to open all selected YARA files
+        selected_files = self._get_selected_yara_files()
+        if len(selected_files) > 1:
+            menu.addSeparator()
+            act_sel = menu.addAction(
+                f"Open {len(selected_files)} Selected in Tabs")
+            act_sel.triggered.connect(
+                lambda: self.files_requested.emit(selected_files))
+
         if menu.actions():
             menu.exec(self._tree.viewport().mapToGlobal(pos))
+
+    def _get_selected_yara_files(self) -> list[str]:
+        """Return de-duplicated list of selected YARA file paths."""
+        seen = set()
+        result = []
+        for idx in self._tree.selectionModel().selectedIndexes():
+            if idx.column() != 0:
+                continue
+            source_idx = self._proxy.mapToSource(idx)
+            fp = self._fs_model.filePath(source_idx)
+            if fp and fp not in seen:
+                p = Path(fp)
+                if p.is_file() and p.suffix.lower() in _YARA_EXTENSIONS:
+                    seen.add(fp)
+                    result.append(fp)
+        return result
 
     def _on_filter_changed(self, text: str):
         self._filter_timer.start()

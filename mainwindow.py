@@ -71,17 +71,16 @@ class MainWindow(QMainWindow):
         # Scan results manager
         self.results = ScanResultsManager(self.ui, theme_manager, parent=self)
 
-        # Replace the placeholder editor with YaraTextEdit (line numbers built in)
-        new_editor = YaraTextEdit(self.ui.layoutWidget)
-        self.ui.horizontalLayout.replaceWidget(self.ui.te_yara_editor, new_editor)
+        # Replace the placeholder editor with a tabbed editor widget
+        from editor_tab_widget import EditorTabWidget
+        self._editor_tabs = EditorTabWidget(
+            theme_manager=theme_manager, parent=self.ui.layoutWidget)
+        self.ui.horizontalLayout.replaceWidget(
+            self.ui.te_yara_editor, self._editor_tabs)
         self.ui.te_yara_editor.deleteLater()
-        self.ui.te_yara_editor = new_editor
 
-        # Syntax highlighter (must come after editor replacement)
-        self.highlighter = YaraHighlighter(self.ui.te_yara_editor.document())
-
-        # Set default template so the editor isn't blank on first launch
-        self.ui.te_yara_editor.setPlainText(
+        # Create the initial tab with a default template
+        default_text = (
             'rule example_rule {\n'
             '    meta:\n'
             '        author = ""\n'
@@ -94,6 +93,12 @@ class MainWindow(QMainWindow):
             '        any of them\n'
             '}\n'
         )
+        initial_editor = self._editor_tabs.add_editor_tab(
+            text=default_text, title="Untitled")
+
+        # Backward-compat: te_yara_editor always points to the active tab
+        self.ui.te_yara_editor = initial_editor
+        self.highlighter = self._editor_tabs.current_highlighter()
 
         # Connect cursor info to status bar
         self.ui.te_yara_editor.cursor_info_changed.connect(
@@ -102,6 +107,10 @@ class MainWindow(QMainWindow):
 
         # Invalidate compiled rules when editor text changes
         self.ui.te_yara_editor.textChanged.connect(self.on_yara_text_changed)
+
+        # Swap references when the active tab changes
+        self._editor_tabs.current_editor_changed.connect(
+            self._on_active_editor_changed)
 
         # ── YARA Rule Browser (tree with preview tooltips) ─────────
         # Created here; placed into a QDockWidget by _setup_dock_layout()
@@ -362,8 +371,9 @@ class MainWindow(QMainWindow):
         # Hide the now-empty old tabWidget (its children were reparented)
         self.ui.tabWidget.setVisible(False)
 
-        # View menu for toggling docks
+        # Menus
         self._setup_view_menu()
+        self._setup_settings_menu()
 
     def _setup_view_menu(self):
         """Add a View menu with dock toggle actions and layout reset."""
@@ -403,6 +413,100 @@ class MainWindow(QMainWindow):
         self.splitDockWidget(self.dock_scan_results,
                              self.dock_rule_browser,
                              Qt.Orientation.Vertical)
+
+    # ── Settings menu ──────────────────────────────────────────────
+
+    def _setup_settings_menu(self):
+        """Add a Settings menu to the menu bar."""
+        from PySide6.QtGui import QKeySequence
+        settings_menu = self.ui.menubar.addMenu("Settings")
+        act = settings_menu.addAction("Editor Settings...")
+        act.setShortcut(QKeySequence("Ctrl+,"))
+        act.triggered.connect(self._open_settings_dialog)
+
+    def _open_settings_dialog(self):
+        """Show the editor-settings dialog and apply changes."""
+        from PySide6.QtWidgets import QDialog
+        from settings_dialog import SettingsDialog
+
+        theme = self.theme_manager.current_theme if hasattr(self, 'theme_manager') else None
+        cur_family = self._get_setting(
+            'editor_font_family',
+            theme.editor_font_family if theme else 'Consolas')
+        cur_size = self._get_setting(
+            'editor_font_size',
+            theme.editor_font_size if theme else 12)
+        cur_tab = self._get_setting('editor_tab_size', 4)
+
+        dlg = SettingsDialog(cur_family, cur_size, cur_tab, parent=self)
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        family = dlg.font_family()
+        size = dlg.font_size()
+        tab_size = dlg.tab_size()
+        self._save_setting('editor_font_family', family)
+        self._save_setting('editor_font_size', size)
+        self._save_setting('editor_tab_size', tab_size)
+        self._apply_editor_font(family, size)
+
+    def _get_setting(self, key, default=None):
+        """Read a single value from config/settings.json."""
+        config_path = Path(__file__).parent / "config" / "settings.json"
+        try:
+            if config_path.exists():
+                import json
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    return json.load(f).get(key, default)
+        except Exception:
+            pass
+        return default
+
+    def _apply_editor_font(self, family: str, size: int):
+        """Apply font to every open editor tab and the compilation output."""
+        from PySide6.QtGui import QFont
+        self._editor_tabs.setup_all_fonts(family, size)
+        font = QFont(family, size)
+        if not font.exactMatch():
+            font = QFont("Courier New", size)
+        self.ui.tb_compilation_output.setFont(font)
+
+    # ── Multi-tab editor helpers ─────────────────────────────────
+
+    def _on_active_editor_changed(self, editor):
+        """Swap signal connections when the user switches editor tabs."""
+        old = self.ui.te_yara_editor
+        # Disconnect old editor signals (safe even if already disconnected)
+        for sig in ('cursor_info_changed', 'textChanged', 'vim_mode_changed'):
+            try:
+                getattr(old, sig).disconnect()
+            except (RuntimeError, TypeError, AttributeError):
+                pass
+
+        # Update the backward-compat reference
+        self.ui.te_yara_editor = editor
+        self.highlighter = getattr(editor, '_tab_highlighter', self.highlighter)
+
+        # Reconnect to new editor
+        editor.cursor_info_changed.connect(
+            lambda msg: self.statusBar().showMessage(msg))
+        editor.textChanged.connect(self.on_yara_text_changed)
+        editor.textChanged.connect(self._on_editor_text_changed)
+        editor.vim_mode_changed.connect(self._update_vim_mode_display)
+        try:
+            editor._vim_handler.save_requested.connect(self.on_save_rule)
+            editor._vim_handler.quit_requested.connect(self.close)
+        except AttributeError:
+            pass
+
+        # Apply current vim mode
+        if hasattr(self, 'vim_checkbox'):
+            editor.set_vim_mode(self.vim_checkbox.isChecked())
+
+        # Reset modification tracking for this tab
+        self._last_saved_text = editor.toPlainText()
+        self._document_modified = False
+        self.compiled_rules = None
 
     def _install_drop_filter_recursive(self) -> None:
         """Make every descendant widget accept URL drops and forward them
@@ -495,6 +599,11 @@ class MainWindow(QMainWindow):
         # Hex editor: Ctrl+H
         self.hex_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
         self.hex_shortcut.activated.connect(lambda: self.open_hex_editor())
+
+        # New editor tab: Ctrl+T
+        self.new_tab_shortcut = QShortcut(QKeySequence("Ctrl+T"), self)
+        self.new_tab_shortcut.activated.connect(
+            lambda: self._editor_tabs.add_editor_tab())
 
         # Track document modification for save prompts
         self._document_modified = False
@@ -902,22 +1011,19 @@ class MainWindow(QMainWindow):
         """Setup consistent monospace fonts across editor and compilation output."""
         from PySide6.QtGui import QFont
 
-        theme = self.theme_manager.current_theme if hasattr(self, 'theme_manager') else None
-        if theme:
-            font_family = theme.editor_font_family
-            font_size = theme.editor_font_size
-        else:
-            font_family = "Consolas"
-            font_size = 8
+        # User overrides take priority over theme defaults
+        font_family = self._get_setting('editor_font_family', '')
+        font_size = self._get_setting('editor_font_size', 0)
+        if not font_family or not font_size:
+            theme = self.theme_manager.current_theme if hasattr(self, 'theme_manager') else None
+            if theme:
+                font_family = font_family or theme.editor_font_family
+                font_size = font_size or theme.editor_font_size
+            else:
+                font_family = font_family or "Consolas"
+                font_size = font_size or 8
 
-        # Apply to YARA editor via its helper
-        self.ui.te_yara_editor.setup_font(font_family, font_size)
-
-        # Apply to compilation output
-        font = QFont(font_family, font_size)
-        if not font.exactMatch():
-            font = QFont("Courier New", font_size)
-        self.ui.tb_compilation_output.setFont(font)
+        self._apply_editor_font(font_family, font_size)
 
     def setup_theming(self):
         """Setup theming system and add theme selector to UI"""
@@ -999,6 +1105,19 @@ class MainWindow(QMainWindow):
         if yara_folder and Path(yara_folder).is_dir():
             self._yara_browser.set_root(yara_folder)
 
+        # Restore user font overrides (after theme is applied)
+        try:
+            if config_path.exists():
+                import json as _json
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    _s = _json.load(f)
+                _ff = _s.get('editor_font_family', '')
+                _fs = _s.get('editor_font_size', 0)
+                if _ff and _fs:
+                    self._apply_editor_font(_ff, _fs)
+        except Exception:
+            pass
+
         # Restore dock layout and window geometry from previous session
         try:
             if config_path.exists():
@@ -1028,7 +1147,10 @@ class MainWindow(QMainWindow):
 
     def _on_vim_toggled(self, enabled):
         """Handle vim checkbox toggle."""
-        self.ui.te_yara_editor.set_vim_mode(enabled)
+        if hasattr(self, '_editor_tabs'):
+            self._editor_tabs.set_all_vim_mode(enabled)
+        else:
+            self.ui.te_yara_editor.set_vim_mode(enabled)
         self._save_vim_setting(enabled)
 
     def _update_vim_mode_display(self, text):
@@ -1066,13 +1188,15 @@ class MainWindow(QMainWindow):
         stylesheet = self.theme_manager.generate_qss_stylesheet(theme)
         self.setStyleSheet(stylesheet)
 
-        # Pass theme manager to editor for current-line colour etc.
-        self.ui.te_yara_editor.set_theme_manager(self.theme_manager)
+        # Apply theme to all editor tabs (and the active one)
+        if hasattr(self, '_editor_tabs'):
+            self._editor_tabs.update_all_themes(theme)
+        else:
+            self.ui.te_yara_editor.set_theme_manager(self.theme_manager)
+            if hasattr(self, 'highlighter') and self.highlighter:
+                self.highlighter.update_theme(theme)
 
         self.update_themed_widgets(theme)
-
-        if hasattr(self, 'highlighter') and self.highlighter:
-            self.highlighter.update_theme(theme)
 
         # Propagate theme to open hex editor windows
         if hasattr(self, '_hex_editor_windows'):
@@ -1304,7 +1428,12 @@ class MainWindow(QMainWindow):
         self._load_text_to_editor(text, source_path=path)
 
     def _on_yara_file_requested(self, filepath: str):
-        """Handle double-click on a rule file in the browser."""
+        """Handle double-click on a rule file — open in a tab."""
+        # If already open, just switch to that tab
+        existing = self._editor_tabs.find_tab_by_path(filepath)
+        if existing >= 0:
+            self._editor_tabs.setCurrentIndex(existing)
+            return
         try:
             text = Path(filepath).read_text(encoding="utf-8", errors="replace")
         except Exception as e:
@@ -1313,31 +1442,29 @@ class MainWindow(QMainWindow):
         self._load_text_to_editor(text, source_path=filepath)
 
     def _on_yara_files_requested(self, filepaths: list):
-        """Handle 'Load All Rules' from a folder — concatenate into editor."""
+        """Handle multi-file request — open each in its own tab."""
         if not filepaths:
             return
-        if len(filepaths) > 50:
+        if len(filepaths) > 20:
             reply = QMessageBox.question(
-                self, "Load many files",
-                f"This will concatenate {len(filepaths)} YARA files into "
-                f"the editor.\n\nContinue?",
+                self, "Open many files",
+                f"This will open {len(filepaths)} files in separate tabs.\n\nContinue?",
                 QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
             if reply != QMessageBox.StandardButton.Yes:
                 return
-        parts: list[str] = []
+        opened = 0
         errors: list[str] = []
         for fp in filepaths:
+            if self._editor_tabs.find_tab_by_path(fp) >= 0:
+                continue  # already open
             try:
-                parts.append(Path(fp).read_text(encoding="utf-8", errors="replace"))
+                text = Path(fp).read_text(encoding="utf-8", errors="replace")
+                self._editor_tabs.add_editor_tab(
+                    text=text, title=Path(fp).name, source_path=fp)
+                opened += 1
             except Exception as e:
                 errors.append(f"{Path(fp).name}: {e}")
-        if not parts:
-            QMessageBox.warning(self, "No rules loaded",
-                                "Could not read any of the selected files.")
-            return
-        combined = "\n\n".join(parts)
-        self._load_text_to_editor(combined, source_path=str(Path(filepaths[0]).parent))
-        msg = f"Loaded {len(parts)} YARA file(s)"
+        msg = f"Opened {opened} file(s) in tabs"
         if errors:
             msg += f" ({len(errors)} failed)"
         self.statusBar().showMessage(msg, 4000)
@@ -1357,48 +1484,33 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage("⚠ Rules modified - recompile required", 3000)
 
     def _load_text_to_editor(self, text: str, source_path: str | None = None):
-        """Load text into the editor after checking file size.
+        """Load text into a new editor tab (or switch to an existing one).
 
-        If the file is too large for AST parsing, show a warning once per session
-        and disable AST highlighting before inserting the text to avoid hangs.
+        If the file is too large for AST parsing, disables AST highlighting
+        on the new tab's highlighter.
         """
         try:
+            # If already open, just switch to that tab
+            if source_path:
+                existing = self._editor_tabs.find_tab_by_path(source_path)
+                if existing >= 0:
+                    self._editor_tabs.setCurrentIndex(existing)
+                    return
+
+            title = Path(source_path).name if source_path else "Untitled"
+            editor = self._editor_tabs.add_editor_tab(
+                text=text, title=title, source_path=source_path or "")
+
+            # Check file size for AST highlighting on this tab
             size = len(text)
-            # Determine limit from highlighter if available
-            limit = None
-            if hasattr(self, 'highlighter') and self.highlighter:
-                limit = getattr(self.highlighter, '_max_file_size_for_ast', None)
+            hl = getattr(editor, '_tab_highlighter', None)
+            limit = getattr(hl, '_max_file_size_for_ast', 100 * 1024) if hl else 100 * 1024
 
-            if limit is None:
-                limit = 100 * 1024  # default 100KB
+            if size > limit and hl:
+                hl.set_ast_enabled(False)
+            elif hl:
+                hl.set_ast_enabled(True)
 
-            # If too large, inform user (once per session) and disable AST highlighting
-            if size > limit:
-                if not getattr(self, '_size_warning_shown', False):
-                    self._size_warning_shown = True
-                    try:
-                        QMessageBox.warning(
-                            self,
-                            "File Too Large for Syntax Highlighting",
-                            f"File size ({size // 1024}KB) exceeds the highlighting limit ({limit // 1024}KB).\n\n"
-                            "Syntax highlighting will be disabled for this file to maintain performance.\n"
-                            "The file will load normally without highlighting."
-                        )
-                    except Exception:
-                        # If QMessageBox cannot be shown, fall back to console
-                        print(f"File too large ({size} chars) for AST highlighting; loading without highlighting")
-
-                # Disable AST highlighting before setting the text to avoid parsing on main thread
-                if hasattr(self, 'highlighter') and self.highlighter:
-                    self.highlighter.set_ast_enabled(False)
-            else:
-                # Ensure AST highlighting is enabled for small files
-                if hasattr(self, 'highlighter') and self.highlighter:
-                    self.highlighter.set_ast_enabled(True)
-
-            # Finally set the editor text (AST highlighting already disabled for large files)
-            self.ui.te_yara_editor.setPlainText(text)
-            
             # Mark document as not modified (just loaded from file)
             self._last_saved_text = text
             self._document_modified = False
@@ -2486,6 +2598,9 @@ class MainWindow(QMainWindow):
         *filepath* can be a full path or just a filename.  When called from
         the match-details context menu it is a filename, so we resolve it
         against scan_hits.  *length* selects that many bytes at *offset*.
+
+        If there are scan results, the hex editor gets a file list so the
+        user can cycle through all matched files with Prev/Next buttons.
         """
         # Clean up closed/deleted windows
         def _alive(w):
@@ -2514,6 +2629,20 @@ class MainWindow(QMainWindow):
         if filepath and Path(filepath).exists():
             win.show()
             win.open_file(filepath, offset, length)
+            # Pass scan results context to the hex editor
+            if self.scan_hits:
+                hit_paths = [h['filepath'] for h in self.scan_hits
+                             if h.get('filepath')]
+                if len(hit_paths) > 1:
+                    win.set_file_list(hit_paths, filepath,
+                                     hits_data=self.scan_hits)
+                # Load YARA match data for this specific file
+                for hit in self.scan_hits:
+                    if hit.get('filepath') == filepath or hit.get('filename') == filepath:
+                        win.set_match_data(
+                            hit.get('matched_rules', []),
+                            hit.get('file_data', b''))
+                        break
         else:
             win.show()
             win._on_open()

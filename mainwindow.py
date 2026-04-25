@@ -1511,25 +1511,27 @@ class MainWindow(QMainWindow):
         if YARA_X_AVAILABLE:
             try:
                 formatted_text = self.scanner.format_with_yara_x(text)
-                # DEBUG: detect extra closing brace
-                fmt_lines = formatted_text.split('\n')
-                inp_lines = text.split('\n')
-                fmt_braces = formatted_text.count('}')
-                inp_braces = text.count('}')
-                if fmt_braces != inp_braces:
-                    print(f"[FORMAT DEBUG] Brace count changed: {inp_braces} -> {fmt_braces}")
-                print(f"[FORMAT DEBUG] Input: {len(inp_lines)} lines, "
-                      f"Output: {len(fmt_lines)} lines, "
-                      f"last={repr(fmt_lines[-1])}")
+                # Work around yara-x formatter bugs that add extra
+                # closing braces.  Strip trailing "}" one at a time
+                # until the count matches, then re-validate.
+                in_open = text.count('{')
+                in_close = text.count('}')
+                out_close = formatted_text.count('}')
+                if out_close > in_close and formatted_text.count('{') == in_open:
+                    fixed = formatted_text
+                    while fixed.count('}') > in_close:
+                        idx = fixed.rfind('}')
+                        if idx == -1:
+                            break
+                        fixed = fixed[:idx] + fixed[idx + 1:]
+                    fixed = fixed.strip()
+                    try:
+                        import yara_x as _yx
+                        _yx.compile(fixed)
+                        formatted_text = fixed
+                    except Exception:
+                        pass  # keep original formatter output if fix breaks it
                 self._load_text_to_editor(formatted_text)
-                # DEBUG: check what ended up in the editor
-                final = self.ui.te_yara_editor.toPlainText()
-                final_lines = final.split('\n')
-                if len(final_lines) != len(fmt_lines):
-                    print(f"[FORMAT DEBUG] MISMATCH! Editor has {len(final_lines)} lines "
-                          f"but formatter produced {len(fmt_lines)}")
-                    for ln in final_lines[len(fmt_lines):]:
-                        print(f"[FORMAT DEBUG]   extra: {repr(ln)}")
                 self.statusBar().showMessage("YARA rule formatted with yara-x", 3000)
                 return
             except Exception as e:

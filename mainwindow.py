@@ -425,23 +425,38 @@ class MainWindow(QMainWindow):
         act.triggered.connect(self._open_settings_dialog)
 
     def _open_settings_dialog(self):
-        """Show the editor-settings dialog and apply changes."""
+        """Show the settings dialog and apply changes."""
         from PySide6.QtWidgets import QDialog
         from settings_dialog import SettingsDialog
 
         theme = self.theme_manager.current_theme if hasattr(self, 'theme_manager') else None
-        cur_family = self._get_setting(
-            'editor_font_family',
-            theme.editor_font_family if theme else 'Consolas')
-        cur_size = self._get_setting(
-            'editor_font_size',
-            theme.editor_font_size if theme else 12)
-        cur_tab = self._get_setting('editor_tab_size', 4)
+        app_font = QApplication.font()
 
-        dlg = SettingsDialog(cur_family, cur_size, cur_tab, parent=self)
+        dlg = SettingsDialog(
+            current_ui_font_family=self._get_setting(
+                'ui_font_family', app_font.family()),
+            current_ui_font_size=self._get_setting(
+                'ui_font_size', app_font.pointSize()),
+            current_editor_font_family=self._get_setting(
+                'editor_font_family',
+                theme.editor_font_family if theme else 'Consolas'),
+            current_editor_font_size=self._get_setting(
+                'editor_font_size',
+                theme.editor_font_size if theme else 12),
+            current_tab_size=self._get_setting('editor_tab_size', 4),
+            parent=self,
+        )
         if dlg.exec() != QDialog.DialogCode.Accepted:
             return
 
+        # UI font (tabs, buttons, labels, etc.)
+        ui_family = dlg.ui_font_family()
+        ui_size = dlg.ui_font_size()
+        self._save_setting('ui_font_family', ui_family)
+        self._save_setting('ui_font_size', ui_size)
+        self._apply_ui_font(ui_family, ui_size)
+
+        # Editor font
         family = dlg.font_family()
         size = dlg.font_size()
         tab_size = dlg.tab_size()
@@ -463,13 +478,16 @@ class MainWindow(QMainWindow):
         return default
 
     def _apply_editor_font(self, family: str, size: int):
-        """Apply font to every open editor tab and the compilation output."""
-        from PySide6.QtGui import QFont
+        """Apply font to every open editor tab (not compilation output)."""
         self._editor_tabs.setup_all_fonts(family, size)
+
+    def _apply_ui_font(self, family: str, size: int):
+        """Apply font to the entire application UI (buttons, tabs, labels)."""
+        from PySide6.QtGui import QFont
         font = QFont(family, size)
-        if not font.exactMatch():
-            font = QFont("Courier New", size)
-        self.ui.tb_compilation_output.setFont(font)
+        QApplication.setFont(font)
+        # Force stylesheet refresh so widgets pick up the new font
+        self.setStyleSheet(self.styleSheet())
 
     # ── Multi-tab editor helpers ─────────────────────────────────
 
@@ -1115,6 +1133,10 @@ class MainWindow(QMainWindow):
                 _fs = _s.get('editor_font_size', 0)
                 if _ff and _fs:
                     self._apply_editor_font(_ff, _fs)
+                _uf = _s.get('ui_font_family', '')
+                _us = _s.get('ui_font_size', 0)
+                if _uf and _us:
+                    self._apply_ui_font(_uf, _us)
         except Exception:
             pass
 
@@ -1643,7 +1665,10 @@ class MainWindow(QMainWindow):
                         formatted_text = fixed
                     except Exception:
                         pass  # keep original formatter output if fix breaks it
-                self._load_text_to_editor(formatted_text)
+                # Replace text in-place (don't create a new tab)
+                self.ui.te_yara_editor.setPlainText(formatted_text)
+                self._last_saved_text = formatted_text
+                self._document_modified = False
                 self.statusBar().showMessage("YARA rule formatted with yara-x", 3000)
                 return
             except Exception as e:
@@ -1657,7 +1682,9 @@ class MainWindow(QMainWindow):
         if YARAAST_AVAILABLE:
             try:
                 formatted_text = self.scanner.format_with_ast(text)
-                self._load_text_to_editor(formatted_text)
+                self.ui.te_yara_editor.setPlainText(formatted_text)
+                self._last_saved_text = formatted_text
+                self._document_modified = False
                 self.statusBar().showMessage("YARA rule formatted with yaraast fallback", 3000)
             except Exception as e:
                 QMessageBox.warning(self, "Cannot Format Rule",
@@ -2390,9 +2417,29 @@ class MainWindow(QMainWindow):
         self._handle_input_paths(paths)
 
     def eventFilter(self, obj, event):
-        """Intercept URL drops on child widgets that would otherwise
-        swallow them (QPlainTextEdit, QTreeView)."""
+        """Intercept URL drops and Ctrl+Scroll zoom on child widgets."""
         et = event.type()
+
+        # Ctrl+Scroll on compilation output → zoom its font
+        # Wheel events are delivered to the viewport, so check parent too
+        if (et == QEvent.Type.Wheel
+                and (obj is self.ui.tb_compilation_output
+                     or obj.parent() is self.ui.tb_compilation_output)
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            delta = event.angleDelta().y()
+            if delta != 0:
+                cur = getattr(self, '_comp_font_size', 0)
+                if not cur:
+                    cur = self.ui.tb_compilation_output.font().pointSize() or 10
+                new_size = cur + (1 if delta > 0 else -1)
+                new_size = max(6, min(72, new_size))
+                if new_size != cur:
+                    self._comp_font_size = new_size
+                    self.ui.tb_compilation_output.setStyleSheet(
+                        f"font-size: {new_size}pt;")
+                event.accept()
+                return True
+
         if et in (QEvent.DragEnter, QEvent.DragMove):
             if self._drop_urls(event):
                 event.acceptProposedAction()

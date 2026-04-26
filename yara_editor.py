@@ -129,19 +129,40 @@ class YaraTextEdit(QTextEdit):
             self._vim_handler.disable()
 
     def setup_font(self, family: str = "Consolas", size: int = 8):
-        """Configure monospace font for the editor."""
-        font = QFont(family, size)
-        if not font.exactMatch():
-            font = QFont("Courier New", size)
-        if not font.exactMatch():
-            font = QFont("Monaco", size)
-        if not font.exactMatch():
-            font = QFont("monospace", size)
-        self.setFont(font)
+        """Configure monospace font for the editor.
 
-        # Configure tab to 4 spaces
+        Uses an inline stylesheet so the font survives the theme's QSS
+        which also targets QTextEdit.
+        """
+        self._zoom_font_size = size
+        self.setStyleSheet(
+            f"font-family: '{family}'; font-size: {size}pt;")
+        # Also set via setFont so fontMetrics is correct for tab stops
+        self.setFont(QFont(family, size))
         fm = self.fontMetrics()
         self.setTabStopDistance(4 * fm.horizontalAdvance(' '))
+
+    def wheelEvent(self, event):
+        """Ctrl+Scroll zooms the editor font size."""
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            delta = event.angleDelta().y()
+            if delta == 0:
+                return super().wheelEvent(event)
+            cur = getattr(self, '_zoom_font_size', 0)
+            if not cur:
+                cur = self.font().pointSize() or 12
+            new_size = cur + (1 if delta > 0 else -1)
+            new_size = max(6, min(72, new_size))
+            if new_size != cur:
+                self._zoom_font_size = new_size
+                family = self.font().family()
+                self.setStyleSheet(
+                    f"font-family: '{family}'; font-size: {new_size}pt;")
+                fm = self.fontMetrics()
+                self.setTabStopDistance(4 * fm.horizontalAdvance(' '))
+            event.accept()
+            return
+        super().wheelEvent(event)
 
     def toggle_word_wrap(self):
         """Toggle word wrap and return the new state (True = enabled)."""

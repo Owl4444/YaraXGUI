@@ -510,13 +510,12 @@ class ThemeManager:
             border: {theme.border_width}px solid {colors.primary};
         }}
 
-        /* Text Editor */
+        /* Text Editor — font-family/size are set programmatically via
+           setFont() so they respond to Settings and Ctrl+Scroll zoom. */
         QTextEdit, QPlainTextEdit {{
             background-color: {colors.editor_background};
             color: {colors.editor_text};
             border: {theme.border_width}px solid {colors.table_border};
-            font-family: {theme.editor_font_family};
-            font-size: {theme.editor_font_size}pt;
             selection-background-color: {colors.editor_selection};
             selection-color: {colors.editor_text};
         }}
@@ -547,8 +546,8 @@ class ThemeManager:
             background-color: {colors.tab_inactive_bg};
             color: {colors.tab_inactive_text};
             border: {theme.border_width}px solid {colors.table_border};
-            padding: {theme.padding_small}px {theme.padding_medium}px;
-            margin-right: 2px;
+            padding: {theme.padding_small}px {theme.padding_medium + 6}px;
+            margin-right: 4px;
         }}
         
         QTabBar::tab:selected {{

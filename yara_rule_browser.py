@@ -128,7 +128,8 @@ class YaraRuleBrowser(QWidget):
     """
 
     file_requested = Signal(str)       # single file path
-    files_requested = Signal(list)     # list of file paths
+    files_requested = Signal(list)     # list of file paths (open each in own tab)
+    files_combine_requested = Signal(list)  # list of file paths (combine into one tab)
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -382,7 +383,7 @@ class YaraRuleBrowser(QWidget):
             act_copy.triggered.connect(
                 lambda: QApplication.clipboard().setText(filepath))
 
-        # Multi-select: offer to open all selected YARA files
+        # Multi-select: offer to open in tabs or combine
         selected_files = self._get_selected_yara_files()
         if len(selected_files) > 1:
             menu.addSeparator()
@@ -390,6 +391,10 @@ class YaraRuleBrowser(QWidget):
                 f"Open {len(selected_files)} Selected in Tabs")
             act_sel.triggered.connect(
                 lambda: self.files_requested.emit(selected_files))
+            act_combine = menu.addAction(
+                f"Combine {len(selected_files)} Selected into One Tab")
+            act_combine.triggered.connect(
+                lambda: self.files_combine_requested.emit(selected_files))
 
         if menu.actions():
             menu.exec(self._tree.viewport().mapToGlobal(pos))

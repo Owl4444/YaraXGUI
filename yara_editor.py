@@ -10,8 +10,10 @@ import re
 
 from PySide6.QtCore import QRect, QSize, Qt, QTimer, Signal
 from PySide6.QtCore import QMimeData
-from PySide6.QtGui import QColor, QFont, QPainter, QPen, QTextCursor, QTextFormat
-from PySide6.QtWidgets import QApplication, QTextEdit, QWidget
+from PySide6.QtCore import QEvent
+from PySide6.QtGui import (QColor, QFont, QPainter, QPen, QTextCharFormat,
+                           QTextCursor, QTextFormat)
+from PySide6.QtWidgets import QApplication, QTextEdit, QToolTip, QWidget
 
 from vim_handler import VimHandler, VimMode
 from yara_completer import CompletionEngine, CompletionPopup
@@ -55,6 +57,19 @@ class YaraTextEdit(QTextEdit):
         self._completion_timer.setSingleShot(True)
         self._completion_timer.setInterval(400)
         self._completion_timer.timeout.connect(lambda: self._trigger_completion(force=False))
+
+        # --- LSP integration (set via set_lsp_client) ---
+        self._lsp_client = None
+        self._lsp_uri = ""
+        self._last_completion_id = -1
+        self._diagnostics: list = []
+
+        self._pending_static_items: list = []
+
+        # --- Snippet tabstop navigation ---
+        # Each entry: (start_pos, end_pos) in document coordinates
+        self._snippet_tabstops: list[tuple[int, int]] = []
+        self._snippet_index: int = -1
 
         # --- Scrollbar / editor optimizations ---
         document = self.document()
@@ -128,17 +143,120 @@ class YaraTextEdit(QTextEdit):
         else:
             self._vim_handler.disable()
 
-    def setup_font(self, family: str = "Consolas", size: int = 8):
-        """Configure monospace font for the editor.
+    def set_lsp_client(self, client, uri: str):
+        """Attach an LSP client for completions and diagnostics."""
+        self._lsp_client = client
+        self._lsp_uri = uri
+        if client:
+            client.completions_received.connect(self._on_lsp_completions)
 
-        Uses an inline stylesheet so the font survives the theme's QSS
-        which also targets QTextEdit.
-        """
+    def _lsp_completion_timeout(self, request_id: int):
+        """If LSP hasn't responded yet, show static completions alone."""
+        if request_id != self._last_completion_id:
+            return  # already handled
+        static = getattr(self, '_pending_static_items', []) or []
+        if static and not self._completion_popup.isVisible():
+            before = self.toPlainText()[:self.textCursor().position()]
+            word_match = re.search(r'[\$#@!]?\w*$', before)
+            prefix = word_match.group(0) if word_match else ""
+            self._completion_popup.show_completions(static, prefix)
+
+    def _on_lsp_completions(self, request_id: int, items: list):
+        """Handle completion response — merge LSP results with static engine."""
+        if request_id != self._last_completion_id:
+            return  # stale response
+        from yara_completer import CompletionItem
+        _KIND_MAP = {
+            1: "keyword", 2: "function", 3: "function",
+            6: "variable", 7: "module", 9: "module",
+            14: "keyword", 15: "snippet", 20: "attribute", 21: "attribute",
+        }
+
+        # Convert LSP items
+        lsp_converted = []
+        lsp_labels = set()
+        for lsp_item in items:
+            kind = _KIND_MAP.get(lsp_item.get("kind", 1), "keyword")
+            insert = lsp_item.get("insertText") or lsp_item.get("label", "")
+            is_snippet = lsp_item.get("insertTextFormat", 1) == 2
+            label = lsp_item.get("label", "")
+            lsp_labels.add(label.lower())
+            lsp_converted.append(CompletionItem(
+                label=label,
+                insert_text=insert,
+                kind=kind,
+                detail=lsp_item.get("detail", ""),
+                snippet=is_snippet,
+            ))
+
+        # Merge with static completions (avoid duplicates by label)
+        static_items = getattr(self, '_pending_static_items', []) or []
+        for item in static_items:
+            if item.label.lower() not in lsp_labels:
+                lsp_converted.append(item)
+
+        if not lsp_converted:
+            self._completion_popup.hide()
+            return
+
+        # Filter and sort: prefix matches first, then contains, by length
+        before = self.toPlainText()[:self.textCursor().position()]
+        word_match = re.search(r'[\$#@!]?\w*$', before)
+        prefix = word_match.group(0) if word_match else ""
+
+        if prefix:
+            pl = prefix.lower()
+            scored = []
+            for item in lsp_converted:
+                ll = item.label.lower()
+                if ll == pl and not item.snippet:
+                    continue  # exact match, nothing to complete
+                elif ll == pl and item.snippet:
+                    scored.append((-1, len(ll), item))
+                elif ll.startswith(pl):
+                    scored.append((0, len(ll), item))
+                elif pl in ll:
+                    scored.append((1, len(ll), item))
+                # else: no match, skip
+            scored.sort(key=lambda x: (x[0], x[1], x[2].label))
+            filtered = [item for _, _, item in scored]
+        else:
+            filtered = lsp_converted
+
+        if filtered:
+            self._completion_popup.show_completions(filtered, prefix)
+        else:
+            self._completion_popup.hide()
+
+    def event(self, ev):
+        """Show diagnostic tooltip on hover."""
+        if ev.type() == QEvent.Type.ToolTip and self._diagnostics:
+            pos = self.cursorForPosition(ev.pos()).position()
+            doc = self.document()
+            for diag in self._diagnostics:
+                rng = diag.get("range", {})
+                s = rng.get("start", {})
+                e = rng.get("end", {})
+                s_block = doc.findBlockByNumber(s.get("line", 0))
+                e_block = doc.findBlockByNumber(e.get("line", 0))
+                if not s_block.isValid():
+                    continue
+                start_pos = s_block.position() + s.get("character", 0)
+                end_pos = (e_block.position() + e.get("character", 0)
+                           if e_block.isValid()
+                           else s_block.position() + s_block.length())
+                if start_pos <= pos <= end_pos:
+                    QToolTip.showText(ev.globalPos(), diag.get("message", ""))
+                    return True
+            QToolTip.hideText()
+            return True
+        return super().event(ev)
+
+    def setup_font(self, family: str = "Consolas", size: int = 8):
+        """Configure monospace font for the editor."""
         self._zoom_font_size = size
-        self.setStyleSheet(
-            f"font-family: '{family}'; font-size: {size}pt;")
-        # Also set via setFont so fontMetrics is correct for tab stops
-        self.setFont(QFont(family, size))
+        font = QFont(family, size)
+        self.setFont(font)
         fm = self.fontMetrics()
         self.setTabStopDistance(4 * fm.horizontalAdvance(' '))
 
@@ -148,18 +266,16 @@ class YaraTextEdit(QTextEdit):
             delta = event.angleDelta().y()
             if delta == 0:
                 return super().wheelEvent(event)
-            cur = getattr(self, '_zoom_font_size', 0)
-            if not cur:
-                cur = self.font().pointSize() or 12
+            font = self.font()
+            cur = font.pointSize() or 12
             new_size = cur + (1 if delta > 0 else -1)
             new_size = max(6, min(72, new_size))
             if new_size != cur:
-                self._zoom_font_size = new_size
-                family = self.font().family()
-                self.setStyleSheet(
-                    f"font-family: '{family}'; font-size: {new_size}pt;")
+                font.setPointSize(new_size)
+                self.setFont(font)
                 fm = self.fontMetrics()
                 self.setTabStopDistance(4 * fm.horizontalAdvance(' '))
+                self._zoom_font_size = new_size
             event.accept()
             return
         super().wheelEvent(event)
@@ -294,7 +410,10 @@ class YaraTextEdit(QTextEdit):
         self.setViewportMargins(self.line_number_area_width(), 0, 0, 0)
 
     def _highlight_current_line(self):
+        """Update all extra selections: current-line + diagnostics."""
         extra_selections = []
+
+        # Current-line highlight
         if not self.isReadOnly():
             selection = QTextEdit.ExtraSelection()
             if self._theme_manager and self._theme_manager.current_theme:
@@ -306,7 +425,54 @@ class YaraTextEdit(QTextEdit):
             selection.cursor = self.textCursor()
             selection.cursor.clearSelection()
             extra_selections.append(selection)
+
+        # Diagnostic underlines
+        doc = self.document()
+        for diag in self._diagnostics:
+            rng = diag.get("range", {})
+            start = rng.get("start", {})
+            end = rng.get("end", {})
+            severity = diag.get("severity", 1)
+
+            start_block = doc.findBlockByNumber(start.get("line", 0))
+            end_block = doc.findBlockByNumber(end.get("line", 0))
+            if not start_block.isValid():
+                continue
+
+            cursor = QTextCursor(start_block)
+            cursor.movePosition(QTextCursor.MoveOperation.Right,
+                                QTextCursor.MoveMode.MoveAnchor,
+                                start.get("character", 0))
+            if end_block.isValid():
+                end_cursor = QTextCursor(end_block)
+                end_cursor.movePosition(QTextCursor.MoveOperation.Right,
+                                        QTextCursor.MoveMode.MoveAnchor,
+                                        end.get("character", 0))
+                cursor.setPosition(end_cursor.position(),
+                                   QTextCursor.MoveMode.KeepAnchor)
+            else:
+                cursor.movePosition(QTextCursor.MoveOperation.EndOfBlock,
+                                    QTextCursor.MoveMode.KeepAnchor)
+
+            sel = QTextEdit.ExtraSelection()
+            fmt = QTextCharFormat()
+            fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.WaveUnderline)
+            if severity <= 1:
+                fmt.setUnderlineColor(QColor("#ff4444"))
+            elif severity == 2:
+                fmt.setUnderlineColor(QColor("#ffaa00"))
+            else:
+                fmt.setUnderlineColor(QColor("#4488ff"))
+            sel.format = fmt
+            sel.cursor = cursor
+            extra_selections.append(sel)
+
         self.setExtraSelections(extra_selections)
+
+    def set_diagnostics(self, diagnostics: list):
+        """Store LSP diagnostics and refresh underlines."""
+        self._diagnostics = diagnostics
+        self._highlight_current_line()
 
     def _line_number_area_paint_event(self, event):
         painter = QPainter(self.line_number_area)
@@ -462,6 +628,24 @@ class YaraTextEdit(QTextEdit):
         # 1. Completion popup consumes navigation/accept keys when visible
         if self._completion_popup.handle_key(event):
             return
+
+        # 1b. Snippet tabstop navigation: Tab / Shift+Tab
+        if self._snippet_tabstops:
+            if event.key() == Qt.Key.Key_Tab and not event.modifiers():
+                self._snippet_next()
+                return
+            if (event.key() == Qt.Key.Key_Backtab
+                    or (event.key() == Qt.Key.Key_Tab
+                        and event.modifiers() & Qt.KeyboardModifier.ShiftModifier)):
+                self._snippet_prev()
+                return
+            if event.key() == Qt.Key.Key_Escape:
+                self._snippet_clear()
+                return
+            # Any other typing exits snippet mode after the current tabstop
+            if event.text() and event.text().isprintable():
+                # Let the keypress through, then clear snippet after this stop
+                pass  # will be handled by normal typing
 
         # 2. Vim handler
         if self._vim_handler.is_enabled():
@@ -622,7 +806,7 @@ class YaraTextEdit(QTextEdit):
         return count % 2 == 1
 
     def _trigger_completion(self, force: bool = False):
-        """Invoke the completion engine and show popup."""
+        """Invoke the completion engine (LSP if available, else static)."""
         # Don't show completions in vim normal/visual modes
         if self._vim_handler.is_enabled() and self._vim_handler._mode != VimMode.INSERT:
             self._completion_popup.hide()
@@ -649,6 +833,22 @@ class YaraTextEdit(QTextEdit):
             self._completion_popup.hide()
             return
 
+        # ── LSP path (async — merged with static when response arrives) ─
+        if (self._lsp_client is not None
+                and hasattr(self._lsp_client, 'is_ready')
+                and self._lsp_client.is_ready):
+            # Pre-compute static completions so they can be merged with LSP
+            self._pending_static_items = self._completion_engine.get_completions(text, pos)
+            line = cursor.blockNumber()
+            col = cursor.columnNumber()
+            self._last_completion_id = self._lsp_client.request_completion(
+                self._lsp_uri, line, col)
+            # Fallback: if LSP doesn't respond in 500ms, show static items
+            rid = self._last_completion_id
+            QTimer.singleShot(500, lambda: self._lsp_completion_timeout(rid))
+            return
+
+        # ── Static-only fallback ──────────────────────────────────────
         items = self._completion_engine.get_completions(text, pos)
 
         # Don't show the popup if the only match is an exact match of
@@ -701,7 +901,12 @@ class YaraTextEdit(QTextEdit):
         return False
 
     def _insert_completion(self, insert_text: str, is_snippet: bool):
-        """Replace the current prefix with the completion text."""
+        """Replace the current prefix with the completion text.
+
+        For LSP snippets, parses ``${N:placeholder}`` and ``${N}``
+        tabstops.  After insertion, the first tabstop is selected and
+        Tab / Shift+Tab cycle through the rest.
+        """
         cursor = self.textCursor()
         text = self.toPlainText()
         pos = cursor.position()
@@ -722,36 +927,122 @@ class YaraTextEdit(QTextEdit):
         if "\n" in final_text:
             line_start = before.rfind("\n") + 1
             line_before = before[line_start:]
-            # Current line indent = leading whitespace up to the word being typed
             base_indent = ""
             for c in line_before:
                 if c in (" ", "\t"):
                     base_indent += c
                 else:
                     break
-            # Indent all lines after the first
             lines = final_text.split("\n")
             final_text = lines[0] + "\n" + "\n".join(
                 base_indent + ln if ln.strip() else ln for ln in lines[1:]
             )
 
         cursor.beginEditBlock()
-        # Remove prefix
         for _ in range(prefix_len):
             cursor.deletePreviousChar()
 
-        if is_snippet and "$0" in final_text:
-            # Split at $0 and position cursor there
-            parts = final_text.split("$0", 1)
-            cursor.insertText(parts[0])
-            snippet_pos = cursor.position()
-            cursor.insertText(parts[1])
-            cursor.setPosition(snippet_pos)
+        if is_snippet and re.search(r'\$\{?\d', final_text):
+            self._insert_snippet(cursor, final_text)
+            cursor.endEditBlock()
+            # Don't override cursor — _insert_snippet already positioned it
         else:
             cursor.insertText(final_text)
+            cursor.endEditBlock()
+            self.setTextCursor(cursor)
 
-        cursor.endEditBlock()
+    # ── Snippet tabstop engine ───────────────────────────────────
+
+    def _insert_snippet(self, cursor: QTextCursor, snippet: str):
+        """Parse snippet tabstops, insert plain text, and activate navigation."""
+        # Collect tabstops: list of (index, placeholder)
+        # Pattern: ${N:placeholder} or ${N} or $N
+        stops: dict[int, str] = {}
+        # First pass: extract all tabstops and build plain text
+        plain = ""
+        # Track where each tabstop lands in the plain text
+        tabstop_positions: list[tuple[int, int, int]] = []  # (index, start, end)
+
+        i = 0
+        while i < len(snippet):
+            if snippet[i] == '$' and i + 1 < len(snippet):
+                if snippet[i + 1] == '{':
+                    # ${N:placeholder} or ${N}
+                    m = re.match(r'\$\{(\d+)(?::([^}]*))?\}', snippet[i:])
+                    if m:
+                        idx = int(m.group(1))
+                        placeholder = m.group(2) or ""
+                        start = len(plain)
+                        plain += placeholder
+                        tabstop_positions.append((idx, start, len(plain)))
+                        stops[idx] = placeholder
+                        i += m.end()
+                        continue
+                elif snippet[i + 1].isdigit():
+                    # $N (bare)
+                    m = re.match(r'\$(\d+)', snippet[i:])
+                    if m:
+                        idx = int(m.group(1))
+                        start = len(plain)
+                        tabstop_positions.append((idx, start, start))
+                        stops[idx] = ""
+                        i += m.end()
+                        continue
+            plain += snippet[i]
+            i += 1
+
+        # Insert the plain text
+        insert_start = cursor.position()
+        cursor.insertText(plain)
+
+        # Build ordered tabstop list (by index, $0 is always last)
+        # Sort: 1, 2, 3, ..., then 0 at the end
+        tabstop_positions.sort(key=lambda t: (t[0] == 0, t[0]))
+
+        # Convert to document positions
+        self._snippet_tabstops = [
+            (insert_start + start, insert_start + end)
+            for _, start, end in tabstop_positions
+        ]
+        self._snippet_index = -1
+
+        if self._snippet_tabstops:
+            self._snippet_next()
+
+    def _snippet_next(self):
+        """Jump to the next tabstop and select its placeholder."""
+        if not self._snippet_tabstops:
+            return
+        self._snippet_index += 1
+        if self._snippet_index >= len(self._snippet_tabstops):
+            self._snippet_clear()
+            return
+        start, end = self._snippet_tabstops[self._snippet_index]
+        cursor = self.textCursor()
+        cursor.setPosition(start)
+        if end > start:
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
         self.setTextCursor(cursor)
+        # If this is the last tabstop ($0), exit snippet mode
+        if self._snippet_index == len(self._snippet_tabstops) - 1:
+            self._snippet_clear()
+
+    def _snippet_prev(self):
+        """Jump to the previous tabstop."""
+        if not self._snippet_tabstops or self._snippet_index <= 0:
+            return
+        self._snippet_index -= 1
+        start, end = self._snippet_tabstops[self._snippet_index]
+        cursor = self.textCursor()
+        cursor.setPosition(start)
+        if end > start:
+            cursor.setPosition(end, QTextCursor.MoveMode.KeepAnchor)
+        self.setTextCursor(cursor)
+
+    def _snippet_clear(self):
+        """Exit snippet mode."""
+        self._snippet_tabstops = []
+        self._snippet_index = -1
 
     def resizeEvent(self, event):
         super().resizeEvent(event)

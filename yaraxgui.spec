@@ -22,10 +22,14 @@ crypto_hiddenimports = [m for m in crypto_hiddenimports if not m.startswith('Cry
 # picked up by the build without having to edit this spec every time.
 transform_ops_hiddenimports = collect_submodules('hex_editor.transform_ops')
 
+# lz4 and zstandard are imported lazily in compression.py
+lz4_datas, lz4_binaries, lz4_hiddenimports = collect_all('lz4')
+zstd_datas, zstd_binaries, zstd_hiddenimports = collect_all('zstandard')
+
 a = Analysis(
     ['mainwindow.py'],
     pathex=[str(current_dir)],
-    binaries=crypto_binaries,
+    binaries=crypto_binaries + lz4_binaries + zstd_binaries,
     datas=[
         # Include config files
         ('config', 'config'),
@@ -33,7 +37,9 @@ a = Analysis(
         ('assets', 'assets'),
         # Include form.ui file if it exists
         ('form.ui', '.'),
-    ] + crypto_datas,
+        # Include yr-ls.exe (YARA-X Language Server) if present
+        ('bin/yr-ls.exe', 'bin'),
+    ] + crypto_datas + lz4_datas + zstd_datas,
     hiddenimports=[
         'PySide6.QtCore',
         'PySide6.QtGui',
@@ -43,7 +49,8 @@ a = Analysis(
         'yaraast.parser.better_parser',
         'yaraast.ast',
         'yaraast.ast.base',
-    ] + crypto_hiddenimports + transform_ops_hiddenimports,
+    ] + crypto_hiddenimports + transform_ops_hiddenimports
+      + lz4_hiddenimports + zstd_hiddenimports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],

@@ -4,3 +4,5 @@ yaraast[full]
 capstone
 pyinstaller
 pycryptodome
+lz4
+zstandard

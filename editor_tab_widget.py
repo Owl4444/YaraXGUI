@@ -2,11 +2,26 @@
 
 from pathlib import Path
 
-from PySide6.QtCore import Signal, Qt
+from PySide6.QtCore import Signal, Qt, QTimer
 from PySide6.QtWidgets import QMessageBox, QTabWidget
 
 from yara_editor import YaraTextEdit
 from yara_highlighter import YaraHighlighter
+
+
+_next_untitled_id = 0
+
+
+def _make_uri(source_path: str) -> str:
+    """Return an LSP document URI for the given path or a synthetic one."""
+    global _next_untitled_id
+    if source_path:
+        try:
+            return Path(source_path).resolve().as_uri()
+        except Exception:
+            pass
+    _next_untitled_id += 1
+    return f"untitled:Untitled-{_next_untitled_id}"
 
 
 class EditorTabWidget(QTabWidget):
@@ -19,11 +34,65 @@ class EditorTabWidget(QTabWidget):
         self._theme_manager = theme_manager
         self._font_family = "Consolas"
         self._font_size = 12
+        self._lsp_client = None
 
         self.setTabsClosable(True)
         self.setMovable(True)
         self.tabCloseRequested.connect(self._close_tab)
         self.currentChanged.connect(self._on_current_changed)
+
+    # ── LSP integration ─────────────────────────────────────────
+
+    def set_lsp_client(self, client):
+        """Set the shared LSP client. Called once from MainWindow."""
+        self._lsp_client = client
+        if client:
+            client.diagnostics_received.connect(self._on_lsp_diagnostics)
+
+    def notify_lsp_open(self, editor: YaraTextEdit):
+        """Tell the LSP server about a newly opened document."""
+        if not self._lsp_client or not self._lsp_client.is_ready:
+            return
+        uri = getattr(editor, '_lsp_uri', '')
+        if uri:
+            self._lsp_client.did_open(uri, editor.toPlainText())
+
+    def notify_all_open(self):
+        """Send didOpen for every tab (called when LSP server becomes ready)."""
+        for i in range(self.count()):
+            w = self.widget(i)
+            if isinstance(w, YaraTextEdit):
+                # Ensure each editor has the LSP client reference
+                if not getattr(w, '_lsp_client', None) and self._lsp_client:
+                    w.set_lsp_client(self._lsp_client,
+                                    getattr(w, '_lsp_uri', ''))
+                    self._setup_lsp_change_debounce(w)
+                self.notify_lsp_open(w)
+
+    def _setup_lsp_change_debounce(self, editor: YaraTextEdit):
+        """Wire a debounced didChange notification for this editor."""
+        timer = QTimer(editor)
+        timer.setSingleShot(True)
+        timer.setInterval(300)
+        editor._lsp_change_timer = timer
+
+        def on_timeout():
+            if (self._lsp_client and self._lsp_client.is_ready
+                    and hasattr(editor, '_lsp_uri')):
+                self._lsp_client.did_change(
+                    editor._lsp_uri, editor.toPlainText())
+
+        timer.timeout.connect(on_timeout)
+        editor.textChanged.connect(lambda: timer.start())
+
+    def _on_lsp_diagnostics(self, uri: str, diagnostics: list):
+        """Route diagnostics from the LSP to the correct editor tab."""
+        for i in range(self.count()):
+            w = self.widget(i)
+            if (isinstance(w, YaraTextEdit)
+                    and getattr(w, '_lsp_uri', '') == uri):
+                w.set_diagnostics(diagnostics)
+                return
 
     # ── Public API ───────────────────────────────────────────
 
@@ -40,6 +109,9 @@ class EditorTabWidget(QTabWidget):
         editor._tab_source_path = source_path
         editor._tab_modified = False
 
+        # LSP URI
+        editor._lsp_uri = _make_uri(source_path)
+
         # Highlighter
         theme = self._theme_manager.current_theme if self._theme_manager else None
         highlighter = YaraHighlighter(editor.document(), theme=theme)
@@ -50,11 +122,20 @@ class EditorTabWidget(QTabWidget):
             editor.set_theme_manager(self._theme_manager)
         editor.setup_font(self._font_family, self._font_size)
 
+        # LSP client
+        if self._lsp_client:
+            editor.set_lsp_client(self._lsp_client, editor._lsp_uri)
+            self._setup_lsp_change_debounce(editor)
+
         if text:
             editor.setPlainText(text)
 
         idx = self.addTab(editor, title)
         self.setCurrentIndex(idx)
+
+        # Notify LSP of the new document
+        self.notify_lsp_open(editor)
+
         return editor
 
     def current_editor(self) -> YaraTextEdit | None:
@@ -117,16 +198,24 @@ class EditorTabWidget(QTabWidget):
     # ── Internal ─────────────────────────────────────────────
 
     def _close_tab(self, index: int):
+        w = self.widget(index)
+
+        # Notify LSP before closing
+        if (self._lsp_client and self._lsp_client.is_ready
+                and isinstance(w, YaraTextEdit)
+                and hasattr(w, '_lsp_uri')):
+            self._lsp_client.did_close(w._lsp_uri)
+
         if self.count() <= 1:
             # Last tab — clear instead of closing
-            w = self.widget(0)
             if isinstance(w, YaraTextEdit):
                 w.clear()
                 w._tab_source_path = ""
                 w._tab_modified = False
+                w._diagnostics = []
+                w._highlight_current_line()
             self.setTabText(0, "Untitled")
             return
-        w = self.widget(index)
         self.removeTab(index)
         if w:
             w.deleteLater()

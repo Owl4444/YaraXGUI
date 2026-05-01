@@ -827,6 +827,16 @@ class HexWidget(QAbstractScrollArea):
         if pattern:
             self.yara_pattern_requested.emit(pattern)
 
+    def send_ascii_to_yara_editor(self):
+        pattern = self._exporter.generate_yara_ascii()
+        if pattern:
+            self.yara_pattern_requested.emit(pattern)
+
+    def send_regex_to_yara_editor(self):
+        pattern = self._exporter.generate_yara_regex()
+        if pattern:
+            self.yara_pattern_requested.emit(pattern)
+
     def send_wildcard_to_yara_editor(self):
         pattern = self._exporter.build_wildcard_pattern()
         if pattern:
@@ -973,8 +983,13 @@ class HexWidget(QAbstractScrollArea):
 
         menu.addSeparator()
 
-        act_send = menu.addAction("Send to YARA Editor    Ctrl+Shift+Y")
-        act_send.triggered.connect(self.send_to_yara_editor)
+        yara_menu = menu.addMenu("Send to YARA Editor")
+        act_send_hex = yara_menu.addAction("As Hex Pattern    { AA BB CC }")
+        act_send_hex.triggered.connect(self.send_to_yara_editor)
+        act_send_ascii = yara_menu.addAction('As ASCII String    "text"')
+        act_send_ascii.triggered.connect(self.send_ascii_to_yara_editor)
+        act_send_regex = yara_menu.addAction("As Regex    /pattern/")
+        act_send_regex.triggered.connect(self.send_regex_to_yara_editor)
 
         menu.addSeparator()
 
@@ -1043,8 +1058,9 @@ class HexWidget(QAbstractScrollArea):
         has_data = self._buffer is not None and self._buffer.size() > 0
         has_sel = sel.has_selection()
         for act in (act_hex, act_hex_compact, act_yara, act_h2t, act_t2h,
-                    act_c, act_py, act_ascii, act_b64, act_send):
+                    act_c, act_py, act_ascii, act_b64):
             act.setEnabled(has_data)
+        yara_menu.setEnabled(has_data)
         act_start.setEnabled(has_data)
         act_end.setEnabled(has_data)
         act_clear.setEnabled(sel.marker_start >= 0 or sel.marker_end >= 0)

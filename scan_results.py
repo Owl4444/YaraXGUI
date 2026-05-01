@@ -29,6 +29,7 @@ class ScanResultsManager(QObject):
     tag_highlight_requested = Signal(str)        # tag_name -> MainWindow highlights in editor
     status_message_requested = Signal(str, int)  # message, timeout -> MainWindow statusBar
     hex_editor_requested = Signal(str, int, int)  # filepath, offset, length -> MainWindow opens hex editor
+    file_info_requested = Signal(str)            # filepath -> MainWindow shows file info dialog
 
     def __init__(self, ui, theme_manager, parent=None):
         """
@@ -741,6 +742,31 @@ class ScanResultsManager(QObject):
         # Request MainWindow to select this file
         self.file_selection_requested.emit(filename)
 
+    def _add_file_info_to_menu(self, menu, filepath: str):
+        """Add a File Info submenu with hash copy actions."""
+        import hashlib
+        info_menu = menu.addMenu("File Info")
+        act_info = info_menu.addAction("Show File Info...")
+        act_info.triggered.connect(lambda: self.file_info_requested.emit(filepath))
+        info_menu.addSeparator()
+
+        def _copy_hash(algo):
+            try:
+                h = hashlib.new(algo)
+                with open(filepath, 'rb') as f:
+                    for chunk in iter(lambda: f.read(65536), b''):
+                        h.update(chunk)
+                from PySide6.QtWidgets import QApplication
+                QApplication.clipboard().setText(h.hexdigest())
+                self.status_message_requested.emit(
+                    f"{algo.upper()}: {h.hexdigest()}", 5000)
+            except Exception:
+                pass
+
+        info_menu.addAction("Copy MD5").triggered.connect(lambda: _copy_hash("md5"))
+        info_menu.addAction("Copy SHA1").triggered.connect(lambda: _copy_hash("sha1"))
+        info_menu.addAction("Copy SHA256").triggered.connect(lambda: _copy_hash("sha256"))
+
     def _show_match_context_menu(self, pos):
         """Show context menu on match details for hex editor navigation."""
         row = self.tw_yara_match_details.rowAt(pos.y())
@@ -753,9 +779,24 @@ class ScanResultsManager(QObject):
             return
 
         menu = QMenu(self.tw_yara_match_details)
-        hex_action = menu.addAction("Open in Hex Editor at Offset")
+        act_hex = menu.addAction("Open in Hex Editor at Offset")
+        act_copy_path = menu.addAction("Copy File Name")
+        act_copy_offset = menu.addAction("Copy Offset")
+
+        # Get data preview columns if available
+        data_item = self.tw_yara_match_details.item(row, 4)  # Data Preview
+        hex_item = self.tw_yara_match_details.item(row, 5)   # Hex dump
+        if data_item and data_item.text():
+            act_copy_data = menu.addAction("Copy Data Preview")
+        else:
+            act_copy_data = None
+        if hex_item and hex_item.text():
+            act_copy_hex = menu.addAction("Copy Hex Dump")
+        else:
+            act_copy_hex = None
+
         action = menu.exec(self.tw_yara_match_details.viewport().mapToGlobal(pos))
-        if action == hex_action:
+        if action == act_hex:
             filename = filename_item.text()
             offset_hex = offset_item.text()
             try:
@@ -768,6 +809,18 @@ class ScanResultsManager(QObject):
                 match_length = 0
 
             self.hex_editor_requested.emit(filename, offset, match_length)
+        elif action == act_copy_path:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(filename_item.text())
+        elif action == act_copy_offset:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(offset_item.text())
+        elif act_copy_data and action == act_copy_data:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(data_item.text())
+        elif act_copy_hex and action == act_copy_hex:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(hex_item.text())
 
     def _show_misses_context_menu(self, pos):
         """Show context menu on misses table for hex editor."""
@@ -788,10 +841,18 @@ class ScanResultsManager(QObject):
             return
 
         menu = QMenu(self.ui.tv_file_misses)
-        hex_action = menu.addAction("Open in Hex Editor")
+        act_hex = menu.addAction("Open in Hex Editor")
+        menu.addSeparator()
+        # File Info submenu (hashes)
+        self._add_file_info_to_menu(menu, filepath)
+        act_copy = menu.addAction("Copy File Path")
+
         action = menu.exec(self.ui.tv_file_misses.viewport().mapToGlobal(pos))
-        if action == hex_action:
+        if action == act_hex:
             self.hex_editor_requested.emit(filepath, 0, 0)
+        elif action == act_copy:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(filepath)
 
     def on_similar_file_double_clicked(self, item, column):
         """Handle double-click of a similar file to synchronize with hits list."""

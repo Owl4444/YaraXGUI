@@ -158,6 +158,65 @@ class ClipboardExporter:
         return (f"$hex_{counter} = {{ {hex_str} }}"
                 f"  // 0x{lo:08X}, {len(data)} bytes")
 
+    def generate_yara_ascii(self) -> str:
+        """Generate ``$str_N = "..." [ascii|wide]  // offset, size``."""
+        data = self.active_bytes()
+        if not data:
+            return ""
+        sel = self._selection
+        counter = sel.next_yara_id()
+        lo, _ = sel.active_range()
+        # Escape YARA string special chars
+        text = ""
+        for b in data:
+            if b == 0x00:
+                text += "\\0"
+            elif b == 0x09:
+                text += "\\t"
+            elif b == 0x0A:
+                text += "\\n"
+            elif b == 0x0D:
+                text += "\\r"
+            elif b == 0x22:
+                text += '\\"'
+            elif b == 0x5C:
+                text += "\\\\"
+            elif 0x20 <= b < 0x7F:
+                text += chr(b)
+            else:
+                text += f"\\x{b:02x}"
+        return (f'$str_{counter} = "{text}" ascii'
+                f"  // 0x{lo:08X}, {len(data)} bytes")
+
+    def generate_yara_regex(self) -> str:
+        """Generate ``$re_N = /.../ [ascii|wide]  // offset, size``."""
+        data = self.active_bytes()
+        if not data:
+            return ""
+        sel = self._selection
+        counter = sel.next_yara_id()
+        lo, _ = sel.active_range()
+        # Build regex: printable chars as literal (escaped if regex-special),
+        # non-printable as \xNN
+        _REGEX_META = set(r"\.^$*+?{}[]|()")
+        text = ""
+        for b in data:
+            ch = chr(b) if 0x20 <= b < 0x7F else ""
+            if ch and ch in _REGEX_META:
+                text += "\\" + ch
+            elif ch:
+                text += ch
+            elif b == 0x09:
+                text += "\\t"
+            elif b == 0x0A:
+                text += "\\n"
+            elif b == 0x0D:
+                text += "\\r"
+            else:
+                text += f"\\x{b:02x}"
+        return (f"$re_{counter} = /{text}/"
+                f"  // 0x{lo:08X}, {len(data)} bytes")
+
     def build_wildcard_pattern(self) -> str:
         """Generate a YARA hex pattern with [N] wildcards between regions."""
         if not self._buffer:

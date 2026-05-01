@@ -112,11 +112,25 @@ class MainWindow(QMainWindow):
         self._editor_tabs.current_editor_changed.connect(
             self._on_active_editor_changed)
 
+        # ── LSP client for yr-ls (YARA-X Language Server) ─────────
+        from lsp_client import LspClient
+        # When frozen with PyInstaller, files are in sys._MEIPASS
+        _base = Path(getattr(sys, '_MEIPASS', Path(__file__).parent))
+        yr_ls_path = _base / "bin" / "yr-ls.exe"
+        self._lsp_client = None
+        if yr_ls_path.exists():
+            self._lsp_client = LspClient(str(yr_ls_path), parent=self)
+            self._lsp_client.server_ready.connect(self._on_lsp_ready)
+            self._lsp_client.server_error.connect(self._on_lsp_error)
+            self._editor_tabs.set_lsp_client(self._lsp_client)
+            self._lsp_client.start()
+
         # ── YARA Rule Browser (tree with preview tooltips) ─────────
         # Created here; placed into a QDockWidget by _setup_dock_layout()
         self._yara_browser = YaraRuleBrowser(self)
         self._yara_browser.file_requested.connect(self._on_yara_file_requested)
         self._yara_browser.files_requested.connect(self._on_yara_files_requested)
+        self._yara_browser.files_combine_requested.connect(self._on_yara_files_combine)
 
         # File system model
         self.fs_model = CheckableFsModel(self)
@@ -237,6 +251,7 @@ class MainWindow(QMainWindow):
         self.results.tag_highlight_requested.connect(self.highlight_tag_in_editor)
         self.results.status_message_requested.connect(lambda msg, timeout: self.statusBar().showMessage(msg, timeout))
         self.results.hex_editor_requested.connect(self.open_hex_editor)
+        self.results.file_info_requested.connect(self._show_file_info_dialog)
 
         # Lazy load misses when tab changes
         self.ui.tabWidget_2.currentChanged.connect(self.on_results_tab_changed)
@@ -526,6 +541,17 @@ class MainWindow(QMainWindow):
         self._document_modified = False
         self.compiled_rules = None
 
+    # ── LSP lifecycle ────────────────────────────────────────────
+
+    def _on_lsp_ready(self):
+        """LSP server is initialized — send didOpen for all open tabs."""
+        self._editor_tabs.notify_all_open()
+        self.statusBar().showMessage("YARA Language Server ready", 3000)
+
+    def _on_lsp_error(self, message: str):
+        """LSP server crashed or failed — fall back to static completions."""
+        self.statusBar().showMessage(f"LSP: {message}", 5000)
+
     def _install_drop_filter_recursive(self) -> None:
         """Make every descendant widget accept URL drops and forward them
         to :meth:`eventFilter`.
@@ -623,6 +649,10 @@ class MainWindow(QMainWindow):
         self.new_tab_shortcut.activated.connect(
             lambda: self._editor_tabs.add_editor_tab())
 
+        # Go to line: Ctrl+G
+        self.goto_line_shortcut = QShortcut(QKeySequence("Ctrl+G"), self)
+        self.goto_line_shortcut.activated.connect(self._goto_line)
+
         # Track document modification for save prompts
         self._document_modified = False
         self._last_saved_text = self.ui.te_yara_editor.toPlainText()
@@ -657,6 +687,10 @@ class MainWindow(QMainWindow):
                 event.ignore()
                 return
 
+        # Shut down the LSP server
+        if self._lsp_client is not None:
+            self._lsp_client.stop()
+
         # Stop any in-flight scan worker before the window goes away
         if self._scan_worker is not None and self._scan_worker.isRunning():
             self._scan_worker.cancel()
@@ -673,6 +707,27 @@ class MainWindow(QMainWindow):
         self._save_setting("window_geometry", base64.b64encode(geometry_bytes).decode("ascii"))
 
         event.accept()
+
+    def _goto_line(self):
+        """Prompt for a line number and jump to it in the YARA editor."""
+        from PySide6.QtWidgets import QInputDialog
+        editor = self.ui.te_yara_editor
+        max_line = editor.document().blockCount()
+        current_line = editor.textCursor().blockNumber() + 1
+
+        line, ok = QInputDialog.getInt(
+            self, "Go to Line", f"Line number (1-{max_line}):",
+            current_line, 1, max_line)
+        if not ok:
+            return
+
+        block = editor.document().findBlockByNumber(line - 1)
+        if block.isValid():
+            cursor = editor.textCursor()
+            cursor.setPosition(block.position())
+            editor.setTextCursor(cursor)
+            editor.centerCursor()
+            self.statusBar().showMessage(f"Line {line}", 2000)
 
     def toggle_word_wrap(self):
         """Toggle word wrap in the YARA editor."""
@@ -1491,6 +1546,34 @@ class MainWindow(QMainWindow):
             msg += f" ({len(errors)} failed)"
         self.statusBar().showMessage(msg, 4000)
 
+    def _on_yara_files_combine(self, filepaths: list):
+        """Combine multiple YARA files into a single new tab."""
+        if not filepaths:
+            return
+        parts: list[str] = []
+        errors: list[str] = []
+        for fp in filepaths:
+            try:
+                parts.append(Path(fp).read_text(encoding="utf-8", errors="replace"))
+            except Exception as e:
+                errors.append(f"{Path(fp).name}: {e}")
+        if not parts:
+            QMessageBox.warning(self, "No rules loaded",
+                                "Could not read any of the selected files.")
+            return
+        combined = "\n\n".join(parts)
+        names = [Path(fp).name for fp in filepaths[:3]]
+        title = " + ".join(names)
+        if len(filepaths) > 3:
+            title += f" (+{len(filepaths) - 3})"
+        # No source_path — force "Save As" prompt on save
+        self._editor_tabs.add_editor_tab(
+            text=combined, title=title, source_path="")
+        msg = f"Combined {len(parts)} file(s) into one tab"
+        if errors:
+            msg += f" ({len(errors)} failed)"
+        self.statusBar().showMessage(msg, 4000)
+
     def on_yara_text_changed(self):
         """Invalidate compiled rules when YARA text is modified"""
         # Clear AST cache in syntax highlighter for accurate highlighting
@@ -1545,32 +1628,38 @@ class MainWindow(QMainWindow):
             QMessageBox.critical(self, "Load failed", f"Could not load YARA text:\n{e}")
     
     def on_save_rule(self):
-        """Save the YARA rule from the editor to a file"""
-        # Get the current text
+        """Save the YARA rule from the editor to a file."""
         text = self.ui.te_yara_editor.toPlainText()
 
         if not text.strip():
             QMessageBox.warning(self, "Empty Rule", "No YARA rule to save.")
             return
 
-        # Open save dialog
+        # Use the tab's source path as the default save location
+        default_path = self._editor_tabs.current_source_path()
+        if not default_path:
+            default_path = self.last_dir
+
         path, _ = QFileDialog.getSaveFileName(
-            self, "Save YARA rule", self.last_dir, "YARA files (*.yar *.yara);;All files (*)"
-        )
+            self, "Save YARA rule", default_path,
+            "YARA files (*.yar *.yara);;All files (*)")
 
         if not path:
             return
 
-        # Ensure file has an extension
         if not path.endswith(('.yar', '.yara')):
             path += '.yar'
 
         try:
             Path(path).write_text(text, encoding="utf-8")
             self.last_dir = str(Path(path).parent)
-            # Mark document as saved
             self._last_saved_text = text
             self._document_modified = False
+            # Update the tab's source path and title
+            editor = self.ui.te_yara_editor
+            editor._tab_source_path = path
+            idx = self._editor_tabs.currentIndex()
+            self._editor_tabs.setTabText(idx, Path(path).name)
             self.statusBar().showMessage(f"YARA rule saved: {path}", 4000)
         except Exception as e:
             QMessageBox.critical(self, "Save failed", f"Could not save file:\n{e}")
@@ -2706,6 +2795,133 @@ class MainWindow(QMainWindow):
         self.ui.te_yara_editor.ensureCursorVisible()
         self.statusBar().showMessage("YARA pattern inserted from hex editor", 5000)
 
+    def _add_file_info_menu(self, menu: QMenu, filepath: str):
+        """Add a 'File Info' submenu with hashes and metadata to *menu*."""
+        info_menu = menu.addMenu("File Info")
+
+        act_info = info_menu.addAction("Show File Info...")
+        act_info.triggered.connect(lambda: self._show_file_info_dialog(filepath))
+
+        info_menu.addSeparator()
+        act_md5 = info_menu.addAction("Copy MD5")
+        act_md5.triggered.connect(lambda: self._copy_file_hash(filepath, "md5"))
+        act_sha1 = info_menu.addAction("Copy SHA1")
+        act_sha1.triggered.connect(lambda: self._copy_file_hash(filepath, "sha1"))
+        act_sha256 = info_menu.addAction("Copy SHA256")
+        act_sha256.triggered.connect(lambda: self._copy_file_hash(filepath, "sha256"))
+
+    def _copy_file_hash(self, filepath: str, algo: str):
+        """Compute and copy a file hash to clipboard."""
+        import hashlib
+        try:
+            h = hashlib.new(algo)
+            with open(filepath, 'rb') as f:
+                for chunk in iter(lambda: f.read(65536), b''):
+                    h.update(chunk)
+            digest = h.hexdigest()
+            QApplication.clipboard().setText(digest)
+            self.statusBar().showMessage(
+                f"{algo.upper()}: {digest}", 5000)
+        except Exception as e:
+            QMessageBox.warning(self, "Hash Error", f"Could not hash file:\n{e}")
+
+    def _show_file_info_dialog(self, filepath: str):
+        """Show a dialog with file hashes and metadata."""
+        import hashlib
+        import time as _time
+
+        p = Path(filepath)
+        if not p.exists():
+            QMessageBox.warning(self, "File Not Found", f"File not found:\n{filepath}")
+            return
+
+        try:
+            stat = p.stat()
+            size = stat.st_size
+            mtime = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                   _time.localtime(stat.st_mtime))
+            ctime = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                   _time.localtime(stat.st_ctime))
+
+            data = p.read_bytes()
+            md5 = hashlib.md5(data).hexdigest()
+            sha1 = hashlib.sha1(data).hexdigest()
+            sha256 = hashlib.sha256(data).hexdigest()
+
+            # Detect file type by magic bytes
+            magic = data[:4] if len(data) >= 4 else data
+            if magic[:2] == b'MZ':
+                ftype = "PE (Windows Executable)"
+            elif magic[:4] == b'\x7fELF':
+                ftype = "ELF (Linux Executable)"
+            elif magic[:4] == b'\xfe\xed\xfa\xce' or magic[:4] == b'\xce\xfa\xed\xfe':
+                ftype = "Mach-O (macOS Executable)"
+            elif magic[:4] == b'\xcf\xfa\xed\xfe':
+                ftype = "Mach-O 64-bit"
+            elif magic[:3] == b'PK\x03':
+                ftype = "ZIP Archive"
+            elif magic[:2] == b'\x1f\x8b':
+                ftype = "Gzip Compressed"
+            elif magic[:4] == b'Rar!':
+                ftype = "RAR Archive"
+            elif magic[:4] == b'\x89PNG':
+                ftype = "PNG Image"
+            elif magic[:3] == b'\xff\xd8\xff':
+                ftype = "JPEG Image"
+            elif magic[:4] == b'%PDF':
+                ftype = "PDF Document"
+            else:
+                ftype = "Unknown"
+
+            # Format size
+            if size < 1024:
+                size_str = f"{size} bytes"
+            elif size < 1024 * 1024:
+                size_str = f"{size:,} bytes ({size / 1024:.1f} KB)"
+            else:
+                size_str = f"{size:,} bytes ({size / (1024*1024):.2f} MB)"
+
+            info_text = (
+                f"<b>File:</b> {p.name}<br>"
+                f"<b>Path:</b> {filepath}<br>"
+                f"<b>Size:</b> {size_str}<br>"
+                f"<b>Type:</b> {ftype}<br>"
+                f"<b>Modified:</b> {mtime}<br>"
+                f"<b>Created:</b> {ctime}<br>"
+                f"<br>"
+                f"<b>MD5:</b> <code>{md5}</code><br>"
+                f"<b>SHA1:</b> <code>{sha1}</code><br>"
+                f"<b>SHA256:</b> <code>{sha256}</code>"
+            )
+
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox, QPushButton
+            dlg = QDialog(self)
+            dlg.setWindowTitle(f"File Info - {p.name}")
+            dlg.setMinimumWidth(550)
+            layout = QVBoxLayout(dlg)
+
+            browser = QTextBrowser()
+            browser.setHtml(info_text)
+            browser.setOpenExternalLinks(False)
+            layout.addWidget(browser)
+
+            btn_box = QDialogButtonBox()
+            btn_copy_all = QPushButton("Copy All Hashes")
+            btn_copy_all.clicked.connect(lambda: (
+                QApplication.clipboard().setText(
+                    f"MD5:    {md5}\nSHA1:   {sha1}\nSHA256: {sha256}"),
+                self.statusBar().showMessage("All hashes copied", 3000),
+            ))
+            btn_box.addButton(btn_copy_all, QDialogButtonBox.ButtonRole.ActionRole)
+            btn_box.addButton(QDialogButtonBox.StandardButton.Close)
+            btn_box.rejected.connect(dlg.close)
+            layout.addWidget(btn_box)
+
+            dlg.exec()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not read file info:\n{e}")
+
     def _show_fs_context_menu(self, pos):
         """Show context menu for the file system tree view."""
         index = self.fs_view.indexAt(pos)
@@ -2717,10 +2933,21 @@ class MainWindow(QMainWindow):
             return
 
         menu = QMenu(self)
-        hex_action = menu.addAction("Open in Hex Editor")
+        act_hex = menu.addAction("Open in Hex Editor")
+        act_yara = None
+        if filepath.lower().endswith(('.yar', '.yara')):
+            act_yara = menu.addAction("Open in YARA Editor")
+        menu.addSeparator()
+        self._add_file_info_menu(menu, filepath)
+        act_copy = menu.addAction("Copy File Path")
+
         action = menu.exec(self.fs_view.viewport().mapToGlobal(pos))
-        if action == hex_action:
+        if action == act_hex:
             self.open_hex_editor(filepath)
+        elif action == act_yara:
+            self._on_yara_file_requested(filepath)
+        elif action == act_copy:
+            QApplication.clipboard().setText(filepath)
 
     def _show_hits_context_menu(self, pos):
         """Show context menu for file hits table."""
@@ -2738,10 +2965,16 @@ class MainWindow(QMainWindow):
             return
 
         menu = QMenu(self)
-        hex_action = menu.addAction("Open in Hex Editor")
+        act_hex = menu.addAction("Open in Hex Editor")
+        menu.addSeparator()
+        self._add_file_info_menu(menu, filepath)
+        act_copy = menu.addAction("Copy File Path")
+
         action = menu.exec(self.ui.tv_file_hits.viewport().mapToGlobal(pos))
-        if action == hex_action:
+        if action == act_hex:
             self.open_hex_editor(filepath)
+        elif action == act_copy:
+            QApplication.clipboard().setText(filepath)
 
     def highlight_tag_in_editor(self, tag_name):
         """Highlight the specified tag in the YARA editor."""

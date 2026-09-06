@@ -1,0 +1,20 @@
+# Headless REST API server dependencies (no Qt/GUI).
+# Used by the Docker image. For the full desktop app, use requirements.txt.
+
+# Web framework + server
+fastapi
+uvicorn[standard]
+python-multipart
+
+# YARA scanning engine
+yara-x==1.20.0
+./modules/yarax-editor
+
+# Data transforms (loaded lazily; optional but bundled so all transforms work)
+pycryptodome
+lz4
+zstandard
+capstone
+
+# MWDB retrohunt plugin client
+mwdblib

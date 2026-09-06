@@ -1,0 +1,1050 @@
+# This Python file uses the following encoding: utf-8
+
+"""
+ScanResultsManager - Manages scan results population, navigation, and display.
+
+Handles hits/misses tables, rule details, similar files/tags, and match details.
+Deduplicates near-identical single/multi-selection methods into unified APIs.
+"""
+
+from pathlib import Path
+from typing import Dict, List, Optional, Set
+
+from PySide6.QtCore import QObject, QSettings, Qt, Signal, QEvent
+from yaraxgui.scanning.scanner import format_size
+from PySide6.QtGui import QColor, QStandardItem, QStandardItemModel
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QHeaderView,
+                               QMenu, QTableWidgetItem, QTreeWidgetItem)
+
+from yaraxgui.scanning.search_filter import (SEARCH_TEXT_ROLE, DebouncedSearchBar,
+                           MultiColumnFilterProxy, filter_table_widget,
+                           filter_tree_widget, inject_search_bar)
+
+# Per-row dict of known file hashes ({'md5': ..., 'sha1': ..., 'sha256': ...}),
+# attached to the column-0 item so copy actions don't have to re-hash files.
+HASHES_ROLE = Qt.ItemDataRole.UserRole + 101
+
+
+class ScanResultsManager(QObject):
+    """Manages all scan result population, navigation, and display logic."""
+
+    # Signals for callbacks to MainWindow
+    file_selection_requested = Signal(str)       # filepath -> MainWindow selects in hits table
+    tag_highlight_requested = Signal(str)        # tag_name -> MainWindow highlights in editor
+    status_message_requested = Signal(str, int)  # message, timeout -> MainWindow statusBar
+    hex_editor_requested = Signal(str, int, int)  # filepath, offset, length -> MainWindow opens hex editor
+    file_info_requested = Signal(str)            # filepath -> MainWindow shows file info dialog
+
+    def __init__(self, ui, theme_manager, parent=None):
+        """
+        Args:
+            ui: The Ui_MainWindow instance (for widget access)
+            theme_manager: The theme manager instance (for column colors)
+        """
+        super().__init__(parent)
+        self.ui = ui
+        self.theme_manager = theme_manager
+
+        # Models owned by this manager
+        self.hits_model = QStandardItemModel()
+        self.hits_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
+
+        self.misses_model = QStandardItemModel()
+        self.misses_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
+
+        self.rule_details_model = QStandardItemModel()
+        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
+
+        # Proxy models for filtered views
+        self.hits_proxy = MultiColumnFilterProxy(parent=self)
+        self.hits_proxy.setSourceModel(self.hits_model)
+        self.misses_proxy = MultiColumnFilterProxy(parent=self)
+        self.misses_proxy.setSourceModel(self.misses_model)
+        self.rule_details_proxy = MultiColumnFilterProxy(parent=self)
+        self.rule_details_proxy.setSourceModel(self.rule_details_model)
+
+        # Search bars (populated in setup_scan_results_ui)
+        self._search_bars = {}
+
+        self.misses_loaded = False
+
+    def setup_scan_results_ui(self):
+        """Setup models and connections for scan results."""
+        # --- Hits table ---
+        self.ui.tv_file_hits.setModel(self.hits_proxy)
+        self.ui.tv_file_hits.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.ui.tv_file_hits.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.ui.tv_file_hits.setSortingEnabled(True)
+        self._make_table_compact(self.ui.tv_file_hits)
+
+        hits_header = self.ui.tv_file_hits.horizontalHeader()
+        hits_header.setStretchLastSection(False)
+        hits_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        hits_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        hits_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        hits_header.setMinimumSectionSize(40)
+        self.ui.tv_file_hits.setWordWrap(False)
+        self.ui.tv_file_hits.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+
+        # --- Misses table ---
+        self.ui.tv_file_misses.setModel(self.misses_proxy)
+        self.ui.tv_file_misses.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+        self.ui.tv_file_misses.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self._make_table_compact(self.ui.tv_file_misses)
+        self.ui.tv_file_misses.setSortingEnabled(True)
+
+        misses_header = self.ui.tv_file_misses.horizontalHeader()
+        misses_header.setStretchLastSection(False)
+        misses_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        misses_header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        misses_header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        misses_header.setMinimumSectionSize(40)
+        self.ui.tv_file_misses.setWordWrap(False)
+        self.ui.tv_file_misses.setTextElideMode(Qt.TextElideMode.ElideMiddle)
+
+        # Context menu for misses: "Open in Hex Editor"
+        self.ui.tv_file_misses.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ui.tv_file_misses.customContextMenuRequested.connect(self._show_misses_context_menu)
+
+        # --- Rule details table ---
+        self.ui.tv_rule_details.setModel(self.rule_details_proxy)
+        self._make_table_compact(self.ui.tv_rule_details)
+
+        rule_details_header = self.ui.tv_rule_details.horizontalHeader()
+        rule_details_header.setStretchLastSection(True)
+        rule_details_header.setSectionResizeMode(0, QHeaderView.ResizeMode.Interactive)
+        rule_details_header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        rule_details_header.setDefaultSectionSize(150)
+        rule_details_header.setMinimumSectionSize(80)
+        self.ui.tv_rule_details.setColumnWidth(0, 150)
+
+        # --- Similar files tree ---
+        self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
+        self.ui.tw_similar_files.setAlternatingRowColors(True)
+        self.ui.tw_similar_files.setRootIsDecorated(True)
+        self.ui.tw_similar_files.setItemsExpandable(True)
+        self.ui.tw_similar_files.setSortingEnabled(True)
+        self.ui.tw_similar_files.itemDoubleClicked.connect(self.on_similar_file_double_clicked)
+        self._make_tree_compact(self.ui.tw_similar_files)
+
+        # --- Similar tags tree ---
+        if hasattr(self.ui, 'tw_similar_tags'):
+            self.ui.tw_similar_tags.setHeaderLabels(['Tag/File', 'Details'])
+            self.ui.tw_similar_tags.setAlternatingRowColors(True)
+            self.ui.tw_similar_tags.setRootIsDecorated(True)
+            self.ui.tw_similar_tags.setItemsExpandable(True)
+            self.ui.tw_similar_tags.setSortingEnabled(True)
+            self.ui.tw_similar_tags.itemDoubleClicked.connect(self.on_similar_tag_double_clicked)
+            self._make_tree_compact(self.ui.tw_similar_tags)
+
+        # --- Match details table ---
+        self.setup_match_details_widget()
+
+        # --- Inject search bars ---
+        self._inject_search_bars()
+
+    def setup_match_details_widget(self):
+        """Setup the YARA match details table widget in tabWidget_4."""
+        self.tw_yara_match_details = self.ui.tw_yara_match_details
+
+        headers = ['File', 'Rule', 'Pattern ID', 'Offset', 'Data Preview', 'Hex Dump', 'Tag']
+        self.tw_yara_match_details.setColumnCount(len(headers))
+        self.tw_yara_match_details.setHorizontalHeaderLabels(headers)
+
+        self.tw_yara_match_details.setAlternatingRowColors(True)
+        self.tw_yara_match_details.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.tw_yara_match_details.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        self.tw_yara_match_details.setSortingEnabled(True)
+
+        header = self.tw_yara_match_details.horizontalHeader()
+        header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(True)
+
+        self.tw_yara_match_details.setColumnWidth(0, 200)
+        self.tw_yara_match_details.setColumnWidth(1, 150)
+        self.tw_yara_match_details.setColumnWidth(2, 100)
+        self.tw_yara_match_details.setColumnWidth(3, 100)
+        self.tw_yara_match_details.setColumnWidth(4, 250)
+        self.tw_yara_match_details.setColumnWidth(5, 200)
+        self.tw_yara_match_details.setColumnWidth(6, 100)
+
+        self._make_table_compact(self.tw_yara_match_details)
+        self.tw_yara_match_details.cellDoubleClicked.connect(self.on_match_detail_double_clicked)
+
+        # Context menu for "Open in Hex Editor at Offset"
+        self.tw_yara_match_details.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.tw_yara_match_details.customContextMenuRequested.connect(self._show_match_context_menu)
+
+        all_tab_index = self.ui.tabWidget_4.indexOf(self.ui.tab)
+        if all_tab_index >= 0:
+            self.ui.tabWidget_4.setTabText(all_tab_index, "Match Details")
+
+    def _inject_search_bars(self):
+        """Inject debounced search bars above all 6 result widgets."""
+        bar = inject_search_bar(self.ui.horizontalLayout_4, self.ui.tv_file_hits,
+                                "Filter hits (name, path, hash)...")
+        if bar:
+            bar.debounced_text_changed.connect(self.hits_proxy.set_filter_text)
+            self._search_bars['hits'] = bar
+
+        bar = inject_search_bar(self.ui.horizontalLayout_5, self.ui.tv_file_misses,
+                                "Filter misses (name, path, hash)...")
+        if bar:
+            bar.debounced_text_changed.connect(self.misses_proxy.set_filter_text)
+            self._search_bars['misses'] = bar
+
+        bar = inject_search_bar(self.ui.horizontalLayout_7, self.ui.tv_rule_details, "Filter details...")
+        if bar:
+            bar.debounced_text_changed.connect(self.rule_details_proxy.set_filter_text)
+            self._search_bars['rule_details'] = bar
+
+        bar = inject_search_bar(self.ui.horizontalLayout_8, self.ui.tw_similar_files, "Filter files...")
+        if bar:
+            bar.debounced_text_changed.connect(
+                lambda text: filter_tree_widget(self.ui.tw_similar_files, text))
+            self._search_bars['similar_files'] = bar
+
+        if hasattr(self.ui, 'tw_similar_tags'):
+            bar = inject_search_bar(self.ui.horizontalLayout_2, self.ui.tw_similar_tags, "Filter tags...")
+            if bar:
+                bar.debounced_text_changed.connect(
+                    lambda text: filter_tree_widget(self.ui.tw_similar_tags, text))
+                self._search_bars['similar_tags'] = bar
+
+        bar = inject_search_bar(self.ui.horizontalLayout_6, self.ui.tw_yara_match_details, "Filter matches...")
+        if bar:
+            bar.debounced_text_changed.connect(
+                lambda text: filter_table_widget(self.tw_yara_match_details, text))
+            self._search_bars['match_details'] = bar
+
+    # ─── Table/Tree utility helpers ──────────────────────────────────────
+
+    def _make_table_compact(self, table_view):
+        """Make table rows thin and compact."""
+        self._resize_table_rows(table_view)
+        table_view.installEventFilter(self)
+        table_view.verticalHeader().setVisible(False)
+        table_view.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Fixed)
+
+    @staticmethod
+    def _resize_table_rows(view):
+        height = max(22, view.fontMetrics().height() + 8)
+        header = view.verticalHeader()
+        header.setMaximumSectionSize(16777215)
+        header.setMinimumSectionSize(height)
+        header.setDefaultSectionSize(height)
+
+    def eventFilter(self, watched, event):
+        if event.type() in (QEvent.Type.FontChange, QEvent.Type.ApplicationFontChange):
+            self._resize_table_rows(watched)
+        return super().eventFilter(watched, event)
+
+    def _make_tree_compact(self, tree_widget):
+        """Make tree widget compact with thin items."""
+        tree_widget.setUniformRowHeights(True)
+        tree_widget.header().setDefaultSectionSize(100)
+        tree_widget.header().setMinimumSectionSize(50)
+        tree_widget.setIndentation(15)
+
+    def _apply_column_color(self, item, col_idx):
+        """Apply column-specific background colors to table items."""
+        theme = self.theme_manager.current_theme
+        if not hasattr(theme.colors, 'column_file'):
+            return
+
+        colors = theme.colors
+        column_colors = [
+            colors.column_file,
+            colors.column_rule,
+            colors.column_pattern,
+            colors.column_offset,
+            colors.column_data,
+            colors.column_hex,
+            colors.table_background
+        ]
+
+        if col_idx < len(column_colors):
+            item.setBackground(QColor(column_colors[col_idx]))
+
+    def _force_thin_rows(self, table_view):
+        """Force all existing rows to be thin."""
+        if not table_view.model():
+            return
+        for row in range(table_view.model().rowCount()):
+            table_view.setRowHeight(row, 20)
+
+    # ─── Clear helpers ───────────────────────────────────────────────────
+
+    def clear_rule_details(self):
+        self.rule_details_model.clear()
+        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
+
+    def clear_similar_files(self):
+        self.ui.tw_similar_files.clear()
+        self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
+
+    def clear_match_details(self):
+        self.tw_yara_match_details.setRowCount(0)
+
+    def clear_all(self):
+        """Clear all results views (used by Reset)."""
+        self.hits_model.clear()
+        self.hits_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
+        self.misses_model.clear()
+        self.misses_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
+        self.clear_rule_details()
+        self.clear_similar_files()
+        self.clear_match_details()
+        if hasattr(self.ui, 'tw_similar_tags'):
+            self.ui.tw_similar_tags.clear()
+            self.ui.tw_similar_tags.setHeaderLabels(['Tag/File', 'Details'])
+        self.misses_loaded = False
+        for bar in self._search_bars.values():
+            bar.clear_filter()
+
+    # ─── Detail row helper ───────────────────────────────────────────────
+
+    def add_detail_row(self, property_name, value):
+        """Add a row to rule details."""
+        property_item = QStandardItem(property_name)
+        value_str = str(value)
+        value_item = QStandardItem(value_str)
+        property_item.setToolTip(property_name)
+        value_item.setToolTip(value_str)
+        value_item.setData(value_str, Qt.ItemDataRole.DisplayRole)
+        self.rule_details_model.appendRow([property_item, value_item])
+        self.ui.tv_rule_details.horizontalHeader().setStretchLastSection(True)
+
+    # ─── Unified populate methods (deduplicated) ─────────────────────────
+
+    def populate_rule_details(self, selected_hits: List[Dict]):
+        """Populate rule details for one or more selected files."""
+        self.rule_details_model.clear()
+        self.rule_details_model.setHorizontalHeaderLabels(['Property', 'Value'])
+
+        if not selected_hits:
+            return
+
+        total_rules = len(set(rule['identifier'] for hit in selected_hits for rule in hit['matched_rules']))
+        total_matches = sum(len(hit['matched_rules']) for hit in selected_hits)
+
+        self.add_detail_row('\U0001f50d Total Matches', str(total_matches))
+        self.add_detail_row('\U0001f3af Unique Rules', str(total_rules))
+        self.add_detail_row('\u2500' * 20, '\u2500' * 30)
+
+        for i, hit_data in enumerate(selected_hits):
+            filename = hit_data['filename']
+            rules_count = len(hit_data['matched_rules'])
+            matched_rule_names = [rule['identifier'] for rule in hit_data['matched_rules']]
+
+            self.add_detail_row(f'\U0001f4c4 File {i+1}', filename)
+            self.add_detail_row(f'  \U0001f4cd Path', hit_data['filepath'])
+            self.add_detail_row(f'  \U0001f3af Rules', f'{rules_count} matches: {", ".join(matched_rule_names)}')
+            self.add_detail_row(f'  \U0001f511 MD5', hit_data['md5'])
+            self.add_detail_row(f'  \U0001f511 SHA1', hit_data['sha1'])
+            self.add_detail_row(f'  \U0001f511 SHA256', hit_data['sha256'])
+
+            if i < len(selected_hits) - 1:
+                self.add_detail_row('', '')
+
+        self._force_thin_rows(self.ui.tv_rule_details)
+
+        header = self.ui.tv_rule_details.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        self.ui.tv_rule_details.setColumnWidth(0, 120)
+        self.ui.tv_rule_details.setWordWrap(True)
+
+    def populate_similar_files(self, scan_hits: List[Dict], selected_filepaths: Optional[Set[str]] = None):
+        """
+        Populate similar files tree showing files grouped by matching rules.
+
+        Args:
+            scan_hits: All scan hit data to search through
+            selected_filepaths: If provided, marks these files with stars and filters to their rules.
+                               If None, shows all rules from all hits.
+        """
+        self.ui.tw_similar_files.clear()
+        self.ui.tw_similar_files.setHeaderLabels(['File/Rule', 'Info'])
+
+        if not scan_hits:
+            return
+
+        # Determine which rules to show
+        if selected_filepaths:
+            # Only show rules that match the selected files
+            target_rules = set()
+            for hit in scan_hits:
+                if hit['filepath'] in selected_filepaths:
+                    for rule_match in hit['matched_rules']:
+                        target_rules.add(rule_match['identifier'])
+        else:
+            # Show all rules
+            target_rules = set()
+            for hit in scan_hits:
+                for rule_match in hit['matched_rules']:
+                    target_rules.add(rule_match['identifier'])
+
+        # Build rule -> files mapping from ALL scan hits
+        rules_to_files: Dict[str, list] = {}
+        for rule_name in target_rules:
+            rules_to_files[rule_name] = []
+            for hit_data in scan_hits:
+                hit_rules = {rule['identifier'] for rule in hit_data['matched_rules']}
+                if rule_name in hit_rules:
+                    is_selected = bool(selected_filepaths and hit_data['filepath'] in selected_filepaths)
+                    rules_to_files[rule_name].append({
+                        'filename': hit_data['filename'],
+                        'filepath': hit_data['filepath'],
+                        'is_selected': is_selected
+                    })
+
+        # Create tree items sorted by file count (most matches first)
+        for rule_name in sorted(rules_to_files.keys(), key=lambda r: len(rules_to_files[r]), reverse=True):
+            file_entries = rules_to_files[rule_name]
+            total_files = len(file_entries)
+            selected_count = sum(1 for f in file_entries if f['is_selected'])
+
+            if total_files == 1:
+                rule_display = f"\U0001f3af {rule_name}"
+            elif total_files <= 5:
+                rule_display = f"\U0001f525 {rule_name}"
+            else:
+                rule_display = f"\U0001f6a8 {rule_name}"
+
+            rule_info = f"{total_files} files"
+            if selected_count > 0:
+                rule_info += f" ({selected_count} selected)"
+
+            rule_item = QTreeWidgetItem([rule_display, rule_info])
+            rule_item.setToolTip(0, f"Rule: {rule_name}")
+            rule_item.setToolTip(1, f"{total_files} total files matched this rule, {selected_count} currently selected")
+
+            file_entries_sorted = sorted(file_entries, key=lambda f: (not f['is_selected'], f['filename']))
+
+            for file_entry in file_entries_sorted:
+                filename = file_entry['filename']
+                filepath = file_entry['filepath']
+                is_selected = file_entry['is_selected']
+
+                # Disambiguate same-named files
+                same_name_count = sum(1 for fe in file_entries if fe['filename'] == filename)
+                if same_name_count > 1:
+                    path_parts = filepath.replace('\\', '/').split('/')
+                    if len(path_parts) >= 3:
+                        distinguishing_path = f".../{path_parts[-3]}/{path_parts[-2]}"
+                    elif len(path_parts) >= 2:
+                        distinguishing_path = f".../{path_parts[-2]}"
+                    else:
+                        distinguishing_path = "root"
+                    display_name = f'{filename} [{distinguishing_path}]'
+                else:
+                    display_name = filename
+
+                if is_selected:
+                    display_name += " \u2b50"
+
+                file_item = QTreeWidgetItem([f"  \U0001f4c4 {display_name}", ""])
+                file_item.setData(0, 32, filepath)  # Qt.UserRole = 32
+
+                tooltip = f"File: {filename}\nPath: {filepath}"
+                if is_selected:
+                    tooltip += "\n\u2b50 Currently selected"
+                file_item.setToolTip(0, tooltip)
+
+                rule_item.addChild(file_item)
+
+            self.ui.tw_similar_files.addTopLevelItem(rule_item)
+            rule_item.setExpanded(True)
+
+        self.ui.tw_similar_files.resizeColumnToContents(0)
+        self.ui.tw_similar_files.resizeColumnToContents(1)
+
+        # Re-apply filter if search bar has text
+        bar = self._search_bars.get('similar_files')
+        if bar and bar.text():
+            filter_tree_widget(self.ui.tw_similar_files, bar.text())
+
+    def populate_similar_tags(self, scan_hits: List[Dict], selected_filepaths: Optional[Set[str]] = None):
+        """
+        Populate similar tags view.
+
+        Args:
+            scan_hits: All scan hit data to search through
+            selected_filepaths: If provided, only shows tags from these files and marks them.
+                               If None, shows tags from all hits.
+        """
+        if not hasattr(self.ui, 'tw_similar_tags'):
+            return
+
+        self.ui.tw_similar_tags.clear()
+
+        if not scan_hits:
+            return
+
+        # Collect target tags
+        target_tags = set()
+        for hit_data in scan_hits:
+            if selected_filepaths and hit_data.get('filepath', '') not in selected_filepaths:
+                continue
+            for rule_info in hit_data.get('matched_rules', []):
+                for tag in rule_info.get('tags', []):
+                    if tag and tag.strip():
+                        target_tags.add(tag.strip())
+
+        if not target_tags:
+            no_tags_item = QTreeWidgetItem(["No tags found", ""])
+            self.ui.tw_similar_tags.addTopLevelItem(no_tags_item)
+            return
+
+        # For each tag, find all files with that tag
+        for tag in sorted(target_tags):
+            files_with_this_tag = []
+
+            for hit_data in scan_hits:
+                filename = hit_data.get('filename', 'Unknown')
+                filepath = hit_data.get('filepath', '')
+
+                for rule_info in hit_data.get('matched_rules', []):
+                    rule_name = rule_info.get('identifier', 'Unknown')
+                    tags = rule_info.get('tags', [])
+
+                    if any(t.strip() == tag for t in tags if t and t.strip()):
+                        if not any(f['filepath'] == filepath and f['rule_name'] == rule_name for f in files_with_this_tag):
+                            is_selected = bool(selected_filepaths and filepath in selected_filepaths)
+                            files_with_this_tag.append({
+                                'filename': filename,
+                                'filepath': filepath,
+                                'rule_name': rule_name,
+                                'is_selected': is_selected
+                            })
+
+            if files_with_this_tag:
+                selected_count = len([f for f in files_with_this_tag if f['is_selected']])
+                other_count = len(files_with_this_tag) - selected_count
+
+                tag_display = f"\U0001f3f7\ufe0f {tag}"
+                if selected_count > 0 and other_count > 0:
+                    tag_info = f"{selected_count} selected + {other_count} others"
+                elif selected_count > 0:
+                    tag_info = f"{selected_count} selected files only"
+                else:
+                    tag_info = f"{other_count} files"
+
+                tag_item = QTreeWidgetItem([tag_display, tag_info])
+                tag_item.setToolTip(0, f"Tag: {tag}")
+                tag_item.setToolTip(1, f"Found in {len(files_with_this_tag)} files total")
+
+                files_sorted = sorted(files_with_this_tag, key=lambda f: (not f['is_selected'], f['filename']))
+                for file_info in files_sorted:
+                    if file_info['is_selected']:
+                        file_display = f"\U0001f4c4 {file_info['filename']} \u2b50"
+                        file_info_text = f"Rule: {file_info['rule_name']} (Selected)"
+                    else:
+                        file_display = f"\U0001f4c4 {file_info['filename']}"
+                        file_info_text = f"Rule: {file_info['rule_name']}"
+
+                    file_item = QTreeWidgetItem([file_display, file_info_text])
+                    file_item.setToolTip(0, f"File: {file_info['filename']}\nPath: {file_info['filepath']}")
+                    file_item.setToolTip(1, f"Rule: {file_info['rule_name']}")
+                    tag_item.addChild(file_item)
+
+                self.ui.tw_similar_tags.addTopLevelItem(tag_item)
+                tag_item.setExpanded(True)
+
+        self.ui.tw_similar_tags.resizeColumnToContents(0)
+        self.ui.tw_similar_tags.resizeColumnToContents(1)
+
+        # Re-apply filter if search bar has text
+        bar = self._search_bars.get('similar_tags')
+        if bar and bar.text():
+            filter_tree_widget(self.ui.tw_similar_tags, bar.text())
+
+    def populate_match_details(self, selected_hits: List[Dict]):
+        """Populate match details table for one or more selected files."""
+        self.tw_yara_match_details.setRowCount(0)
+
+        if not selected_hits:
+            return
+
+        row_count = 0
+
+        for hit_data in selected_hits:
+            filename = hit_data['filename']
+            filepath = hit_data.get('filepath', '')
+
+            for rule_match in hit_data['matched_rules']:
+                rule_name = rule_match['identifier']
+
+                for pattern_info in rule_match.get('patterns', []):
+                    pattern_name = pattern_info['identifier']
+                    for match in pattern_info['matches']:
+                        self.tw_yara_match_details.insertRow(row_count)
+
+                        # Keep the full path on the item: several selected files
+                        # can share a basename (dir1/data.bin, dir2/data.bin),
+                        # so the displayed text alone is ambiguous.
+                        filename_item = QTableWidgetItem(filename)
+                        filename_item.setData(Qt.ItemDataRole.UserRole, filepath)
+                        if filepath:
+                            filename_item.setToolTip(filepath)
+                        self.tw_yara_match_details.setItem(row_count, 0, filename_item)
+                        self.tw_yara_match_details.setItem(row_count, 1, QTableWidgetItem(rule_name))
+                        self.tw_yara_match_details.setItem(row_count, 2, QTableWidgetItem(pattern_name))
+                        offset_widget = QTableWidgetItem(f"0x{match['offset']:08x}")
+                        offset_widget.setData(Qt.ItemDataRole.UserRole, match['length'])
+                        self.tw_yara_match_details.setItem(row_count, 3, offset_widget)
+
+                        file_data = hit_data.get('file_data', b'')
+                        offset = match['offset']
+                        length = match['length']
+
+                        if pattern_name in ['No string matches', 'Condition-based match'] or (offset == 0 and length == 0):
+                            data_preview = "Rule matched (no string patterns)"
+                            hex_dump = "N/A - Condition-based match"
+                        elif not file_data:
+                            # Remote scan (MWDB) — use embedded snippets
+                            # from server-side extraction
+                            data_preview = match.get(
+                                "data_preview",
+                                f"0x{offset:08X} ({length} bytes)")
+                            hex_dump = match.get(
+                                "hex_dump",
+                                f"0x{offset:08X} +{length}")
+                        else:
+                            preview = self._get_data_preview(offset, length, file_data=file_data)
+                            if preview:
+                                data_preview = preview['text']
+                                hex_dump = preview['hex']
+                            else:
+                                data_preview = f"0x{offset:08X} ({length} bytes)"
+                                hex_dump = f"0x{offset:08X} +{length}"
+
+                        self.tw_yara_match_details.setItem(row_count, 4, QTableWidgetItem(data_preview))
+                        self.tw_yara_match_details.setItem(row_count, 5, QTableWidgetItem(hex_dump))
+
+                        tags = rule_match.get('tags', [])
+                        tag_text = ', '.join(tags) if tags else ''
+                        self.tw_yara_match_details.setItem(row_count, 6, QTableWidgetItem(tag_text))
+
+                        for col in range(7):
+                            item = self.tw_yara_match_details.item(row_count, col)
+                            if item:
+                                self._apply_column_color(item, col)
+
+                        row_count += 1
+
+        self._force_thin_rows(self.tw_yara_match_details)
+
+        # Re-apply filter if search bar has text
+        bar = self._search_bars.get('match_details')
+        if bar and bar.text():
+            filter_table_widget(self.tw_yara_match_details, bar.text())
+
+    def populate_misses_tab(self, scan_misses: List[Dict]):
+        """Populate the misses tab with files that had no matches."""
+        if self.misses_loaded:
+            return
+
+        self.misses_model.clear()
+        self.misses_model.setHorizontalHeaderLabels(['File', 'Size', 'Ext'])
+
+        for miss_data in scan_misses:
+            filename = miss_data['filename']
+            filepath = miss_data['filepath']
+            file_size = miss_data.get('file_size', 0)
+
+            filename_display = f"\U0001f921 {filename}"
+            filename_item = QStandardItem(filename_display)
+            tooltip = f"File: {filename}\nPath: {filepath}\nStatus: Clean (no threats)"
+            hashes = {algo: miss_data[algo] for algo in ('md5', 'sha1', 'sha256')
+                      if miss_data.get(algo)}
+            if hashes.get('sha256'):
+                tooltip += f"\nMD5: {hashes.get('md5', '')}\nSHA256: {hashes['sha256']}"
+            filename_item.setToolTip(tooltip)
+            filename_item.setData(filepath, Qt.ItemDataRole.UserRole)
+            filename_item.setData(hashes, HASHES_ROLE)
+            # Make full path + hashes findable via the filter bar (partial matches work)
+            filename_item.setData(" ".join([filepath, *hashes.values()]), SEARCH_TEXT_ROLE)
+
+            size_item = QStandardItem(format_size(file_size))
+            size_item.setData(file_size, Qt.ItemDataRole.UserRole)
+            size_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+            ext = Path(filename).suffix.lower() if '.' in filename else ''
+            ext_item = QStandardItem(ext)
+
+            self.misses_model.appendRow([filename_item, size_item, ext_item])
+
+        header = self.ui.tv_file_misses.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+
+        self._force_thin_rows(self.ui.tv_file_misses)
+        self.misses_loaded = True
+
+    def initialize_similar_tags_widget(self):
+        """Initialize similar tags widget with instruction message."""
+        if not hasattr(self.ui, 'tw_similar_tags'):
+            return
+        self.ui.tw_similar_tags.clear()
+        instruction_item = QTreeWidgetItem(["Select a file to see similar tags", ""])
+        instruction_item.setToolTip(0, "Click on a file in the hits table to see files with similar tags")
+        self.ui.tw_similar_tags.addTopLevelItem(instruction_item)
+
+    # ─── Data preview ────────────────────────────────────────────────────
+
+    def _get_data_preview(self, offset: int, length: int,
+                          file_data: Optional[bytes] = None,
+                          filepath: Optional[str] = None) -> Optional[dict]:
+        """
+        Get a preview of data at the specified offset.
+
+        Args:
+            offset: Byte offset into the data
+            length: Number of bytes to read
+            file_data: In-memory file content (preferred)
+            filepath: Path to file on disk (fallback if file_data is None)
+
+        Returns:
+            dict with 'raw', 'text', 'hex' keys, or None
+        """
+        try:
+            if file_data is not None:
+                if offset < 0 or offset >= len(file_data):
+                    return None
+                end_offset = min(offset + length, len(file_data))
+                data = file_data[offset:end_offset]
+            elif filepath:
+                with open(filepath, 'rb') as f:
+                    f.seek(offset)
+                    data = f.read(length)
+            else:
+                return None
+
+            if not data:
+                return None
+
+            text_preview = ''.join(chr(b) if 32 <= b <= 126 else '.' for b in data)
+            hex_dump = ' '.join(f'{b:02X}' for b in data)
+
+            return {
+                'raw': data,
+                'text': text_preview,
+                'hex': hex_dump
+            }
+        except Exception:
+            return None
+
+    # ─── Selection / navigation helpers ──────────────────────────────────
+
+    def select_file(self, filepath: str, scan_hits: List[Dict]):
+        """
+        Select a file in the hits table by filepath match.
+        Maps source row through proxy before selecting.
+        """
+        for row, hit_data in enumerate(scan_hits):
+            if hit_data['filepath'] == filepath:
+                source_index = self.hits_model.index(row, 0)
+                proxy_index = self.hits_proxy.mapFromSource(source_index)
+                if proxy_index.isValid():
+                    self.ui.tv_file_hits.selectRow(proxy_index.row())
+                return True
+        return False
+
+    # ─── Double-click handlers ───────────────────────────────────────────
+
+    def on_match_detail_double_clicked(self, row, column):
+        """Handle double-click of a match detail row."""
+        if row < 0:
+            return
+
+        filename_item = self.tw_yara_match_details.item(row, 0)
+        rule_item = self.tw_yara_match_details.item(row, 1)
+        pattern_item = self.tw_yara_match_details.item(row, 2)
+        offset_item = self.tw_yara_match_details.item(row, 3)
+
+        if not all([filename_item, rule_item, pattern_item, offset_item]):
+            return
+
+        filename = filename_item.text()
+        # Full path when available - basenames are not unique across folders
+        filepath = filename_item.data(Qt.ItemDataRole.UserRole) or filename
+        rule_name = rule_item.text()
+        pattern_id = pattern_item.text()
+        offset_hex = offset_item.text()
+
+        try:
+            offset = int(offset_hex, 16) if offset_hex.startswith('0x') else int(offset_hex)
+            msg = f"Selected: {filename} | Rule: {rule_name} | Pattern: {pattern_id} | Offset: {offset_hex} ({offset:,} dec)"
+            self.status_message_requested.emit(msg, 10000)
+        except ValueError:
+            msg = f"Selected: {filename} | Rule: {rule_name} | Pattern: {pattern_id}"
+            self.status_message_requested.emit(msg, 5000)
+
+        # Request MainWindow to select this file
+        self.file_selection_requested.emit(filepath)
+
+    # ─── Selection copy helpers (shared by hits and misses menus) ────────
+
+    def selected_file_entries(self, view, proxy, model, clicked_index=None):
+        """
+        Return [(filepath, hashes_dict), ...] for all selected rows of a
+        proxy-backed table view. If the right-clicked row is not part of the
+        selection, the menu acts on the clicked row alone (standard behavior).
+        """
+        selection = view.selectionModel()
+        proxy_rows = selection.selectedRows() if selection else []
+        if clicked_index is not None and clicked_index.isValid():
+            clicked_row0 = clicked_index.siblingAtColumn(0)
+            if not any(idx.row() == clicked_row0.row() for idx in proxy_rows):
+                proxy_rows = [clicked_row0]
+
+        entries = []
+        for proxy_index in proxy_rows:
+            source_index = proxy.mapToSource(proxy_index.siblingAtColumn(0))
+            item = model.item(source_index.row(), 0)
+            if not item:
+                continue
+            filepath = item.data(Qt.ItemDataRole.UserRole)
+            if filepath:
+                entries.append((filepath, item.data(HASHES_ROLE) or {}))
+        return entries
+
+    def _file_hash(self, filepath: str, hashes: dict, algo: str) -> str:
+        """Return the stored hash, computing (and caching nothing) only if missing."""
+        if hashes.get(algo):
+            return hashes[algo]
+        import hashlib
+        try:
+            h = hashlib.new(algo)
+            with open(filepath, 'rb') as f:
+                for chunk in iter(lambda: f.read(65536), b''):
+                    h.update(chunk)
+            return h.hexdigest()
+        except Exception:
+            return ''
+
+    def add_copy_selection_menu(self, menu, entries):
+        """
+        Add a Copy submenu acting on *entries* [(filepath, hashes), ...]:
+        hash lists (MD5/SHA1/SHA256, one per line), names, and paths.
+        """
+        count = len(entries)
+        suffix = f" ({count} files)" if count > 1 else ""
+        copy_menu = menu.addMenu(f"Copy{suffix}")
+
+        # Toggle: collapse duplicate lines (e.g. identical files scanned twice
+        # or the same file under two paths). Persisted across sessions.
+        settings = QSettings("YaraXGUI", "ScanResults")
+        act_unique = copy_menu.addAction("Unique values only")
+        act_unique.setCheckable(True)
+        act_unique.setChecked(settings.value("copy_unique_only", True, type=bool))
+        act_unique.setToolTip("Drop duplicate lines when copying (keeps first-occurrence order)")
+        act_unique.toggled.connect(
+            lambda on: settings.setValue("copy_unique_only", on))
+        copy_menu.addSeparator()
+
+        def _copy_lines(lines, what):
+            lines = [line for line in lines if line]
+            total = len(lines)
+            if act_unique.isChecked():
+                lines = list(dict.fromkeys(lines))  # order-preserving dedup
+            text = "\n".join(lines)
+            if not text:
+                self.status_message_requested.emit(f"Nothing to copy for {what}", 5000)
+                return
+            QApplication.clipboard().setText(text)
+            dupes = total - len(lines)
+            msg = f"Copied {len(lines)} {what}"
+            if dupes:
+                msg += f" ({dupes} duplicate(s) removed)"
+            self.status_message_requested.emit(msg, 5000)
+
+        def _copy_hashes(algos, what, grouped=False):
+            """grouped=False: one line per file (tab-separated when several algos).
+            grouped=True:  one flat list — all MD5s, then all SHA1s, then all SHA256s."""
+            if grouped:
+                lines = [self._file_hash(fp, hashes, a)
+                         for a in algos for fp, hashes in entries]
+            else:
+                lines = []
+                for filepath, hashes in entries:
+                    values = [self._file_hash(filepath, hashes, a) for a in algos]
+                    if any(values):
+                        lines.append("\t".join(values) if len(values) > 1 else values[0])
+            _copy_lines(lines, what)
+
+        for algo, label in (('md5', 'MD5'), ('sha1', 'SHA1'), ('sha256', 'SHA256')):
+            act = copy_menu.addAction(f"Copy {label}")
+            act.triggered.connect(
+                lambda _=False, a=algo, l=label: _copy_hashes([a], f"{l} hashes"))
+        all_algos = ['md5', 'sha1', 'sha256']
+        act_all_rows = copy_menu.addAction("Copy MD5 + SHA1 + SHA256 (per file, tab-separated)")
+        act_all_rows.triggered.connect(
+            lambda: _copy_hashes(all_algos, "hash rows"))
+        act_all_grouped = copy_menu.addAction("Copy MD5 + SHA1 + SHA256 (all MD5, then SHA1, then SHA256)")
+        act_all_grouped.triggered.connect(
+            lambda: _copy_hashes(all_algos, "hashes", grouped=True))
+
+        copy_menu.addSeparator()
+        copy_menu.addAction("Copy File Names").triggered.connect(
+            lambda: _copy_lines([Path(fp).name for fp, _ in entries], "file names"))
+        copy_menu.addAction("Copy File Paths").triggered.connect(
+            lambda: _copy_lines([fp for fp, _ in entries], "file paths"))
+        return copy_menu
+
+    def _show_match_context_menu(self, pos):
+        """Show context menu on match details for hex editor navigation."""
+        row = self.tw_yara_match_details.rowAt(pos.y())
+        if row < 0:
+            return
+
+        filename_item = self.tw_yara_match_details.item(row, 0)
+        offset_item = self.tw_yara_match_details.item(row, 3)
+        if not filename_item or not offset_item:
+            return
+
+        # Full path when available - basenames are not unique across folders
+        filepath = filename_item.data(Qt.ItemDataRole.UserRole) or filename_item.text()
+
+        menu = QMenu(self.tw_yara_match_details)
+        act_hex = menu.addAction("Open in Hex Editor at Offset")
+        act_copy_path = menu.addAction("Copy File Name")
+        act_copy_offset = menu.addAction("Copy Offset")
+
+        # Get data preview columns if available
+        data_item = self.tw_yara_match_details.item(row, 4)  # Data Preview
+        hex_item = self.tw_yara_match_details.item(row, 5)   # Hex dump
+        if data_item and data_item.text():
+            act_copy_data = menu.addAction("Copy Data Preview")
+        else:
+            act_copy_data = None
+        if hex_item and hex_item.text():
+            act_copy_hex = menu.addAction("Copy Hex Dump")
+        else:
+            act_copy_hex = None
+
+        action = menu.exec(self.tw_yara_match_details.viewport().mapToGlobal(pos))
+        if action == act_hex:
+            offset_hex = offset_item.text()
+            try:
+                offset = int(offset_hex, 16) if offset_hex.startswith("0x") else int(offset_hex)
+            except ValueError:
+                offset = 0
+
+            match_length = offset_item.data(Qt.ItemDataRole.UserRole)
+            if not match_length or not isinstance(match_length, int):
+                match_length = 0
+
+            self.hex_editor_requested.emit(filepath, offset, match_length)
+        elif action == act_copy_path:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(filename_item.text())
+        elif action == act_copy_offset:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(offset_item.text())
+        elif act_copy_data and action == act_copy_data:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(data_item.text())
+        elif act_copy_hex and action == act_copy_hex:
+            from PySide6.QtWidgets import QApplication
+            QApplication.clipboard().setText(hex_item.text())
+
+    def _show_misses_context_menu(self, pos):
+        """Show context menu on misses table (hex editor, file info, copy)."""
+        index = self.ui.tv_file_misses.indexAt(pos)
+        if not index.isValid():
+            return
+
+        source_index = self.misses_proxy.mapToSource(index.siblingAtColumn(0))
+        filename_item = self.misses_model.item(source_index.row(), 0)
+        if not filename_item:
+            return
+
+        filepath = filename_item.data(Qt.ItemDataRole.UserRole)
+        if not filepath:
+            return
+
+        entries = self.selected_file_entries(
+            self.ui.tv_file_misses, self.misses_proxy, self.misses_model, index)
+
+        menu = QMenu(self.ui.tv_file_misses)
+        act_hex = menu.addAction("Open in Hex Editor")
+        act_info = menu.addAction("Show File Info...")
+        menu.addSeparator()
+        self.add_copy_selection_menu(menu, entries)
+
+        action = menu.exec(self.ui.tv_file_misses.viewport().mapToGlobal(pos))
+        if action == act_hex:
+            self.hex_editor_requested.emit(filepath, 0, 0)
+        elif action == act_info:
+            self.file_info_requested.emit(filepath)
+
+    def on_similar_file_double_clicked(self, item, column):
+        """Handle double-click of a similar file to synchronize with hits list."""
+        if not item:
+            return
+
+        try:
+            filepath = item.data(0, 32)  # Qt.UserRole = 32
+            item_text = item.text(0)
+            has_parent = item.parent() is not None
+        except RuntimeError:
+            return
+
+        if filepath:
+            self.file_selection_requested.emit(filepath)
+        else:
+            filename = None
+            if item_text.startswith('\U0001f4c4 '):
+                filename = item_text[2:].split(' (')[0]
+                filename = filename.replace(' \u2b50', '').strip()
+            elif item_text.startswith('File: '):
+                filename = item_text[6:]
+            elif not has_parent:
+                if not any(keyword in item_text.lower() for keyword in ['rule', 'condition', 'strings', 'meta']):
+                    filename = item_text
+
+            if filename:
+                self.file_selection_requested.emit(filename)
+
+    def on_similar_tag_double_clicked(self, item, column):
+        """Handle double-click of a similar tag item."""
+        if not item:
+            return
+
+        try:
+            item_text = item.text(0)
+            parent_item = item.parent()
+            parent_text = parent_item.text(0) if parent_item else None
+            child_count = item.childCount()
+            first_child = item.child(0) if child_count > 0 else None
+        except RuntimeError:
+            return
+
+        filename = None
+        tag_name = None
+
+        if item_text.startswith('\U0001f4c4 '):
+            filename = item_text[2:]
+            filename = filename.replace(' \u2b50', '').strip()
+        elif item_text.startswith('\U0001f3f7\ufe0f '):
+            tag_name = item_text[3:]
+            if first_child:
+                try:
+                    first_child_text = first_child.text(0)
+                    if first_child_text.startswith('\U0001f4c4 '):
+                        filename = first_child_text[2:]
+                        filename = filename.replace(' \u2b50', '').strip()
+                except RuntimeError:
+                    pass
+
+        if filename:
+            self.file_selection_requested.emit(filename)
+
+            if tag_name or (parent_text and parent_text.startswith('\U0001f3f7\ufe0f ')):
+                parent_tag = tag_name if tag_name else (parent_text[3:] if parent_text else None)
+                if parent_tag:
+                    self.tag_highlight_requested.emit(parent_tag)

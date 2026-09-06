@@ -1,0 +1,73 @@
+{
+  "target": "yara-x==1.20.0",
+  "upstream_commit": "60ad06971467029e77967e59d580cbbe85a1474d",
+  "python": "3.12.3",
+  "platform": "Linux x86_64",
+  "package_tests": {
+    "passed": 2502,
+    "failed": 0,
+    "errors": 0,
+    "skipped": 0,
+    "by_suite": {
+      "tests.test_catalog": 2099,
+      "tests.test_cli": 4,
+      "tests.test_core": 351,
+      "tests.test_editor": 24,
+      "tests.test_formatting_jobs": 6,
+      "tests.test_playground_http": 18
+    }
+  },
+  "browser_tests": {
+    "engine": "Chromium via Playwright",
+    "passed": 8
+  },
+  "host_application_tests": {
+    "passed": 154,
+    "dependency_deprecation_warnings": 2
+  },
+  "wheel_isolation": {
+    "passed": true,
+    "runtime_dependencies": [
+      "yara-x==1.20.0"
+    ],
+    "verified_reference_files": 661
+  },
+  "catalog": {
+    "module_definitions": 21,
+    "installed_modules": 17,
+    "types_including_constant_namespaces": 264,
+    "exported_overloads": 131,
+    "numeric_builtins": 16,
+    "keywords": 40
+  },
+  "property_tests": {
+    "arbitrary_unicode_cases": 300,
+    "incomplete_edit_cases": 120,
+    "generated_boolean_cases": 100
+  },
+  "completion_timing_ms": {
+    "100_rules_cold": 19.3,
+    "100_rules_warm": 2.4,
+    "1000_rules_cold": 137.7,
+    "1000_rules_warm": 23.2,
+    "note": "Single-run observations on this machine, not portable performance guarantees"
+  },
+  "formatting_limits": {
+    "interactive_source_bytes": 262144,
+    "automatic_source_bytes": 65536,
+    "concurrent_jobs": 1,
+    "minimum_start_interval_seconds": 1,
+    "worker_timeout_seconds": 5,
+    "browser_request_timeout_seconds": 8,
+    "stalled_worker_termination_test": "passed",
+    "large_valid_fixture_rules": 2000
+  },
+  "host_integration": {
+    "backend": "yarax_editor",
+    "old_language_server_removed": true,
+    "headless_api_without_qt": "passed",
+    "linux_frozen_worker": "passed",
+    "windows_frozen_build": "not tested",
+    "docker_build": "not run: Docker daemon socket permission denied"
+  }
+}

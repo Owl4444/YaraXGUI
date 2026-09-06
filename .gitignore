@@ -1,0 +1,154 @@
+# ── Python ────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.pyc
+*.pyo
+*.egg-info/
+*.egg
+dist/
+build/
+*.spec.bak
+
+# ── Virtual environments ─────────────────────────────────────────
+.venv/
+venv/
+env/
+3.13/
+.qtcreator/
+.claude/
+
+# ── IDE / Editor ─────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+*.autosave
+.#*
+*.*#
+*.pro.user*
+*.qbs.user*
+CMakeLists.txt.user*
+
+# ── OS generated ─────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+Desktop.ini
+*.lnk
+
+# ── Qt generated ─────────────────────────────────────────────────
+*.moc
+*.qm
+moc_*.cpp
+ui_*.h
+qrc_*.cpp
+.moc/
+.obj/
+.pch/
+.rcc/
+.uic/
+/.qmake.cache
+/.qmake.stash
+
+# ── Build artifacts ──────────────────────────────────────────────
+/build*/
+*.exe
+
+# ── Compiled objects ─────────────────────────────────────────────
+*.o
+*.obj
+*.so
+*.so.*
+*.dll
+*.a
+*.lib
+*.pyd
+
+# ── Config (user-specific, not defaults) ─────────────────────────
+# Keep config/themes.json (defaults), ignore user settings
+config/settings.json
+
+# ── Rule databases (user data, not source code) ─────────────────
+/backups/
+*.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.sqlite-journal
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+api/rules.db
+config/local_rules.db
+
+# ── Downloads from MWDB / remote servers ─────────────────────────
+yaraxgui_downloads/
+yaraxgui_mwdb_*/
+
+# ── API uploads (temp files) ─────────────────────────────────────
+yaraxgui_uploads/
+
+# ── PyInstaller ──────────────────────────────────────────────────
+*.manifest
+*.spec.bak
+
+# ── Miscellaneous ────────────────────────────────────────────────
+*.log
+*.bak
+*.tmp
+*.temp
+core
+!core/
+tags
+*.debug
+*.res
+*.rc
+*.orig
+*.rej
+*.flc
+
+# ── Docker / Dockge ──────────────────────────────────────────────
+# .env holds YARAXGUI_API_KEY — never commit it
+.env
+.env.*
+!.env.example
+compose.override.yaml
+compose.override.yml
+docker-compose.override.yaml
+docker-compose.override.yml
+
+# Legacy local launcher (use scripts/run_api.sh for the shared launcher).
+run.sh
+
+# Test and lint caches
+.pytest_cache/
+.hypothesis/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Server certificates and deployment state
+/certs/
+/server-data/
+/data/
+/uploads/
+*.key
+*.pem
+*.crt
+*.cer
+*.der
+*.p12
+*.pfx
+*.p7b
+*.p7c
+*.csr
+*.srl
+*.jks
+*.keystore

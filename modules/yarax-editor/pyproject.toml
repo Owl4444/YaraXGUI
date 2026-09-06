@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yarax-editor"
+version = "0.1.0"
+description = "Standalone, versioned YARA-X language services and editor toolkit"
+readme = "README.md"
+license-files = ["THIRD_PARTY_NOTICES.md"]
+requires-python = ">=3.11"
+dependencies = ["yara-x==1.20.0"]
+
+[project.optional-dependencies]
+test = ["pytest>=8", "hypothesis>=6"]
+reference = ["grpcio-tools>=1.70"]
+browser = ["playwright>=1.50", "pytest>=8"]
+
+[project.scripts]
+yarax-editor = "yarax_editor.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+yarax_editor = ["data/**/*", "data/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+addopts = "-ra"

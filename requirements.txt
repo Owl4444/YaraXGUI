@@ -1,0 +1,13 @@
+PySide6
+yara-x==1.20.0
+./modules/yarax-editor
+capstone
+pyinstaller
+pycryptodome
+lz4
+zstandard
+fastapi
+uvicorn
+python-multipart
+mwdblib
+keyring

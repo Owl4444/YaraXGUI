@@ -1,0 +1,3314 @@
+{
+  "version": "1.20.0",
+  "commit": "60ad06971467029e77967e59d580cbbe85a1474d",
+  "repository": "https://github.com/VirusTotal/yara-x",
+  "files": [
+    {
+      "path": "UPSTREAM-LICENSE",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/LICENSE",
+      "sha256": "fdf05444c9178e662fa28810d94a1fa6ec32d7be798241c98094213317265880"
+    },
+    {
+      "path": "reference/_index.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/_index.md",
+      "sha256": "f276c6c6b2208419ce7fd780ad0dd0a4d3f95773f9336bd3fb408d7ed8438370"
+    },
+    {
+      "path": "reference/api/_index.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/api/_index.md",
+      "sha256": "b362aeac02e5d76ea47208b402c6c0d97b677a5b3e90eabf65c1383d123bf2e7"
+    },
+    {
+      "path": "reference/api/c.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/api/c.md",
+      "sha256": "ed5401145394515d421741bc7f46f7482fbf318299e52a4a6cf8a230c752057a"
+    },
+    {
+      "path": "reference/api/go.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/api/go.md",
+      "sha256": "2e4ea9bd111c3d9acd4d9dc02c1f66d8335e3a8a789feeeb0cfd5b2509ab72e4"
+    },
+    {
+      "path": "reference/api/python.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/api/python.md",
+      "sha256": "f549382c5b81a79f4fa66958aabc40f4b466f3ae7df10c03e9d8b8cc5c86053d"
+    },
+    {
+      "path": "reference/api/rust.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/api/rust.md",
+      "sha256": "3653cbf1e2c8fdc38b0413e5d8add97a2aa9f48bc3d7ca4d267d48cc8ec12288"
+    },
+    {
+      "path": "reference/cli/_index.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/cli/_index.md",
+      "sha256": "c6258cbdfbb7ae6d479db7501c6e7245b67722894572d8c7d34b66a16281981b"
+    },
+    {
+      "path": "reference/cli/commands.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/cli/commands.md",
+      "sha256": "732924ee2a61da50fafce9e29182c66a4636d922c7066f99deac5d6e3aad564c"
+    },
+    {
+      "path": "reference/cli/config.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/cli/config.md",
+      "sha256": "f389c5980134b13fb70a16578b6cfebf83ce13a40264da2b8f013fbe6af8f257"
+    },
+    {
+      "path": "reference/intro/_index.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/intro/_index.md",
+      "sha256": "a8f36115829148189564dc55463c0cb19b3d9da679ce6ccaed2dc6adb8524dd1"
+    },
+    {
+      "path": "reference/intro/getting_started.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/intro/getting_started.md",
+      "sha256": "1704a51f9e260d209318228c814b57556766b6d2cfdd1705f79ce0ec0c250170"
+    },
+    {
+      "path": "reference/intro/installation.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/intro/installation.md",
+      "sha256": "46c509d24447bb448a57f71cb9268820ac90a53b9feaae1a85ca3ad1a294d030"
+    },
+    {
+      "path": "reference/intro/language_server.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/intro/language_server.md",
+      "sha256": "c3a80d6142914a719fb0acf043cc2b33ed5d7f0a48f912b275cc56791987f045"
+    },
+    {
+      "path": "reference/intro/yara_vs_yara-x.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/intro/yara_vs_yara-x.md",
+      "sha256": "e4a85977a29a98322b7a8933c5f15bca268158a67a93b248ddf2c1ce225c93a0"
+    },
+    {
+      "path": "reference/modules/_index.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/_index.md",
+      "sha256": "9c0d2e4e03f6be34d39a72ec426bf2e3e667d7f8e9cb0133f6034a902ee46ae0"
+    },
+    {
+      "path": "reference/modules/console.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/console.md",
+      "sha256": "b3b2bcc23583a971248c938d5724cbbc1381a6a2405d2644926acb57681a75d7"
+    },
+    {
+      "path": "reference/modules/crx.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/crx.md",
+      "sha256": "7033dea9bddc6f51818470ef70e2293d4d38e99cb1b15c5885d8d1c2790a4f00"
+    },
+    {
+      "path": "reference/modules/dex.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/dex.md",
+      "sha256": "cce9ba5853b3b5251aa15610538363bd636c26485e54487bbc043eb7465678a1"
+    },
+    {
+      "path": "reference/modules/dotnet.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/dotnet.md",
+      "sha256": "488e48ab1daf93c0be55343549237774d6870ec824f8e6ebb620d3e3559b4016"
+    },
+    {
+      "path": "reference/modules/elf.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/elf.md",
+      "sha256": "de21e3e8d0e4f07f11aba73182fb0c1f15a577f1219dbd6f4fdf89f843703570"
+    },
+    {
+      "path": "reference/modules/hash.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/hash.md",
+      "sha256": "f8ba5c3937ce2eff3ec5d8a871ec324b679de743733f999b9935b56ddb2641cc"
+    },
+    {
+      "path": "reference/modules/lnk.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/lnk.md",
+      "sha256": "c8c8840f78a4a6b2a6ba113842bcf2b6346ac1a078245dba8b5cc46ea7ac7b69"
+    },
+    {
+      "path": "reference/modules/macho.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/macho.md",
+      "sha256": "c442ef8e680b57fdf6292cc94a6432f65b0f4911b71dbf4a2101273913352be6"
+    },
+    {
+      "path": "reference/modules/math.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/math.md",
+      "sha256": "110b4008834d587cd405fbabe8f62431541d2c901b916714c9f366804dfc95bf"
+    },
+    {
+      "path": "reference/modules/modules.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/modules.md",
+      "sha256": "e6019029d76dbd5218da9027ad8346be5e5d40ebc9ec89689bc9d22e6c336c3d"
+    },
+    {
+      "path": "reference/modules/pe.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/pe.md",
+      "sha256": "a0cb08d20a1e33f1feb42d0411e20c7018de2439e88c59753bb2c22e5d8a0b3c"
+    },
+    {
+      "path": "reference/modules/string.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/string.md",
+      "sha256": "cbb063547182e1ace5a279a0418ad569eac14764e7cd52f6d6cc8df97671ab79"
+    },
+    {
+      "path": "reference/modules/time.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/modules/time.md",
+      "sha256": "471196a4565307376bdce22a1241f953e08b2cd8a10524ea1791c3c99a311a3e"
+    },
+    {
+      "path": "reference/writing_rules/_index.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/_index.md",
+      "sha256": "8150ae5c72352eb4d2d612109af2587fe147ab4f3ad892608711d79c9286a067"
+    },
+    {
+      "path": "reference/writing_rules/conditions.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/conditions.md",
+      "sha256": "fff56a0a17fcdde49eddf0ce0fcbbf4a8fbe7084532bc7052cbf3e7946c6471b"
+    },
+    {
+      "path": "reference/writing_rules/differences.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/differences.md",
+      "sha256": "9df72aef0bbc72d6d2de83b3af00b7d2b3b58895d6533baeb9c0669c103f724d"
+    },
+    {
+      "path": "reference/writing_rules/disabling_warnings.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/disabling_warnings.md",
+      "sha256": "b55beb87ac84da2680bd446e79aeb93d28ddad6f98a71d2b78d7e0f50c3bd732"
+    },
+    {
+      "path": "reference/writing_rules/external_variables.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/external_variables.md",
+      "sha256": "6c395a0b90212dc1eea115c08c666970634c1ed9e3e54f87afb2897d8e22e5c2"
+    },
+    {
+      "path": "reference/writing_rules/global_and_private.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/global_and_private.md",
+      "sha256": "2aac1a7d0735854beb10f832938f50748c4d7e1a261fdc75ad41165275203993"
+    },
+    {
+      "path": "reference/writing_rules/hex_patterns.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/hex_patterns.md",
+      "sha256": "9f827e3b482e42a86a5c3cbfa7e252442ad09cce7811f0cc5131b879f32c41ab"
+    },
+    {
+      "path": "reference/writing_rules/includes.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/includes.md",
+      "sha256": "6e26c03f36f5177fd7623bb6c1f7600ceaea0ba54ca9a0b32462379efc663144"
+    },
+    {
+      "path": "reference/writing_rules/regexps.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/regexps.md",
+      "sha256": "8bcd3c44129d057809f5f89927c6ab6b0cdea7aee72b9929fc1fcdd040eb3339"
+    },
+    {
+      "path": "reference/writing_rules/syntax.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/syntax.md",
+      "sha256": "12a47c1a439f33d0fc7ceb6f7c9edccb4c23dcb6e7ebf7ada3f597e88838f8cd"
+    },
+    {
+      "path": "reference/writing_rules/text_patterns.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/text_patterns.md",
+      "sha256": "c56b594830f3304c5eda2d78bb30202930ee77e0381d6aa5f9875a77e065730e"
+    },
+    {
+      "path": "reference/writing_rules/undefined_values.md",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/site/content/docs/writing_rules/undefined_values.md",
+      "sha256": "e74a7a57e98aee3e70547fd1122c97ed217a39717a92ed4c416525dc08d1e9fc"
+    },
+    {
+      "path": "protos/console.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/console.proto",
+      "sha256": "6998a2d76cfc3efdf138fa22658c6056c19549067b2f049828f5210d24cd3ea9"
+    },
+    {
+      "path": "protos/crx.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/crx.proto",
+      "sha256": "3e67c45af8e6d7aeeae89a5ef816b1218fa38b14bf6bb45476e3b535116b0dc0"
+    },
+    {
+      "path": "protos/cuckoo.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/cuckoo.proto",
+      "sha256": "9be7be3a2658140991b2878a6e5b99663fa7fff7687a007e66eb0fb888a13c13"
+    },
+    {
+      "path": "protos/dex.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/dex.proto",
+      "sha256": "c919cbd2ca7221f000db98a1d45fd1ced78e7b933f6581ff3d02a2cd6b1ceea9"
+    },
+    {
+      "path": "protos/dotnet.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/dotnet.proto",
+      "sha256": "fd08138c41ecda55764b4b8f69c8ab30ee01ad9a3a6e06197151b47cf925b438"
+    },
+    {
+      "path": "protos/elf.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/elf.proto",
+      "sha256": "7d66fc79222a4a284a9e83d0b1239277dcb70be757779302c9c127f780de2bd2"
+    },
+    {
+      "path": "protos/hash.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/hash.proto",
+      "sha256": "2127a8b1ee2fc0239b54f77573f0d0204e2f8406c270756ba439913ee65274a3"
+    },
+    {
+      "path": "protos/lnk.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/lnk.proto",
+      "sha256": "5f100280fda02763f739cea386545c376e7e442bbd6aff01f2beba449e66d4f3"
+    },
+    {
+      "path": "protos/macho.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/macho.proto",
+      "sha256": "f89c641491923cc36066e83f18b331eed0a0bb589c779b0cfb1630fcffa3cf15"
+    },
+    {
+      "path": "protos/magic.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/magic.proto",
+      "sha256": "fafc8240b5fa9e060e3ccd4cc971bc851b3e714b6a12c54ffa6de2bf2fd746e2"
+    },
+    {
+      "path": "protos/math.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/math.proto",
+      "sha256": "35b4c03cd928a4981056c9aae3f7382b6a773a60feba9952a9b10a98b51db4e2"
+    },
+    {
+      "path": "protos/mods.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/mods.proto",
+      "sha256": "5d4f78dbcb736dd29e392862deab9e2ce74218027992b2b7ac484770061bf5ee"
+    },
+    {
+      "path": "protos/msi.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/msi.proto",
+      "sha256": "f064c90a8f6f4dc1215c12bb95c43b357f88c82b2b5ed75d7e734120ea0a1281"
+    },
+    {
+      "path": "protos/olecf.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/olecf.proto",
+      "sha256": "f48f350a3a1bdee871246ca2209c5edae6a10c25309d24ddbc32d0ef2d716624"
+    },
+    {
+      "path": "protos/pe.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/pe.proto",
+      "sha256": "90eb5d83904f29c37ba9c40a2b7a25582bc37b80fc2cd16f2e86f43ca5cc09f2"
+    },
+    {
+      "path": "protos/string.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/string.proto",
+      "sha256": "07895ce286e5fcc6dccd1169398b0d2be5c9562c726773b3e414af4c8c9b1026"
+    },
+    {
+      "path": "protos/test_proto2.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/test_proto2.proto",
+      "sha256": "0f54959dc8ac3a69da39406421938455bc4cac4a9ad43aa0b0c4c1751b7fd6ad"
+    },
+    {
+      "path": "protos/test_proto3.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/test_proto3.proto",
+      "sha256": "8ad1b594c7c6c73404fb354da92ecf16ea9240bc59160bc6fd25f302ef9b75ad"
+    },
+    {
+      "path": "protos/time.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/time.proto",
+      "sha256": "07f409416aa01a12da7fcba688187a9048316f9f8890e8022f0d6611cb3d1b98"
+    },
+    {
+      "path": "protos/vba.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vba.proto",
+      "sha256": "244682fa6e82154b7e495ab7f35c9ee0333030109f3e633bd217019393a38b6c"
+    },
+    {
+      "path": "protos/vt/analysis.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/analysis.proto",
+      "sha256": "2908eb5b1bf173d3373571fc82d8023b36f766317d4ad089ec7174564b11d225"
+    },
+    {
+      "path": "protos/vt/filetypes.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/filetypes.proto",
+      "sha256": "8e29b69d5e49008facbc81970761af6cab436584b3ab02d93043ed710d3f2f4f"
+    },
+    {
+      "path": "protos/vt/gti_score.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/gti_score.proto",
+      "sha256": "64ca3248a543412d72e03bbdfeed31c4a19d74d7ebb598b224d80caf42283e74"
+    },
+    {
+      "path": "protos/vt/hunting_gti_score.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/hunting_gti_score.proto",
+      "sha256": "80197ec00212faa85c3f7d8e3f934a93fafae54e3a04a68cd1c30ade9da07fbb"
+    },
+    {
+      "path": "protos/vt/sandbox.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/sandbox.proto",
+      "sha256": "97d326f97baaf874d4ed3667e834b9e2f900205a64750a6c243c3ffa691148a6"
+    },
+    {
+      "path": "protos/vt/sigma.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/sigma.proto",
+      "sha256": "d5ab5d88a2ed55348355e0d3ef86acaae7e0495496b1055d706798cfed79d810"
+    },
+    {
+      "path": "protos/vt/submitter.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/submitter.proto",
+      "sha256": "a65c42386b8e66e460e3af9acf977184b869a9095e4992fb3f8dfe56844f1dfe"
+    },
+    {
+      "path": "protos/vt/titan.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/titan.proto",
+      "sha256": "79fc9eaa5a88e195657b2895d49a92b857a7773e2fa68a89f09d1d2811799320"
+    },
+    {
+      "path": "protos/vt/tools/net_analysis.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/tools/net_analysis.proto",
+      "sha256": "27028cc0aae5b3382f4a52f4a057b1f1b09bdaa36f87fd4bb178298b671acc54"
+    },
+    {
+      "path": "protos/vt/vtnet.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/vt/vtnet.proto",
+      "sha256": "d9ce28ea675314dd5536ccf9c518c912c0c45b7c94197360fd2254d05d5eb87b"
+    },
+    {
+      "path": "protos/yara.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/yara.proto",
+      "sha256": "439a3b097713d9d37a92e1581d9569f48e50e3080f760bee8095584dc0b1f299"
+    },
+    {
+      "path": "protos/zip.proto",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/modules/protos/zip.proto",
+      "sha256": "95887b42c76c93466b404c4962b20867af0b8a418fe95baad2aa0498a776878e"
+    },
+    {
+      "path": "grammar/mod.rs",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/tokenizer/mod.rs",
+      "sha256": "6e2836ac54c439a243ef48e37e40f5fe8f8f589b7f3c598bb1f2e7c5a2e8d6c7"
+    },
+    {
+      "path": "grammar/tokens.rs",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/tokenizer/tokens.rs",
+      "sha256": "04539f26c7808af2083ceb2f629434a295222f899fdfa22aa5ff330f2e92c7a6"
+    },
+    {
+      "path": "grammar/parser/mod.rs",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/mod.rs",
+      "sha256": "f8de26d668830ec08bd74a69df7bdb8bf631e7d6ce8fd1bff31abd99aa416bae"
+    },
+    {
+      "path": "grammar/parser/token_stream.rs",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/token_stream.rs",
+      "sha256": "6946d12579e127f48fc2507c016a3e8ad91778a81e5f301a599b29078e5cf52d"
+    },
+    {
+      "path": "grammar/module_structure.rs",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/types/structure.rs",
+      "sha256": "451002dfd376b4abbc9280657ad0ce2f95e24db82e471e8e927d132aab25701e"
+    },
+    {
+      "path": "corpus/parser/arithmetic-ops.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/arithmetic-ops.in",
+      "sha256": "52b4ca76bea0b3026aed1c98cea0404864e79b352ced5f3abcb4fc8b7f9bd507"
+    },
+    {
+      "path": "corpus/parser/basic-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-1.in",
+      "sha256": "c56f76fd69197daf8187618f05d60f5dfbf90a9d1a3859443f287bbcd0577937"
+    },
+    {
+      "path": "corpus/parser/basic-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-2.in",
+      "sha256": "a0912de8583dbaef0345631bdb1295e415f4cbfc5bef4981b0a55571b2c7217f"
+    },
+    {
+      "path": "corpus/parser/basic-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-3.in",
+      "sha256": "5dfec1cc5c87fa0e5b39393cb9ecb32d911463758e2931353ae1df41a125204d"
+    },
+    {
+      "path": "corpus/parser/basic-4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-4.in",
+      "sha256": "9b7aa2f4464f99b515e49d95c537d51eef4a8b861af96c3bf7dac446d00e9655"
+    },
+    {
+      "path": "corpus/parser/basic-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-error-1.in",
+      "sha256": "b3b18aaa7fc3fefa2441ae7b8151d52dced42bcfdd83487d0a288fb0e3f6267e"
+    },
+    {
+      "path": "corpus/parser/basic-error-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-error-2.in",
+      "sha256": "fa18e4dd93c9f6f4d60dd5ef64496d47b2613fa62f4591b5977bd88bf2a8a69c"
+    },
+    {
+      "path": "corpus/parser/basic-error-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-error-3.in",
+      "sha256": "dc932cce15af99591cde0c7754804ff263c47ec499f2380f1d88081c94b7eabc"
+    },
+    {
+      "path": "corpus/parser/basic-error-4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-error-4.in",
+      "sha256": "8a7a5408e13832f934ad46c7f5ac295cd5348319affb9c6be6b1720785317837"
+    },
+    {
+      "path": "corpus/parser/basic-error-5.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-error-5.in",
+      "sha256": "9addd048d7944cccf4b3b271702ba24003c772b277a321d1ad49b449b9b37035"
+    },
+    {
+      "path": "corpus/parser/basic-error-6.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/basic-error-6.in",
+      "sha256": "d5ac2df8a8fbeb57fcb56919a248d84e52e66265aef9d241f1bafbbb8516b8ba"
+    },
+    {
+      "path": "corpus/parser/bitwise-ops-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/bitwise-ops-error-1.in",
+      "sha256": "76b206c3a29aecc2f5c3135e9f77229855de4c2e76dba0dd98efda7151ea00e1"
+    },
+    {
+      "path": "corpus/parser/bitwise-ops.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/bitwise-ops.in",
+      "sha256": "972cdee6d7971420f67cb21de1f78f8af83bfcc17bc0caa55a0940244b944fa7"
+    },
+    {
+      "path": "corpus/parser/comments.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/comments.in",
+      "sha256": "cd0524f934dbe3ce11d44e04d5e255fad8aa68ff60f489e198d369f921bf0ee0"
+    },
+    {
+      "path": "corpus/parser/expr-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/expr-1.in",
+      "sha256": "57ef3a222e91655791447cf616a37c6bae52542533fdb5e85c75101fe8af3944"
+    },
+    {
+      "path": "corpus/parser/expr-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/expr-2.in",
+      "sha256": "0466cca3e31dfdb5f0bd9f6312b06be7747a9d6dfc1f06a0c2c94d7a6fb43ba1"
+    },
+    {
+      "path": "corpus/parser/expr-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/expr-3.in",
+      "sha256": "23c3a56a610092ec4c9fea3ed22360a05d762b5a43bc1769a227b96bfb40d8c8"
+    },
+    {
+      "path": "corpus/parser/expr-4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/expr-4.in",
+      "sha256": "189b45a0e48cdbb543ab431e0801675f33682d8bee137f099c839c679e7ee274"
+    },
+    {
+      "path": "corpus/parser/expr-5.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/expr-5.in",
+      "sha256": "274733566623b7b8388555ea18e5c8c7270f36629ccccb6ded935e4f1a074b7c"
+    },
+    {
+      "path": "corpus/parser/expr-6.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/expr-6.in",
+      "sha256": "8326254e2d53aee38b5faeaf2a91a43e69afebc3bfba30d4782e8ff36e447fa3"
+    },
+    {
+      "path": "corpus/parser/expr-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/expr-error-1.in",
+      "sha256": "b61e8dda57dae5a788cf7bd09be6dbe1b4d4848a7a538b88fbf4e6eef90a17fe"
+    },
+    {
+      "path": "corpus/parser/for-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/for-1.in",
+      "sha256": "3119ce798f2d6ca38857cbf0ebb9473a231ad6fecad94278e305a22586fca9b8"
+    },
+    {
+      "path": "corpus/parser/for-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/for-2.in",
+      "sha256": "aa59492c00b7a867b6171715e86cc8bd563aa7603c405fdc7f23dbd9ced62dd3"
+    },
+    {
+      "path": "corpus/parser/for-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/for-3.in",
+      "sha256": "02ff0eae4f3988972854e2c7f4f631ff14f0314cc8cbde5230a1048b0649b414"
+    },
+    {
+      "path": "corpus/parser/for-4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/for-4.in",
+      "sha256": "ac356a73d259336cd56a44cfb29539b09762e4649514bcaf78ea18facc3bd4d0"
+    },
+    {
+      "path": "corpus/parser/for-5.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/for-5.in",
+      "sha256": "14eed6dc35361c6d4c2981606a50e12bb25b1f4d10edc83a4e15b4cfe3ba6481"
+    },
+    {
+      "path": "corpus/parser/for-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/for-error-1.in",
+      "sha256": "e0cc2933d5623c6b387eff74b77dabacdf4cd70c2e212f375d4839268fde1b44"
+    },
+    {
+      "path": "corpus/parser/for-error-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/for-error-2.in",
+      "sha256": "e8c9f380546f40aa427aaaf867bda565f55c490bed41929541c3e0fdc2f560b8"
+    },
+    {
+      "path": "corpus/parser/func-call.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/func-call.in",
+      "sha256": "0c6d77eb08c33ddb5442dedf3beddb3aff67c90fc2e77f2740f2f6dc2f56ec8e"
+    },
+    {
+      "path": "corpus/parser/hex-patterns-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/hex-patterns-1.in",
+      "sha256": "8d18545e13c844697fab8f709bf7d6fcb74fb0feba2c9b3776f8b1fe50f8924f"
+    },
+    {
+      "path": "corpus/parser/hex-patterns-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/hex-patterns-2.in",
+      "sha256": "6be802f2e8e5045d04a8314b5e964df7dc35c2d3154e5cad93702d9bb20518bf"
+    },
+    {
+      "path": "corpus/parser/hex-patterns-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/hex-patterns-3.in",
+      "sha256": "66885215b5e1c820ae6778c6f31c366c1273eac37279096ecdd3db3004462486"
+    },
+    {
+      "path": "corpus/parser/hex-patterns-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/hex-patterns-error-1.in",
+      "sha256": "d8ad9ebefb9576c09356264ed5eaa37d868e7d3af4f75ef0d6c185b1f9cf0c66"
+    },
+    {
+      "path": "corpus/parser/hex-patterns-error-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/hex-patterns-error-2.in",
+      "sha256": "c3a0eb55eafa1da002c88dae1f0fbf0d00be070d9dd3aba71ad05ef1cf564fc1"
+    },
+    {
+      "path": "corpus/parser/import.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/import.in",
+      "sha256": "e5bb04f6a322853df99bed04c5c2f580449a7f277f6b063bead669aa401d6f62"
+    },
+    {
+      "path": "corpus/parser/include.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/include.in",
+      "sha256": "8ac041401dbf86796218acb17ab9234091a9fe319967ca6c3613ee17f0680c5b"
+    },
+    {
+      "path": "corpus/parser/literal-underscores.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/literal-underscores.in",
+      "sha256": "d00a1539601000f21981eb1a202018d51aafe743a8a784205dce0f6276c647a1"
+    },
+    {
+      "path": "corpus/parser/meta-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/meta-error-1.in",
+      "sha256": "a25785b1d000085cd9cac91c2a4b70de227ba70d17ed30ad3f34dc002270c631"
+    },
+    {
+      "path": "corpus/parser/meta-error-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/meta-error-2.in",
+      "sha256": "fc2a346bcc5e5f3e100ba21a7f500fb9cb661f27c11c144d6411b406df00a539"
+    },
+    {
+      "path": "corpus/parser/meta-error-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/meta-error-3.in",
+      "sha256": "6e3a76bff4ba1916b75cc8f409190ad6b971e455279d3ee1191f95c477463939"
+    },
+    {
+      "path": "corpus/parser/meta-error-4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/meta-error-4.in",
+      "sha256": "73acb8831a1dc26444d6c79bba81620a889b15d6ee627e2748039007480db7a4"
+    },
+    {
+      "path": "corpus/parser/meta-error-5.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/meta-error-5.in",
+      "sha256": "a0cb340400650e9189c21491f9619acbc4c00a2e692522deaa41b9027498979a"
+    },
+    {
+      "path": "corpus/parser/meta-error-6.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/meta-error-6.in",
+      "sha256": "49292cb20fee89bcd79eeb79a249cebc172539c48f06f8920c85558ded8caa57"
+    },
+    {
+      "path": "corpus/parser/meta.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/meta.in",
+      "sha256": "b5b122ba30479ccde39f286fcf95c0faf2fb6c8db25503d38609d754074e2397"
+    },
+    {
+      "path": "corpus/parser/multi-error.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/multi-error.in",
+      "sha256": "ebecc8408cabd17505b30923f84bb2a4f48ece1303223c424c4449699c3ce4e1"
+    },
+    {
+      "path": "corpus/parser/of-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/of-1.in",
+      "sha256": "dbee5e8ae99547c7606dd90112bca6b55bf74f88788a8dd78582e45777a2b17b"
+    },
+    {
+      "path": "corpus/parser/of-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/of-error-1.in",
+      "sha256": "bb340dff11effef92115a085325cde3bfcbdd3238154b573e8518dc4594ff0ae"
+    },
+    {
+      "path": "corpus/parser/pattern-mods-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/pattern-mods-1.in",
+      "sha256": "2ae3b1c12e496eba6cf31bd60691988059da30e8ce027a45011e2fffa9aca763"
+    },
+    {
+      "path": "corpus/parser/pattern-mods-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/pattern-mods-error-1.in",
+      "sha256": "2b2afb03fb9458de396df7c24258c1b4be59d40f1bd50d6357938d890f93c7df"
+    },
+    {
+      "path": "corpus/parser/patterns-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-1.in",
+      "sha256": "ec3a53d11032c6bd24703818cc2e207e06b36d37ba41e644f15bd8759abeb64c"
+    },
+    {
+      "path": "corpus/parser/patterns-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-2.in",
+      "sha256": "dd713081d2d5f22c38b09deeddc368acacbe4af5e262ed206053377d218aef6b"
+    },
+    {
+      "path": "corpus/parser/patterns-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-3.in",
+      "sha256": "464eedfa2f261346ad4a2701fe29cbba99a97e36e346e30f63b78df0e6d8210f"
+    },
+    {
+      "path": "corpus/parser/patterns-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-error-1.in",
+      "sha256": "453db1a77afbcf19aaca9901a1ded5c34587dcc47197936c87e967b5bd1f8b7e"
+    },
+    {
+      "path": "corpus/parser/patterns-error-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-error-2.in",
+      "sha256": "d1d5fce7f5453b2f93ec751a91770d0604b285c341a9af2e3f8cf3eff265a250"
+    },
+    {
+      "path": "corpus/parser/patterns-error-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-error-3.in",
+      "sha256": "6a0d45a673f47bee6cc04eb4d321530fe20032ae7a6d8fa624ebbe736ed6e5f3"
+    },
+    {
+      "path": "corpus/parser/patterns-error-4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-error-4.in",
+      "sha256": "e9d0ef1d7e28f4306591f01ff60972b4b5aaa9d6ed842b5aaaa139aceeda3c61"
+    },
+    {
+      "path": "corpus/parser/patterns-error-5.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-error-5.in",
+      "sha256": "71586a51dda0bcd02740965983a28b1d509393cee4b0854a9ea4ad92e569d771"
+    },
+    {
+      "path": "corpus/parser/patterns-error-6.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-error-6.in",
+      "sha256": "92153d8980f39876e14c91d1bad60d8e86b707edd1ee66089a32fea6faf99543"
+    },
+    {
+      "path": "corpus/parser/patterns-error-7.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/patterns-error-7.in",
+      "sha256": "0cacacc1ac755e55f585c5a7df71b14eea6335667ca645fa6fdb76516fe2c2f2"
+    },
+    {
+      "path": "corpus/parser/rule-mods-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/rule-mods-1.in",
+      "sha256": "8476031cf08864ff9fea567ef39237e1eb15ea9891c3e0a97d0a5db436fe4a98"
+    },
+    {
+      "path": "corpus/parser/rule-tags-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/rule-tags-error-1.in",
+      "sha256": "173907ac7c92a9a1ba798acf5e6f8bf61bd81084ee57057e12eef9324001535e"
+    },
+    {
+      "path": "corpus/parser/rule-tags-error-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/rule-tags-error-2.in",
+      "sha256": "20db5c2bb30b703b8e1760b871c6d6303cb36b00dffde565212dc2e17fae9332"
+    },
+    {
+      "path": "corpus/parser/rule-tags-error-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/rule-tags-error-3.in",
+      "sha256": "c4da48cea5265001e3bee69818f571653c0e625f98f92c8b6fcb4601a610be91"
+    },
+    {
+      "path": "corpus/parser/rule-tags.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/rule-tags.in",
+      "sha256": "119f48908c58eeb912e9ef7e5e0ed7dca212e2e5f52aabd4554d33f54a9f0d2e"
+    },
+    {
+      "path": "corpus/parser/with-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/with-1.in",
+      "sha256": "c39eb636b681d7ee0a69c526b17c8d6a1a5eb55e74e6c718db213d3b9ebc8ba6"
+    },
+    {
+      "path": "corpus/parser/with-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/with-2.in",
+      "sha256": "dfd47c2cf0234d459242296f7da511c394ac0f34fed838b79f1f81ee5f796596"
+    },
+    {
+      "path": "corpus/parser/with-error-1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/with-error-1.in",
+      "sha256": "65a77ea205f830573e9e2b9b3a33756066dfc325fe9eae61adcb8656c71e992a"
+    },
+    {
+      "path": "corpus/parser/with-error-2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/with-error-2.in",
+      "sha256": "941172d77e3ea3a722537c7f3f2ff868ef2b9d3d8f142aa8b5e2256ea03d9d34"
+    },
+    {
+      "path": "corpus/parser/with-error-3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/with-error-3.in",
+      "sha256": "ce5327023e5ccba02545e0dee5487978f4af4347ea4730749bde05f01daeaf82"
+    },
+    {
+      "path": "corpus/parser/with-error-4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/with-error-4.in",
+      "sha256": "178a252a48676474faf66cd6075069084eff00854b525201075a07e4b4fb6afd"
+    },
+    {
+      "path": "corpus/parser/with-error-5.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/parser/src/parser/tests/testdata/with-error-5.in",
+      "sha256": "4c44c4d4f587bca94b66df26b175bf9e11905e70d6c8b64d23f7bb0736bcd73d"
+    },
+    {
+      "path": "corpus/compiler/errors/1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/1.in",
+      "sha256": "0a7358c93c4ada8bcb135e9fcd25560802a4bdf47c73f5d32c651e68ebffeb38"
+    },
+    {
+      "path": "corpus/compiler/errors/1.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/1.out",
+      "sha256": "72e3e8d25da24a1e32220f59be82e46e9e0885a0ec7cd5f7c8a3cf855854974a"
+    },
+    {
+      "path": "corpus/compiler/errors/10.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/10.in",
+      "sha256": "4f0453622dadb301088c37b182bb9edc9e8279fd14e2ce28241927a47a61225e"
+    },
+    {
+      "path": "corpus/compiler/errors/10.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/10.out",
+      "sha256": "56e2c90cc0db4c8fe84db01bee29825378fbfbb8c120dd17667ca665b2188dae"
+    },
+    {
+      "path": "corpus/compiler/errors/100.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/100.in",
+      "sha256": "fa9b5dd7f32a6074bc4a1748e72dd414104ca6c9ba791cdc9f2b25c2f7fb25d1"
+    },
+    {
+      "path": "corpus/compiler/errors/100.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/100.out",
+      "sha256": "e8b806ddd878d50d36f280a5d26357c2264a5f3b04896f1d8d88df3547e3fc6c"
+    },
+    {
+      "path": "corpus/compiler/errors/101.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/101.in",
+      "sha256": "2653367464a69b8c3f8a02f252a6effd33bd97c75ea4fc66464a029e5b9e79fc"
+    },
+    {
+      "path": "corpus/compiler/errors/101.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/101.out",
+      "sha256": "201dad3820b4e4bc95d5b2240c0a305991a385586ca6b8acc185caced5d658a8"
+    },
+    {
+      "path": "corpus/compiler/errors/102.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/102.in",
+      "sha256": "aa56c9c2b30328659e389fa7b9390b812e47acd2d482758849e65adc92abe2cd"
+    },
+    {
+      "path": "corpus/compiler/errors/102.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/102.out",
+      "sha256": "987ebd6e8a9177641ad0bf5986eb093ebac4839877a7e28b1c07817d242e6580"
+    },
+    {
+      "path": "corpus/compiler/errors/103.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/103.in",
+      "sha256": "ea0ad54b54c589f832315d0011478970424b1392e8a9f4d16b5c22665bc1f602"
+    },
+    {
+      "path": "corpus/compiler/errors/103.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/103.out",
+      "sha256": "68b53f5b0ef619095cfd00421b067e49a3ab64ca80fd93a9670d565bc833ad63"
+    },
+    {
+      "path": "corpus/compiler/errors/104.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/104.in",
+      "sha256": "b27aeeba841aaba5801cf035d661f0e04c218795ebae8a47febe1700ead9e48a"
+    },
+    {
+      "path": "corpus/compiler/errors/104.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/104.out",
+      "sha256": "edf2fbf87a18f4e0368c8b08aaf6182fb2e1fea73e62d8151c70c60a2503c7cd"
+    },
+    {
+      "path": "corpus/compiler/errors/105.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/105.in",
+      "sha256": "8a0732a326a4bcb5d2ef450814d5076ad8701cc292511921cfab89e17b5c5a9b"
+    },
+    {
+      "path": "corpus/compiler/errors/105.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/105.out",
+      "sha256": "f3bf3bd57b79f03a73c7192390c15e809a2de702e97a5a284f66b0c9e5a29fd9"
+    },
+    {
+      "path": "corpus/compiler/errors/106.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/106.in",
+      "sha256": "cff462cf0b8693638178ab9eda63468d431760acdf81660819581521aec670ad"
+    },
+    {
+      "path": "corpus/compiler/errors/106.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/106.out",
+      "sha256": "692e8f2f27da791eb97527b1f2481ca18e6c0ae91e45f247d9c1454b1394ef92"
+    },
+    {
+      "path": "corpus/compiler/errors/107.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/107.in",
+      "sha256": "29e29d0988b49bde020e07e453d0098a5020dce7751e047e387a54c4c373c51c"
+    },
+    {
+      "path": "corpus/compiler/errors/107.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/107.out",
+      "sha256": "54fa70ff1ab0906720ff5e269fe5dfe29fec4c584c4483b116ae6e9f3f97a22d"
+    },
+    {
+      "path": "corpus/compiler/errors/108.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/108.in",
+      "sha256": "c2b48f81b900312483f3f402550a0d13f6cf5a170186a0ba1bcd06f9c1faea34"
+    },
+    {
+      "path": "corpus/compiler/errors/108.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/108.out",
+      "sha256": "0a4dbffa5c72f6a3532697f1e67f1ff5dd83e8908630f82d99c59697912a10a8"
+    },
+    {
+      "path": "corpus/compiler/errors/109.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/109.in",
+      "sha256": "bbc70d54945b45375fcbe5df2e61d590b05009f0e30ede0cd9e64d4c29b34e4f"
+    },
+    {
+      "path": "corpus/compiler/errors/109.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/109.out",
+      "sha256": "664b1af62c577e6dac08fda2edbbaf95359513fb085cb382226c45936dfa7523"
+    },
+    {
+      "path": "corpus/compiler/errors/11.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/11.in",
+      "sha256": "53760d187e8fe3067e6c8377895332ff9456adf076e84dd82417c0e7c42bba66"
+    },
+    {
+      "path": "corpus/compiler/errors/11.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/11.out",
+      "sha256": "30aa7d1df369d3acea0284a464000128c0a7bb2513d5003a5fe898b0deb18261"
+    },
+    {
+      "path": "corpus/compiler/errors/110.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/110.in",
+      "sha256": "bbdd97070b67e327140a92a770f806beef77f747d227e31b4231c82ecbd9d87d"
+    },
+    {
+      "path": "corpus/compiler/errors/110.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/110.out",
+      "sha256": "27ba0664e31fe6b62139547fe422c17ce06f5b16208d4b12b073158563f7a2c0"
+    },
+    {
+      "path": "corpus/compiler/errors/111.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/111.in",
+      "sha256": "156918a25418ed3d2220f2f9f2fb303bc9ac807272fb7dcee8ff199de62b9f71"
+    },
+    {
+      "path": "corpus/compiler/errors/111.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/111.out",
+      "sha256": "70398a3728d4e48ecfb4548000b8ef2564d55d4db50253a869b84d06518bc954"
+    },
+    {
+      "path": "corpus/compiler/errors/112.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/112.in",
+      "sha256": "beb335c282943b9b122f384415ed79a6e7112c960b11fa87d15776f59ac9ec47"
+    },
+    {
+      "path": "corpus/compiler/errors/112.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/112.out",
+      "sha256": "bf6dec18ba390b9f1258cc8ea594ee69900e875eb0d576d42c504d9e978a8ad4"
+    },
+    {
+      "path": "corpus/compiler/errors/113.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/113.in",
+      "sha256": "4c953da57f723dd86c91e4d4b94a82f6ae8d22b3dea78064583505621feb9775"
+    },
+    {
+      "path": "corpus/compiler/errors/113.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/113.out",
+      "sha256": "d8d62f2232e825da5f6c3cec8b888dffef75fcc157dfc10eaaa3f24206825d8f"
+    },
+    {
+      "path": "corpus/compiler/errors/114.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/114.in",
+      "sha256": "8770e33769d86fb26c87cdcb3a9e6788a1511627018f14bc62a978d9cc40b2d4"
+    },
+    {
+      "path": "corpus/compiler/errors/114.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/114.out",
+      "sha256": "f46c95dd8e31821acc38a90a0a0724fc2c7584a40138611892e3288e1b0ad976"
+    },
+    {
+      "path": "corpus/compiler/errors/115.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/115.in",
+      "sha256": "d2216489e32a59705a634e5df01ab05ab03e647e2b5b3d582adc27b7fabf59b3"
+    },
+    {
+      "path": "corpus/compiler/errors/115.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/115.out",
+      "sha256": "26b8a2adb2f740dffe64ee468df70255cca5b58f2735b4f7352deed5f5faf0fc"
+    },
+    {
+      "path": "corpus/compiler/errors/116.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/116.in",
+      "sha256": "e4754e0cdd2e370ea18ae1a072f440b4bd52a6ab9c9a826c118fd458c4cd7eb2"
+    },
+    {
+      "path": "corpus/compiler/errors/116.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/116.out",
+      "sha256": "efd933b720cdf185afcf36d29763354572f8108c3cf892cdecdd0ed38f3ed697"
+    },
+    {
+      "path": "corpus/compiler/errors/117.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/117.in",
+      "sha256": "7931a1a7c5203bee9d78f180c7443df21d39e2116b8e7dc0dc99a47c1536b661"
+    },
+    {
+      "path": "corpus/compiler/errors/117.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/117.out",
+      "sha256": "68d17426487050eb309dfe94ec562ccfcebf5857ba64c197816c5e27c8e81d0d"
+    },
+    {
+      "path": "corpus/compiler/errors/118.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/118.in",
+      "sha256": "eb289941e18b7083728833d392beb8e18d68d015ace8061006c6e9adc47cd33d"
+    },
+    {
+      "path": "corpus/compiler/errors/118.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/118.out",
+      "sha256": "d89cf3471371d50c9b840f20705a81a14af6a1f6043ee5ed28ef4e4a39af90ce"
+    },
+    {
+      "path": "corpus/compiler/errors/119.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/119.in",
+      "sha256": "3d7e98cbd5b69a2095215ddde15c271964bf95e9a923df0e94d3e88febc41cd9"
+    },
+    {
+      "path": "corpus/compiler/errors/119.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/119.out",
+      "sha256": "bb8d96fedf72a6c3dfe1cf9a60b89dd9bd9ec1153f349cdf891ff6dcd8381084"
+    },
+    {
+      "path": "corpus/compiler/errors/12.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/12.in",
+      "sha256": "f4ef87301dc83f14ad53a2fcfbcea46cf86ac75ab9e8048c3fc3554fca593336"
+    },
+    {
+      "path": "corpus/compiler/errors/12.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/12.out",
+      "sha256": "860261ac8c8f98014d3dbce300e948a4bcc53f65fb9746d464c269731c4df2c4"
+    },
+    {
+      "path": "corpus/compiler/errors/120.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/120.in",
+      "sha256": "41b2fb7ddabf5053340132d64576438485695ea6f4a4271407a7109550593496"
+    },
+    {
+      "path": "corpus/compiler/errors/120.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/120.out",
+      "sha256": "474333d3053f7e8bd4bbd33b44d9d318c132e3b7c5b27f1206636b57aae8a545"
+    },
+    {
+      "path": "corpus/compiler/errors/121.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/121.in",
+      "sha256": "060e02807fff78ef860d67f46dd991f1e66fe282db41756fc0a65b09e941c58a"
+    },
+    {
+      "path": "corpus/compiler/errors/121.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/121.out",
+      "sha256": "15f24cf2684ee43bd4603c6a7f693bbb3ce7194786df459a3ce6d9a4d553ec34"
+    },
+    {
+      "path": "corpus/compiler/errors/122.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/122.in",
+      "sha256": "68ec983ce12d86612806ba798ebb1c8a50977f5fde41ae897e09124f26663cbf"
+    },
+    {
+      "path": "corpus/compiler/errors/122.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/122.out",
+      "sha256": "152979258420725f551dc4766c894b2d697e61b0baa5e018930beea5c93451f2"
+    },
+    {
+      "path": "corpus/compiler/errors/123.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/123.in",
+      "sha256": "9b20ff68d7d9727e5205da002391c3dc2f5e03ae9b643f278a97e6c8f2258b32"
+    },
+    {
+      "path": "corpus/compiler/errors/123.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/123.out",
+      "sha256": "50fa9bb7284db9eac9f37cb6b32c47934786e4ef3523f5326d9236fabddf8bad"
+    },
+    {
+      "path": "corpus/compiler/errors/124.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/124.in",
+      "sha256": "d31b1575756aa6571ba50290485f34cbd25d6c14be66cd33a7f2e810344a5af8"
+    },
+    {
+      "path": "corpus/compiler/errors/124.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/124.out",
+      "sha256": "17819978c794a9dc22e769599c502cbe944ef4ed05537539e2f964ea3d5b58a4"
+    },
+    {
+      "path": "corpus/compiler/errors/125.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/125.in",
+      "sha256": "583712be89aacac435315de6cc5ba2b327bf13fa2be8d8e044b211437530568d"
+    },
+    {
+      "path": "corpus/compiler/errors/125.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/125.out",
+      "sha256": "fcb18f6ead6079b3a48fa7af85db6fcf5767a10c61cb77d7fec7dbdb625d2202"
+    },
+    {
+      "path": "corpus/compiler/errors/126.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/126.in",
+      "sha256": "f2655f875f5f2ac922a413bbec1dafb1156e256c47cd3aa8025c0cc8ae78b11d"
+    },
+    {
+      "path": "corpus/compiler/errors/126.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/126.out",
+      "sha256": "fdfe1407ec5cc95dc074d1649eac0da321d99afe4eb2e6cd8fd110dd9ba570af"
+    },
+    {
+      "path": "corpus/compiler/errors/127.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/127.in",
+      "sha256": "ee98b71e5dead2f06af9455cc4da18ced6019d364127eb8f11c0fe16bd9e0633"
+    },
+    {
+      "path": "corpus/compiler/errors/127.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/127.out",
+      "sha256": "023224a90ecb60a3bd16f0ddc9ea2c4b3bd4ef0577086bee4d9e9acf0ee4a28c"
+    },
+    {
+      "path": "corpus/compiler/errors/128.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/128.in",
+      "sha256": "1075ec77404df32c5c52379574d41bc490540c1e45db92c3cc2adc5d059eddd5"
+    },
+    {
+      "path": "corpus/compiler/errors/128.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/128.out",
+      "sha256": "820c8a67eef579d948dd4e83658f11e99dac237f5c1897030d48928646455511"
+    },
+    {
+      "path": "corpus/compiler/errors/129.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/129.in",
+      "sha256": "3a22d075fd13db7ebd97549e3ad0b657d5c4ef3583947d703c0b9b5f1fa4930f"
+    },
+    {
+      "path": "corpus/compiler/errors/129.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/129.out",
+      "sha256": "a91d40a02376bf2f108e31db070d15e4908ab242dfa41132032dce84be336d9e"
+    },
+    {
+      "path": "corpus/compiler/errors/13.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/13.in",
+      "sha256": "c5e31b49198ffd9a80e3563212bb3b6203b4a3b56f563297297bd7cca3bb0aa9"
+    },
+    {
+      "path": "corpus/compiler/errors/13.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/13.out",
+      "sha256": "3d00461144bd54440b9376026c1423c6355064027cc54fb51eeb53e0ea502f1d"
+    },
+    {
+      "path": "corpus/compiler/errors/131.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/131.in",
+      "sha256": "6a41012d53820d345a60389e02199a221af7d86e0e4b35fd90817db063ace431"
+    },
+    {
+      "path": "corpus/compiler/errors/131.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/131.out",
+      "sha256": "532f716266325e540304866f9f58eb1de0fd7322c40758102edd2477150ffb46"
+    },
+    {
+      "path": "corpus/compiler/errors/132.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/132.in",
+      "sha256": "309f775005d8fa600c03590ce13b0b3be363804a313a02155c147d3983170bcc"
+    },
+    {
+      "path": "corpus/compiler/errors/132.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/132.out",
+      "sha256": "8a7f55128ca9f39f07bf0baf2a7dc83d304a18c2294a4f7da90ef42ed2efd70e"
+    },
+    {
+      "path": "corpus/compiler/errors/133.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/133.in",
+      "sha256": "22a8948a295c4552a1209e736a403d72da769c08afc875e4e897b97be3c803f6"
+    },
+    {
+      "path": "corpus/compiler/errors/133.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/133.out",
+      "sha256": "5fcbf0253de7eafea5941fa031a11649c92fe2e7fd8ba6d77685fcf1e0f70d27"
+    },
+    {
+      "path": "corpus/compiler/errors/134.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/134.in",
+      "sha256": "af92474c44e642f664cae1ebedfa707008086709cd7918ab9dc855eb842bc560"
+    },
+    {
+      "path": "corpus/compiler/errors/134.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/134.out",
+      "sha256": "8688d34d667e79f94d6217c596858bcaf05427502435ad4a4c0b8234edefe673"
+    },
+    {
+      "path": "corpus/compiler/errors/135.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/135.in",
+      "sha256": "3af1370c8fb93add558dece408d10d4423474059aa6ef189a60f46883878167f"
+    },
+    {
+      "path": "corpus/compiler/errors/135.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/135.out",
+      "sha256": "481fc67525d213d4c361db9d11de0cb479b792d1324172b07a1ecd217d6360d6"
+    },
+    {
+      "path": "corpus/compiler/errors/136.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/136.in",
+      "sha256": "d87a073354fb84ab0ee7b3970f415404c775d281e93dfcf28a7f1cfca2f1ccfe"
+    },
+    {
+      "path": "corpus/compiler/errors/136.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/136.out",
+      "sha256": "0bcff9413d638ead86fbff311e595483b78b8b8a3f7f54eaead1721d7563d7b6"
+    },
+    {
+      "path": "corpus/compiler/errors/137.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/137.in",
+      "sha256": "3860d068230c028ee5a8c41ff5b9ee294d61c30b0b56b62452a78e14f431db98"
+    },
+    {
+      "path": "corpus/compiler/errors/137.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/137.out",
+      "sha256": "fd410e10571b059144aa64bd64c540bff803bb5ac4e6e60efad902df532fdda4"
+    },
+    {
+      "path": "corpus/compiler/errors/138.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/138.in",
+      "sha256": "14f21e77a8ca23cbffdfb929ade67788a6b34c389cb508afe28927a7b59274bd"
+    },
+    {
+      "path": "corpus/compiler/errors/138.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/138.out",
+      "sha256": "0ccb508d6948e2372ed1caefa77e9126618caf7600e21215c9bac94d71f34f8a"
+    },
+    {
+      "path": "corpus/compiler/errors/139.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/139.in",
+      "sha256": "97bf3b636d4768350b5bc6b7b574fbd6b59e48de33bbd383eb40f28c1dfa3ec0"
+    },
+    {
+      "path": "corpus/compiler/errors/139.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/139.out",
+      "sha256": "d5968f53f68f7189c13c5521a3edfd52a0ffb174cbf203053050e1ae0f5453f3"
+    },
+    {
+      "path": "corpus/compiler/errors/14.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/14.in",
+      "sha256": "3a5808460c0265cfefb7e166621ec2ac2d0884b176f4769c27ac0fa3dd412440"
+    },
+    {
+      "path": "corpus/compiler/errors/14.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/14.out",
+      "sha256": "e9684527fde9475cdb44c8c97c11ab4bbd89c22ab0f59c200d4f664d350dd8e2"
+    },
+    {
+      "path": "corpus/compiler/errors/140.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/140.in",
+      "sha256": "c4ea7ee6c2eba24faffee860fd55911801e060a91c32a9aca3ac0c9cf3bc9fae"
+    },
+    {
+      "path": "corpus/compiler/errors/140.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/140.out",
+      "sha256": "b18e569e4821a734c11b16c1aa8cf6349ea3c7e79f01aad50753e1e2028c1a13"
+    },
+    {
+      "path": "corpus/compiler/errors/141.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/141.in",
+      "sha256": "1f9fbf4f324fcaa30704ecc69881bb2c462e8b8305cfc2a20b7bc14d31c8b209"
+    },
+    {
+      "path": "corpus/compiler/errors/141.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/141.out",
+      "sha256": "ef5f4747ff8d801462570ffe959d196894b94b956700131cc2690965b2e01f99"
+    },
+    {
+      "path": "corpus/compiler/errors/142.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/142.in",
+      "sha256": "e31a0e2ceb13a365c1c93ea1d08cde2b046845cfd5fe5f59bae204ce6d2b0e13"
+    },
+    {
+      "path": "corpus/compiler/errors/142.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/142.out",
+      "sha256": "d50f0fb261407af6e356cd918cea56fec01a8b2248425027e9052e1e8df8d77f"
+    },
+    {
+      "path": "corpus/compiler/errors/143.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/143.in",
+      "sha256": "a143addb83a633d32f389366d97d874d441135cfdc4b6cfc9b0189662aac0103"
+    },
+    {
+      "path": "corpus/compiler/errors/143.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/143.out",
+      "sha256": "0350fa6a92600eb012cb9641e36a28ea5993e56bd1aa2e5954973ef4cce44928"
+    },
+    {
+      "path": "corpus/compiler/errors/144.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/144.in",
+      "sha256": "60b7a23211213792eb71e789dd1cdae956a896cd7fb3ce60578a60763e8440ce"
+    },
+    {
+      "path": "corpus/compiler/errors/144.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/144.out",
+      "sha256": "25da4019b613f251c14688b07d2846775ee2d8cf75545358df8f16fcb7d403bf"
+    },
+    {
+      "path": "corpus/compiler/errors/145.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/145.in",
+      "sha256": "16bfab918004a1c5e0ebb91058d620f337c9bcfde78a28d4abcfc7c8b5204494"
+    },
+    {
+      "path": "corpus/compiler/errors/145.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/145.out",
+      "sha256": "958ac8c500cb3e85d560106f5f4029c88f2c2e83a949a57f5ed4a1dc27bf37a4"
+    },
+    {
+      "path": "corpus/compiler/errors/146.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/146.in",
+      "sha256": "6c91e08132f5cf7af9e7a79524680450ef2fc24dd17cb5774e6bd9ce7ffc698f"
+    },
+    {
+      "path": "corpus/compiler/errors/146.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/146.out",
+      "sha256": "305c4fd64ace1a09d5477809030c686eea7d5e62f458e1e5a9e3be089ed57871"
+    },
+    {
+      "path": "corpus/compiler/errors/147.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/147.in",
+      "sha256": "bfc4170d89915da65520e01a4bf3a6beaf251c12cd6b9959c89b76f36a4a6855"
+    },
+    {
+      "path": "corpus/compiler/errors/147.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/147.out",
+      "sha256": "ead3d8f63cac0a18a798b2bd521c2441572b66f228cd0a6b0e078fb38b46e034"
+    },
+    {
+      "path": "corpus/compiler/errors/148.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/148.in",
+      "sha256": "f442c2d306268ce446ef5641f87214c2b8e974c9b76dcb779ad03154aaa48ae6"
+    },
+    {
+      "path": "corpus/compiler/errors/148.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/148.out",
+      "sha256": "5f10aa10265baf62b9eb4af0ff7b1ec773eae9ec2864e851bd883ba5d1a64bfa"
+    },
+    {
+      "path": "corpus/compiler/errors/149.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/149.in",
+      "sha256": "65877c861c10edb204b49f1b8390081f6bcc29f8a53fd68b8ad7d98c810ffb57"
+    },
+    {
+      "path": "corpus/compiler/errors/149.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/149.out",
+      "sha256": "a97fc8e9248334b7cd892f607d396d4b53b975c184e28f97ab4daacd4dd47d31"
+    },
+    {
+      "path": "corpus/compiler/errors/15.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/15.in",
+      "sha256": "b13f7e91e10c7c8a36ca5cafccfe18cba6e74567a4a7d44dc5b893dbf9baa562"
+    },
+    {
+      "path": "corpus/compiler/errors/15.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/15.out",
+      "sha256": "3f5a10306fbb9708b2a3b001261e00a6092e4649e3b9527102308c844c016c44"
+    },
+    {
+      "path": "corpus/compiler/errors/150.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/150.in",
+      "sha256": "ef625f893634cb8d2c6cf07a8055467e4fc9bb303e3570b7ae9b35729ba0041e"
+    },
+    {
+      "path": "corpus/compiler/errors/150.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/150.out",
+      "sha256": "a459d9be7c583cdae2f877749170b79967622c94bfbe3bfca83e22b36331e6cd"
+    },
+    {
+      "path": "corpus/compiler/errors/151.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/151.in",
+      "sha256": "1479c7de782f9119700ed5ac855eefb18e0f536b4b16f02d41deda2d838a964f"
+    },
+    {
+      "path": "corpus/compiler/errors/151.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/151.out",
+      "sha256": "7db08a4181cb938a098bad905ebc03535e493a72a7629b18f8aab10e4e6636f5"
+    },
+    {
+      "path": "corpus/compiler/errors/152.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/152.in",
+      "sha256": "497a96dcb1d24d356f24fbe23b8071a3b10f56dd0c241d984f48e6a2013250f0"
+    },
+    {
+      "path": "corpus/compiler/errors/152.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/152.out",
+      "sha256": "159d4a7c0b9fc329755ac4018384016192c151fd2d41f240cbb1e75b308ed61c"
+    },
+    {
+      "path": "corpus/compiler/errors/153.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/153.in",
+      "sha256": "a53c78f5e2522558edd11868a683cbf9b7967d470eff96a3ac1ab44b6f144606"
+    },
+    {
+      "path": "corpus/compiler/errors/153.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/153.out",
+      "sha256": "a1adf8dd565343fdfe11213a5c8989ca0d9b60f8437526cc3e0594bd847514f2"
+    },
+    {
+      "path": "corpus/compiler/errors/154.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/154.in",
+      "sha256": "3406190cd97baa148993908509521a71105d6b3471d4312d2481604cf14d2cef"
+    },
+    {
+      "path": "corpus/compiler/errors/154.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/154.out",
+      "sha256": "94f8e3c3c8a2ebd1662f3400ab32d3ec1bc31e55f72cfab939b42731777edfae"
+    },
+    {
+      "path": "corpus/compiler/errors/155.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/155.in",
+      "sha256": "72be30b24162ffcda4ce85407de94460bb2a06504f896677270b8ee732e76a18"
+    },
+    {
+      "path": "corpus/compiler/errors/155.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/155.out",
+      "sha256": "31bf27e8e6bf48132ddf97806d50692250df8842eaa62393808ac7a2fdf7cd6d"
+    },
+    {
+      "path": "corpus/compiler/errors/156.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/156.in",
+      "sha256": "0aecb76d04a52a285bb2b719317faf0c06865aff58827d4246e93d6adf2ad67d"
+    },
+    {
+      "path": "corpus/compiler/errors/156.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/156.out",
+      "sha256": "c04ce59c8a22fd6eb39ef31016408a038ab5583835819ada18fcf464c111dbbc"
+    },
+    {
+      "path": "corpus/compiler/errors/157.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/157.in",
+      "sha256": "0c56bc1655f8c47da1fe55408e5f9fa1625e67d2bcf8e57fb8c011598a47d9f7"
+    },
+    {
+      "path": "corpus/compiler/errors/157.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/157.out",
+      "sha256": "36a727271cc72b5b49078aac6f2b54a2f5160cae3a98214df64e67b2088188a4"
+    },
+    {
+      "path": "corpus/compiler/errors/158.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/158.in",
+      "sha256": "0c46ca41093a13337086288696716fdb97576cca744a0ceda9284c255e38e0ab"
+    },
+    {
+      "path": "corpus/compiler/errors/158.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/158.out",
+      "sha256": "d30634322828b973725385741f2aa26a92fa51c8960c612ca333ab24fa95d7a0"
+    },
+    {
+      "path": "corpus/compiler/errors/159.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/159.in",
+      "sha256": "b9bbbafa76eed1a92aa25c49024ee66c31ac285793f96d18d0ecff56d211cc4e"
+    },
+    {
+      "path": "corpus/compiler/errors/159.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/159.out",
+      "sha256": "7474f2b713b86e1abc048e1b6fa65c6b7260f5e9d9e503404788b181a878a482"
+    },
+    {
+      "path": "corpus/compiler/errors/16.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/16.in",
+      "sha256": "ba70a75c579b3883e1212e90005890173f9501ae9b3956ab5233f31755cc3e2c"
+    },
+    {
+      "path": "corpus/compiler/errors/16.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/16.out",
+      "sha256": "5459b5339766fb68f0987309cd133e8f25b39c05e9bd89b575b3ddafa4a584e9"
+    },
+    {
+      "path": "corpus/compiler/errors/160.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/160.in",
+      "sha256": "607b46c494ffb5f85bb838ad983d4443388c980113dc9f579a2b334ce077305d"
+    },
+    {
+      "path": "corpus/compiler/errors/160.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/160.out",
+      "sha256": "1fc52f97b709f0fb94689a94ffaf8979f21620f0244c92c5f2b057e52a32c068"
+    },
+    {
+      "path": "corpus/compiler/errors/17.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/17.in",
+      "sha256": "55a44be63414ef85a52187f9a4cf10d9583a250dde1d7ef8a548f24a93beb6f3"
+    },
+    {
+      "path": "corpus/compiler/errors/17.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/17.out",
+      "sha256": "945910d5f95988ca5e64a731e6dc2e0b835bd54750b5ac2ff1fc5f9fdc1b7567"
+    },
+    {
+      "path": "corpus/compiler/errors/18.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/18.in",
+      "sha256": "49d8eeeee926312663836157c4fa9b9c2c8984b34ef26e8d4d508e0ac8935f43"
+    },
+    {
+      "path": "corpus/compiler/errors/18.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/18.out",
+      "sha256": "aba1f0f23fab3e43d5539be2cb98686eb42a38caa7626c1526636a6575d7a2e9"
+    },
+    {
+      "path": "corpus/compiler/errors/19.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/19.in",
+      "sha256": "86dd37e6471f5603827f6f6730b17f613b2b6aefcd4fac8ae1ed5e54ef8afa4f"
+    },
+    {
+      "path": "corpus/compiler/errors/19.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/19.out",
+      "sha256": "52372a132eed3f555815aac76fdabc6b91a0bb2115b441ac2976a5cf2a364df4"
+    },
+    {
+      "path": "corpus/compiler/errors/2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/2.in",
+      "sha256": "7b235a3ebe54f62051fd47e18804099d464c66e2ee339cebcbdccac80bfa12c5"
+    },
+    {
+      "path": "corpus/compiler/errors/2.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/2.out",
+      "sha256": "9020b73e274271be47183d3331f374b2daf9278e959710da39fc272b9bbb4594"
+    },
+    {
+      "path": "corpus/compiler/errors/20.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/20.in",
+      "sha256": "c32f65a0abbe4238f3e1db8ec325ad22c24765713c33038b43af3efc74c23e01"
+    },
+    {
+      "path": "corpus/compiler/errors/20.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/20.out",
+      "sha256": "dde46ac48c72245256b045f951fad1dd1134c5b3f3cc1ad79a733985eda6f9a0"
+    },
+    {
+      "path": "corpus/compiler/errors/21.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/21.in",
+      "sha256": "146673a0c3f593350bad4d87d06d45579e556a3b6f5a93e2997745a149e5c438"
+    },
+    {
+      "path": "corpus/compiler/errors/21.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/21.out",
+      "sha256": "75f28eff78393ef8f682e3a2c6723db22175e49cbf4995e133ad4f00bc10bc78"
+    },
+    {
+      "path": "corpus/compiler/errors/22.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/22.in",
+      "sha256": "11aff74d443a66bd8caaaec01bdf090b5c34fc49c1b5843ad7529e6bbd6c5bc8"
+    },
+    {
+      "path": "corpus/compiler/errors/22.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/22.out",
+      "sha256": "524f674d6c030708e1231e0761e2f53ddaec713669c8ec796b29708e3da3d994"
+    },
+    {
+      "path": "corpus/compiler/errors/23.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/23.in",
+      "sha256": "18f71f350d9bf886797c25466ef3bf811c8f3233be97409d5ea9e28a56fe4377"
+    },
+    {
+      "path": "corpus/compiler/errors/23.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/23.out",
+      "sha256": "fe723dd5c4fe6275bb7cb6103d036b317824fcdd655d1a8fcb17ffb29d445ac4"
+    },
+    {
+      "path": "corpus/compiler/errors/24.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/24.in",
+      "sha256": "a4558897f7cb4cb2bdb4ba176b8a1c678cd6fa2e264f0cdf9063f62f7a411358"
+    },
+    {
+      "path": "corpus/compiler/errors/24.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/24.out",
+      "sha256": "2ad1f498ef8c9507cf0a336bc6e700365d0f8a77c1c0966eb1a37f1a7a00b2d3"
+    },
+    {
+      "path": "corpus/compiler/errors/25.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/25.in",
+      "sha256": "b002d65842f008cb3243835e46a5503e59904263a2c45bf45669e2148c90d1b4"
+    },
+    {
+      "path": "corpus/compiler/errors/25.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/25.out",
+      "sha256": "be4c327bef7d3c4a16116106eefbfbfe99453b78071eea42fa62c02e9efff70a"
+    },
+    {
+      "path": "corpus/compiler/errors/26.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/26.in",
+      "sha256": "2bc940b40d4d61df58e0dbd857666abe3429eac72f15d5ebbb9221d1c77d7b38"
+    },
+    {
+      "path": "corpus/compiler/errors/26.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/26.out",
+      "sha256": "78539e06642ab7c956324c5f8babdab90316ec90dc7da3a6a9b804d3a86624c0"
+    },
+    {
+      "path": "corpus/compiler/errors/28.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/28.in",
+      "sha256": "8cbdbb309e1c5357c5845805ff5e47bce4a5090b92684ca8990018d05c78417d"
+    },
+    {
+      "path": "corpus/compiler/errors/28.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/28.out",
+      "sha256": "e0863d2043c00552cf7682084d1ec5168fe7a77b3d8115fb64db29dd9933ceda"
+    },
+    {
+      "path": "corpus/compiler/errors/29.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/29.in",
+      "sha256": "bebac19955ccdc3cd5b385d9f085439546d13ccbdf0e5d0681c18b819cd2c1be"
+    },
+    {
+      "path": "corpus/compiler/errors/29.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/29.out",
+      "sha256": "674f639820219ec85d03cd96bff3529ad0ffa127650f20bdb9f6b87c83b45446"
+    },
+    {
+      "path": "corpus/compiler/errors/3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/3.in",
+      "sha256": "348b2aca2715d2dc5dc95cfcfb8c7dc6597b1e55a846310fff33c636362938dd"
+    },
+    {
+      "path": "corpus/compiler/errors/3.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/3.out",
+      "sha256": "530df08fb3ed51509876546bf11f99601ce9fdc60d175e7450219e5b743fcb85"
+    },
+    {
+      "path": "corpus/compiler/errors/30.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/30.in",
+      "sha256": "f357d23b766787039f592e0af677419f6cb7347e06a31c0d1013242a968562b0"
+    },
+    {
+      "path": "corpus/compiler/errors/30.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/30.out",
+      "sha256": "f833757affeafbf6d378715bdd4b029aa9beeafb60b8e6e78c07eabcb06c501d"
+    },
+    {
+      "path": "corpus/compiler/errors/31.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/31.in",
+      "sha256": "c19a6185f7954c43cebafb638c6000789d2a0e976ee38baf32ad5069a6b0c99b"
+    },
+    {
+      "path": "corpus/compiler/errors/31.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/31.out",
+      "sha256": "2276c5d1f01e1cbb2ff70f2f6d21c921ec5611784b3d53181206606806f69621"
+    },
+    {
+      "path": "corpus/compiler/errors/32.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/32.in",
+      "sha256": "979417382d3f41f6fcde2f51ab120384253dfdcaabef06694b63b08aac2736f1"
+    },
+    {
+      "path": "corpus/compiler/errors/32.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/32.out",
+      "sha256": "d469be9e1f156ddf569b25964c40a6cf32b9bd051f949bf99b685c30021d4a3e"
+    },
+    {
+      "path": "corpus/compiler/errors/33.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/33.in",
+      "sha256": "56d376175315f648f3bad44d0aace671901ed3b9bdaa324325e1c6a9514e400a"
+    },
+    {
+      "path": "corpus/compiler/errors/33.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/33.out",
+      "sha256": "597b8d0649c7abfe2f9b7bf7978e05b0f15f0a64e3e18a2a8095df6d91743d21"
+    },
+    {
+      "path": "corpus/compiler/errors/34.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/34.in",
+      "sha256": "95863649cf8eae69ef31ebb1ed7a0bde4435b14425d51fac2c57a6e8837de164"
+    },
+    {
+      "path": "corpus/compiler/errors/34.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/34.out",
+      "sha256": "88d6098d0e486e1f7b4a18d7fe467cbb6cf447656019e2df42ac49ad17569ca6"
+    },
+    {
+      "path": "corpus/compiler/errors/35.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/35.in",
+      "sha256": "2900bbcb62257d8ef1386947a9fcd3168679d6eace16180824fb533190a90f91"
+    },
+    {
+      "path": "corpus/compiler/errors/35.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/35.out",
+      "sha256": "c33eb594b2821cfffa77ca76425a69efe8bf4c83d5a33fc02dfc7ac9163e7e15"
+    },
+    {
+      "path": "corpus/compiler/errors/37.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/37.in",
+      "sha256": "c44522e2e1e896b01d84ebe77d78e9a0fe77adb220f3a48bb6ce693408e5c1dc"
+    },
+    {
+      "path": "corpus/compiler/errors/37.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/37.out",
+      "sha256": "e023c13bef8ce490ff4f366d634cf31f321dc8793a4339d53e80233950a826e8"
+    },
+    {
+      "path": "corpus/compiler/errors/38.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/38.in",
+      "sha256": "7a17b9f475a32aa84e4bc4b9bef9207edd8426d29eeb94a0678bcec016daac55"
+    },
+    {
+      "path": "corpus/compiler/errors/38.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/38.out",
+      "sha256": "a8bb781144f48d486f06844a327a3322cda9cfd49492a275d1265c8842974a42"
+    },
+    {
+      "path": "corpus/compiler/errors/39.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/39.in",
+      "sha256": "22570b25af86f17ec657c9cd93af1c989605f304c2b65e652e01c70fb3da85e5"
+    },
+    {
+      "path": "corpus/compiler/errors/39.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/39.out",
+      "sha256": "e76ac0a64e6900e01dad26c627cf7a7d5cb022e5453b812f0b017fac0057129f"
+    },
+    {
+      "path": "corpus/compiler/errors/4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/4.in",
+      "sha256": "727e05194d725bd0ac19eabc2a410571c71f80d66d06c59da97e24eea1e1b1c0"
+    },
+    {
+      "path": "corpus/compiler/errors/4.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/4.out",
+      "sha256": "8444bf5fc078b8877565878efb340aa698dcabfc26bb59cf80a937b47ada3acc"
+    },
+    {
+      "path": "corpus/compiler/errors/40.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/40.in",
+      "sha256": "a5ad586052a18cc75a3b8d21091c15aebd0a0f3c9264a8d1ffadb46572e6ac73"
+    },
+    {
+      "path": "corpus/compiler/errors/40.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/40.out",
+      "sha256": "9ece35a59acee7cdfce6a2eb578d30238bc053d3c21161b82f63dc9a9b49b559"
+    },
+    {
+      "path": "corpus/compiler/errors/41.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/41.in",
+      "sha256": "7133d4ce44e165f5a6917d809edb8e15ba4aa5f417f71f5cab52db6019a42d02"
+    },
+    {
+      "path": "corpus/compiler/errors/41.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/41.out",
+      "sha256": "c92edfd96c6988818554cc26fa1cbea7960419d6a9fb50f9861080275da622e0"
+    },
+    {
+      "path": "corpus/compiler/errors/42.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/42.in",
+      "sha256": "12cac864c77e4dcfebd107e5903f402e9a7780121c452b500bf7293c52acfb6a"
+    },
+    {
+      "path": "corpus/compiler/errors/42.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/42.out",
+      "sha256": "d3115d8a26e4f9ebe1620d57bc423f5e24ca0126cb02031d0d77a12bdc67cc99"
+    },
+    {
+      "path": "corpus/compiler/errors/43.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/43.in",
+      "sha256": "097b7b33a0d5897291ae28835f5f4ab4a4137d7394794846b9322f0b83dc711f"
+    },
+    {
+      "path": "corpus/compiler/errors/43.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/43.out",
+      "sha256": "ee7cc86aa2852e8b563b5adf513f5b17892f6d04c01a650a1a1ad60ed5ec7668"
+    },
+    {
+      "path": "corpus/compiler/errors/44.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/44.in",
+      "sha256": "d75679b6fd79ff9835d803d2518ae614c1d4907684863e698e8b873efeda233a"
+    },
+    {
+      "path": "corpus/compiler/errors/44.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/44.out",
+      "sha256": "2221dc4154ad708989598002d6ed23202b9068448fd186a57dfecce743e6ca41"
+    },
+    {
+      "path": "corpus/compiler/errors/45.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/45.in",
+      "sha256": "d3e2002556cc8b863bbd3ddde3beb614181d8769efa7dd6f0cc180413a1629c0"
+    },
+    {
+      "path": "corpus/compiler/errors/45.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/45.out",
+      "sha256": "c489511011b8f743121f731d2bde458d679cf71bf423d0a14fc3d334b637848a"
+    },
+    {
+      "path": "corpus/compiler/errors/46.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/46.in",
+      "sha256": "6de1ba182ad54756a619cfe6739ee5f20eb051b39c20766ea8e21574937de0e5"
+    },
+    {
+      "path": "corpus/compiler/errors/46.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/46.out",
+      "sha256": "7cfed2ea3ffc50bce7f2fb0a9054876c275d183320781eef428af818f6e4bf42"
+    },
+    {
+      "path": "corpus/compiler/errors/47.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/47.in",
+      "sha256": "ddc202a3c62ebbcada3e79d289309b775ec1690e09f52ca9b0e9a17e13bc3812"
+    },
+    {
+      "path": "corpus/compiler/errors/47.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/47.out",
+      "sha256": "6d7944ad263cab539a59b89d2c1d4f7a406a462e8edf288f55707cba67e8d5a8"
+    },
+    {
+      "path": "corpus/compiler/errors/48.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/48.in",
+      "sha256": "be7053941f7205e367bdb1e8d35c6c37f757705b8fe38ca88dfc48f2bcc26854"
+    },
+    {
+      "path": "corpus/compiler/errors/48.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/48.out",
+      "sha256": "068d3a7235bc4ba630c9030b07928d4cae31eb142cc4587de40b5a32ea2d94e1"
+    },
+    {
+      "path": "corpus/compiler/errors/49.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/49.in",
+      "sha256": "5947c0c132163c22adcf361f44dae73097178385eb46502664d4e697d8cb2eed"
+    },
+    {
+      "path": "corpus/compiler/errors/49.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/49.out",
+      "sha256": "b161e532eed3f10ff34f5d05f8941537c1ced251e9fa4361c89c16e128ad300b"
+    },
+    {
+      "path": "corpus/compiler/errors/5.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/5.in",
+      "sha256": "30130569a52e726e9f71747069bf56617fe5f9f6161ec2f24f46a8ec3f4a232d"
+    },
+    {
+      "path": "corpus/compiler/errors/5.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/5.out",
+      "sha256": "7c64f1fccab578dbb2cdbe5a0b0f9959af757a0caf87a4ae8f445daadd00ce6f"
+    },
+    {
+      "path": "corpus/compiler/errors/50.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/50.in",
+      "sha256": "e588421d081712cd6f392f609ff1d344fb2e2ea05bf983ecac962fabcadfdab8"
+    },
+    {
+      "path": "corpus/compiler/errors/50.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/50.out",
+      "sha256": "76985bde3bc59322f24f8a521d5a5a54700b0020a63aed1db098fd7575b36137"
+    },
+    {
+      "path": "corpus/compiler/errors/51.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/51.in",
+      "sha256": "a83163fc957311d5befabd004c45a7d1ba614f798eda1b6db05296b1526a1709"
+    },
+    {
+      "path": "corpus/compiler/errors/51.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/51.out",
+      "sha256": "f26366ccd5924ea78e397122841a62cc4d6ce9e2996e47d00dc2a25801694618"
+    },
+    {
+      "path": "corpus/compiler/errors/52.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/52.in",
+      "sha256": "6ede61a9d937c6d4aa33a892e80b51d2df4b6d1d9df98a4b00a57d2b95f56b0e"
+    },
+    {
+      "path": "corpus/compiler/errors/52.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/52.out",
+      "sha256": "7885677d6af2c95260a535ec48c922fac598d0c5d2774fd1d096f2f8e916e92e"
+    },
+    {
+      "path": "corpus/compiler/errors/53.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/53.in",
+      "sha256": "0fc19946205c35ac3bc1cae5f27058239a33b94c17cfe65c4bcde6fc2e50aefe"
+    },
+    {
+      "path": "corpus/compiler/errors/53.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/53.out",
+      "sha256": "4f1004d1a147e1c7e0561345eb2a2d0fec0507ff72e181e2f5638692791e54bb"
+    },
+    {
+      "path": "corpus/compiler/errors/54.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/54.in",
+      "sha256": "4362c096230dc1b2a9a198b92fb74e5a81ddac0188086c912bd9e28334aff722"
+    },
+    {
+      "path": "corpus/compiler/errors/54.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/54.out",
+      "sha256": "91534d29b48216600245f1af52e4f4e2b107f7ca63d6b20933a1266dac073429"
+    },
+    {
+      "path": "corpus/compiler/errors/55.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/55.in",
+      "sha256": "60540b7643908bf493994e0efdaf76ead99d5d65e6181bed643fac13a07f5ffe"
+    },
+    {
+      "path": "corpus/compiler/errors/55.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/55.out",
+      "sha256": "603d4eefcdd5dcfd013ef4253e838ebd85e947b45a8c8121e54d173520921d87"
+    },
+    {
+      "path": "corpus/compiler/errors/56.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/56.in",
+      "sha256": "ac264a1857d8d953c0f0f7bd325992b46dc9a1f89a4f6ddc9041066613429f7f"
+    },
+    {
+      "path": "corpus/compiler/errors/56.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/56.out",
+      "sha256": "4b6409152ddbd17953012e7af2cdbf0b25372a8ccdb6022eb4196e194794e4a7"
+    },
+    {
+      "path": "corpus/compiler/errors/57.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/57.in",
+      "sha256": "622c83a237b78d2ab33b6fb8ff3ece4ed1e5c8e2c09e731310ce814ee0f280eb"
+    },
+    {
+      "path": "corpus/compiler/errors/57.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/57.out",
+      "sha256": "2b36e0e8e79441c398298787848964cdb9a659f37f8e1ab813a90981d372c410"
+    },
+    {
+      "path": "corpus/compiler/errors/58.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/58.in",
+      "sha256": "616b3213c0a7ce5021c3de8d18b8022cce24f639897fcbd04139c4f1b7884f31"
+    },
+    {
+      "path": "corpus/compiler/errors/58.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/58.out",
+      "sha256": "8b4b6be808d052f3258be1224df5c2bb8a5fc09436ff5d52fa9bf27dffa746a6"
+    },
+    {
+      "path": "corpus/compiler/errors/59.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/59.in",
+      "sha256": "fdb0e99441b702494c25573f6266da37cb6b368879c1372c278936c6a4f22b45"
+    },
+    {
+      "path": "corpus/compiler/errors/59.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/59.out",
+      "sha256": "8ad4a8733660e9914473092e6bd848031f12539abad95640b88154bdf217c572"
+    },
+    {
+      "path": "corpus/compiler/errors/6.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/6.in",
+      "sha256": "657449b56c94c01fa7e83e896e700f6008c8d0a270ddd9b1d0a36e03ba2206a1"
+    },
+    {
+      "path": "corpus/compiler/errors/6.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/6.out",
+      "sha256": "b08ffc4f8f4d8af9787881f11f009040589e460b73ceb1be35e1aae23eee45a1"
+    },
+    {
+      "path": "corpus/compiler/errors/60.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/60.in",
+      "sha256": "85322b2821c427fa3b41f4086a3c67f78e36adf162c07ba55603ceba6c0f4860"
+    },
+    {
+      "path": "corpus/compiler/errors/60.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/60.out",
+      "sha256": "3614d15ab3efc28b074a7e118f61e4a87462d846bd92e1ce295fac04be947f32"
+    },
+    {
+      "path": "corpus/compiler/errors/61.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/61.in",
+      "sha256": "ad0bb4748e22b38c837d53215b77ff5ebac1236aa9cc13140c13b0324e447090"
+    },
+    {
+      "path": "corpus/compiler/errors/61.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/61.out",
+      "sha256": "baae9df502e97c5ed63004e415ebabd8347acb659acb01dd6664b16c56b6ea16"
+    },
+    {
+      "path": "corpus/compiler/errors/62.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/62.in",
+      "sha256": "f14c716ceed141c8bb4e272e581f565579660d1c252af2481467000035b11c25"
+    },
+    {
+      "path": "corpus/compiler/errors/62.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/62.out",
+      "sha256": "2eb8aef53eca597122ab1ff5ac0678a5d6ffa11eae756b163fe41c63ae55fff2"
+    },
+    {
+      "path": "corpus/compiler/errors/63.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/63.in",
+      "sha256": "23c7f5929fb51c9e71e3ba6412dcfb27e5678503d6058cea669cd65028000bf2"
+    },
+    {
+      "path": "corpus/compiler/errors/63.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/63.out",
+      "sha256": "3d22e2f601cc1661c0041e0d045b9c66289cf8aaa97dfbda6505cbf1d8b2dd52"
+    },
+    {
+      "path": "corpus/compiler/errors/64.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/64.in",
+      "sha256": "dc932cce15af99591cde0c7754804ff263c47ec499f2380f1d88081c94b7eabc"
+    },
+    {
+      "path": "corpus/compiler/errors/64.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/64.out",
+      "sha256": "6b5ec0aace6c0e1b95b8b1b0e93901c5fb7cdb015709fee42a7d232826f7cc03"
+    },
+    {
+      "path": "corpus/compiler/errors/65.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/65.in",
+      "sha256": "5a6a9cd47c40d80e7678e2ad06d0a5e59b5acd64ea2dfbc38a11720c6c8488b6"
+    },
+    {
+      "path": "corpus/compiler/errors/65.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/65.out",
+      "sha256": "283e8197714f17a71ac0957aefaf7000eda37c5be327897cd28e1ed88198a360"
+    },
+    {
+      "path": "corpus/compiler/errors/66.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/66.in",
+      "sha256": "5ba7102250fd4feee5fb4490a5bdb9fe5840b533bbf607217111844c077d324c"
+    },
+    {
+      "path": "corpus/compiler/errors/66.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/66.out",
+      "sha256": "53a31c0b7e83fa7b246bc1cdf68eb3a9560ba4b9a02cd269aff4b8bc36ecec35"
+    },
+    {
+      "path": "corpus/compiler/errors/67.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/67.in",
+      "sha256": "9addd048d7944cccf4b3b271702ba24003c772b277a321d1ad49b449b9b37035"
+    },
+    {
+      "path": "corpus/compiler/errors/67.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/67.out",
+      "sha256": "3f3269ca318c899d8297fc43312396e1a8411732c3feec8173f4e0f22a2a0be4"
+    },
+    {
+      "path": "corpus/compiler/errors/68.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/68.in",
+      "sha256": "e84bf9f8d51f6952a83f80a8ea3427f848daf3e578e89afca0d72b55cc3523e1"
+    },
+    {
+      "path": "corpus/compiler/errors/68.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/68.out",
+      "sha256": "54ad01e6f7e82eaaa2ee09025a6ee700d684f35321840a528024fdf29ecc1d12"
+    },
+    {
+      "path": "corpus/compiler/errors/69.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/69.in",
+      "sha256": "229ebfd9512919db0079113bcb0b7363a2ad17ee538352e93e781b9e45beb2bd"
+    },
+    {
+      "path": "corpus/compiler/errors/69.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/69.out",
+      "sha256": "2ffa419953b1464ff852b8b9547f3ca16bd62213f4b6c9a13ce6cb0759a11488"
+    },
+    {
+      "path": "corpus/compiler/errors/7.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/7.in",
+      "sha256": "c5197f9bb34c62a1c03d3860aecadd5a770c6f3516df4646146f90996a44a607"
+    },
+    {
+      "path": "corpus/compiler/errors/7.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/7.out",
+      "sha256": "20dbbd36e3fdb1ad38dbc4bdd2566d7da469a005f057436a14253f73f9487cac"
+    },
+    {
+      "path": "corpus/compiler/errors/70.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/70.in",
+      "sha256": "f8934fbb3f1420394cde15de55b488f4b320002895671664a4c8e9d723704a7e"
+    },
+    {
+      "path": "corpus/compiler/errors/70.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/70.out",
+      "sha256": "2ac1c46701e2efff84af9c4cd29aa1ea5d17650f760bfd7d11d8971004a13b0b"
+    },
+    {
+      "path": "corpus/compiler/errors/71.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/71.in",
+      "sha256": "eec245fd006425870fbd9eeaff9fa398e2c383c19b46397c318a1408da1a8cf1"
+    },
+    {
+      "path": "corpus/compiler/errors/71.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/71.out",
+      "sha256": "7cd3b38f0623f64921f19d6ddd84476d6e7b65a81ac7795fca13c7c6cb932691"
+    },
+    {
+      "path": "corpus/compiler/errors/72.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/72.in",
+      "sha256": "65d6f28fd73deedf0f9186b2a347828680efc4c59066fc291be6d80ac7f1d0f6"
+    },
+    {
+      "path": "corpus/compiler/errors/72.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/72.out",
+      "sha256": "474fc28a145bbe74cb7ff67913223e134fb08010199d3edd793aa7c241203d4f"
+    },
+    {
+      "path": "corpus/compiler/errors/73.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/73.in",
+      "sha256": "f0a73fb9ad1d105d91d56790106ad1fbba49b8a614fbc75bd7470dca60132360"
+    },
+    {
+      "path": "corpus/compiler/errors/73.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/73.out",
+      "sha256": "f57ee33cf7faad03ceabbb6f7dcb50cab28c45e710fde1e8beedf1b18d0d8c58"
+    },
+    {
+      "path": "corpus/compiler/errors/74.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/74.in",
+      "sha256": "0e855ae2714065e8368761299754409f524c913bc6b8654970004dd84aa55a38"
+    },
+    {
+      "path": "corpus/compiler/errors/74.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/74.out",
+      "sha256": "d976bd932c8827cb2a0fcdeee35143c51edf2d3c8a3d71d9fd42502b90e75b0d"
+    },
+    {
+      "path": "corpus/compiler/errors/75.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/75.in",
+      "sha256": "99c4bbc8ae6a2acdf257fd10e64eafe41226d31560a8c0f99155acf77207d7db"
+    },
+    {
+      "path": "corpus/compiler/errors/75.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/75.out",
+      "sha256": "46104c49870068897208e5f2a3227344bfb892d3a3d3e1836dde62f53f1f8c1b"
+    },
+    {
+      "path": "corpus/compiler/errors/76.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/76.in",
+      "sha256": "cdfe31f323907c1a05824cd7a5be87055b2c935dfbab3009f9365c724c86e8fc"
+    },
+    {
+      "path": "corpus/compiler/errors/76.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/76.out",
+      "sha256": "12bf57b1175d150d8ab87ff6b4af67d3ca2316826da35dd1e49a8afee86ba1ae"
+    },
+    {
+      "path": "corpus/compiler/errors/77.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/77.in",
+      "sha256": "0f97b9f4fea79e1cef8b0f1909dbd502822e3db90ddeae119b8ae240845ba0c1"
+    },
+    {
+      "path": "corpus/compiler/errors/77.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/77.out",
+      "sha256": "625a4fdd61f479020f50964e19e5ad82359f214c40d1dcb3ad16487dfca8c7eb"
+    },
+    {
+      "path": "corpus/compiler/errors/78.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/78.in",
+      "sha256": "020313c28fae22f2c291bb326f10ddb2c1f2d33d3f3fde3074c6a1bf75d7a9ad"
+    },
+    {
+      "path": "corpus/compiler/errors/78.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/78.out",
+      "sha256": "a264f0b288f56d794ede796b8d427d5e7e2e17bf7ef9e6ce71c8f9c07694b707"
+    },
+    {
+      "path": "corpus/compiler/errors/79.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/79.in",
+      "sha256": "299fd5b6709a5b734853786c0607602fa60484fcc85f2ecb0865f6498f18c91e"
+    },
+    {
+      "path": "corpus/compiler/errors/79.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/79.out",
+      "sha256": "7c95c9c1b732b2e396b1077eaf08f7ff6086c01aecbbc20b736d0ba85d90d8b3"
+    },
+    {
+      "path": "corpus/compiler/errors/8.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/8.in",
+      "sha256": "b37b6aa617a90b62857b9f93e2de462f6cbb61af5b16b98cdd5dd0e0ef329e67"
+    },
+    {
+      "path": "corpus/compiler/errors/8.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/8.out",
+      "sha256": "9e59fbcc7525cd639c58e06337c2594eeeca7e0a40a3df5d4e3ced8ea4ff4a90"
+    },
+    {
+      "path": "corpus/compiler/errors/80.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/80.in",
+      "sha256": "8311de680e3228b2ced88b3b6e18e607b9de0e75df12b41b6db8265057e4ae30"
+    },
+    {
+      "path": "corpus/compiler/errors/80.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/80.out",
+      "sha256": "cd3a0265977cb56ddc2a4bc939ddc964e2c609271fecd0ece6f7c4ec0f2216e0"
+    },
+    {
+      "path": "corpus/compiler/errors/81.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/81.in",
+      "sha256": "8c47c2a4dad66f44e39e3eb575bfbb9e77fc3e5319f08e26ef6ba2698164fe3d"
+    },
+    {
+      "path": "corpus/compiler/errors/81.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/81.out",
+      "sha256": "0bf20a52f3d326cdb9f4c44dc2c6123ec0dc357019d0c721e0f872bacc650309"
+    },
+    {
+      "path": "corpus/compiler/errors/82.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/82.in",
+      "sha256": "fe7d2ae00e59bd219ac48d5073a87fd1892559d4e4d0a060f227cc907c95cd8c"
+    },
+    {
+      "path": "corpus/compiler/errors/82.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/82.out",
+      "sha256": "a88da2bc0dd59658625f11b545395474abe4f08c3831159540fcb4dac1bd63c8"
+    },
+    {
+      "path": "corpus/compiler/errors/83.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/83.in",
+      "sha256": "80533d3e0fa8ab958f07a486edf804a62dc55f25f1e34fbfe6f4e1c720b26884"
+    },
+    {
+      "path": "corpus/compiler/errors/83.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/83.out",
+      "sha256": "69982660fe3a52d77af342e2df3f5be1e8d1b1a672b6e50ee73e1b5d77f24142"
+    },
+    {
+      "path": "corpus/compiler/errors/84.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/84.in",
+      "sha256": "35cef300acace51402b22112354405f460b1a37bd00262eda1de253be9b768c6"
+    },
+    {
+      "path": "corpus/compiler/errors/84.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/84.out",
+      "sha256": "b720847f7b7955cdd5b5827ccfed3daf13d761dc804ca0e56b6f80290a0b504f"
+    },
+    {
+      "path": "corpus/compiler/errors/85.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/85.in",
+      "sha256": "666da62c9c3be68d55d18b74083281f3070a0b06f734db3cf2f51dc3e43f2ec2"
+    },
+    {
+      "path": "corpus/compiler/errors/85.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/85.out",
+      "sha256": "232b4e25a95736ed381155014936c2933c90fdb1da7a0524e447477ec13ffd41"
+    },
+    {
+      "path": "corpus/compiler/errors/86.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/86.in",
+      "sha256": "8a3c0c88c1656093a1d4d2ddc87d0173147316aa0ef1050254c74e86eeb1f908"
+    },
+    {
+      "path": "corpus/compiler/errors/86.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/86.out",
+      "sha256": "1e797acb33d75a08cb03e9fbb7eee0b20aad9c997a1384beabba343bd7be558c"
+    },
+    {
+      "path": "corpus/compiler/errors/87.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/87.in",
+      "sha256": "5b912fd18e151610105ecbe990027569573454a8ca3806e6a264fac246e3867d"
+    },
+    {
+      "path": "corpus/compiler/errors/87.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/87.out",
+      "sha256": "2c9b0183333542be80b6a78beab5394436202bb9b9ce13163f4c79281735f391"
+    },
+    {
+      "path": "corpus/compiler/errors/88.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/88.in",
+      "sha256": "b28d8290d09351f5dbab4811f53b97e95affe9fa6c30c1efecaf14c89f97354a"
+    },
+    {
+      "path": "corpus/compiler/errors/88.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/88.out",
+      "sha256": "7652cadfd9d8cd565c9df9ce51577051d3d71fe23b8a9023129d9bd388d0702e"
+    },
+    {
+      "path": "corpus/compiler/errors/89.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/89.in",
+      "sha256": "567ebb152756edc1ab899accd749991b3e47f5e67d3bbaa0deb33d44db373446"
+    },
+    {
+      "path": "corpus/compiler/errors/89.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/89.out",
+      "sha256": "4cb8baca202a72c5ee37ae51c64e1797ac5c5004ee0da7175d0b3909ea8c5f7c"
+    },
+    {
+      "path": "corpus/compiler/errors/9.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/9.in",
+      "sha256": "034fb6a8d3d410fc8e19653c62b169f5d3885a6247061588fc841e2329263773"
+    },
+    {
+      "path": "corpus/compiler/errors/9.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/9.out",
+      "sha256": "0c9a96dbd76dd0d9f1b0e7a0bf15dd1036672fc9930fde922f44a25fca0afa2e"
+    },
+    {
+      "path": "corpus/compiler/errors/90.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/90.in",
+      "sha256": "0cf0c8805d0ae5ad8a82fdd68c7e987244df987f6f8bf8acea11853f36871b81"
+    },
+    {
+      "path": "corpus/compiler/errors/90.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/90.out",
+      "sha256": "2d6fc45753129cb422aca8a87aa1985ac396dd6d7a40d5b7cbaf302d96495fa3"
+    },
+    {
+      "path": "corpus/compiler/errors/91.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/91.in",
+      "sha256": "1dd3efe506ec241650a2b60fafcec616838cd93ad5ae49c6346e6a6daae8a08c"
+    },
+    {
+      "path": "corpus/compiler/errors/91.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/91.out",
+      "sha256": "cbd557eab14234c4d350068277066d171a77e7af4cbde28a0096f76f3346dd62"
+    },
+    {
+      "path": "corpus/compiler/errors/92.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/92.in",
+      "sha256": "5c4019a15b330f1bffbe4dc9a2540ae511c47fcc04f8e3a37a5a67222162deec"
+    },
+    {
+      "path": "corpus/compiler/errors/92.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/92.out",
+      "sha256": "7fc49249fb2302c991de462e1b8986fc18d93b545bfbe0cffcb6eec2e7dcf1d1"
+    },
+    {
+      "path": "corpus/compiler/errors/93.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/93.in",
+      "sha256": "830ffe357b1e9cf6ca172f87c7113a4b85621fca35d44f0d0dd4c1e6891d0b3f"
+    },
+    {
+      "path": "corpus/compiler/errors/93.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/93.out",
+      "sha256": "a6797c282a701f51c260231cc0504c1257c537f83715e2b8214b9368b1584d26"
+    },
+    {
+      "path": "corpus/compiler/errors/94.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/94.in",
+      "sha256": "ec7536251596ee6483e29a05c4a871991bb993774cbebe73047211b4732fb890"
+    },
+    {
+      "path": "corpus/compiler/errors/94.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/94.out",
+      "sha256": "5c229223c8287720d186b3f148ce08ae6fb23e9a60421fa5aa28b370d7466036"
+    },
+    {
+      "path": "corpus/compiler/errors/95.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/95.in",
+      "sha256": "682641bc81c80faa6e4381ab8c52502f321818a6161b4184d08c10d60a4e3f64"
+    },
+    {
+      "path": "corpus/compiler/errors/95.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/95.out",
+      "sha256": "4f678715cb736fb88f2ea29293e6c189a5844cfdc60f7bb0a864a0f11456e3e2"
+    },
+    {
+      "path": "corpus/compiler/errors/96.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/96.in",
+      "sha256": "b51186be1441365e3e7c175c9653843bacef1330c9af825f1e479a3a205f6e50"
+    },
+    {
+      "path": "corpus/compiler/errors/96.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/96.out",
+      "sha256": "b4713d9174d995e6cc55466b109f6fb81852fba315882350b7c8e2e5c5737bc2"
+    },
+    {
+      "path": "corpus/compiler/errors/97.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/97.in",
+      "sha256": "38631c78e11cfc39e0ae323288e9c879c18e72b2c78a36df0ac435b7d745a93f"
+    },
+    {
+      "path": "corpus/compiler/errors/97.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/97.out",
+      "sha256": "8556dae77c397bf3c22963322c91a33296907ebce1ec46dcc1b46d28a607f051"
+    },
+    {
+      "path": "corpus/compiler/errors/98.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/98.in",
+      "sha256": "3bcf96ad0c82b13fa29439726439f5e1f64d1d98914a75623f18878e2c0723e0"
+    },
+    {
+      "path": "corpus/compiler/errors/98.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/98.out",
+      "sha256": "e2ab6b8c05bd24a3638e81b4eb40d21f2aa2f22b0cec2dfda5ce9d9540d6367e"
+    },
+    {
+      "path": "corpus/compiler/errors/99.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/99.in",
+      "sha256": "da4184d7315af9434d8b3484439e9f8cb1590479a6f53052aa0056d076004f76"
+    },
+    {
+      "path": "corpus/compiler/errors/99.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/errors/99.out",
+      "sha256": "347a39fb526765ca06c661df973cb4e49e48a237eae3c010fe304a7ddcc537fa"
+    },
+    {
+      "path": "corpus/compiler/includes/a/a.yar",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/includes/a/a.yar",
+      "sha256": "3e1536ba786eadc4b3d22c55d9e432eea1b87446db870b0d591f80f3340b0085"
+    },
+    {
+      "path": "corpus/compiler/includes/b/b.yar",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/includes/b/b.yar",
+      "sha256": "f03316a5ad0d6c8e023e3934c990c0470f6186e4d04089135f8b4cad59ab4964"
+    },
+    {
+      "path": "corpus/compiler/includes/included_circular.yar",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/includes/included_circular.yar",
+      "sha256": "a1679dec751ceb77d5f3545a5f7d365930b7f4d8eb203e899adb7e9c2fdad50c"
+    },
+    {
+      "path": "corpus/compiler/includes/included_error.yar",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/includes/included_error.yar",
+      "sha256": "579cefe3043f9d02397e288b455bc223172030baf4c0bdcc3d1c5a2e53058d84"
+    },
+    {
+      "path": "corpus/compiler/includes/included_ok.yar",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/includes/included_ok.yar",
+      "sha256": "a385330d23d0d330711c238844df4c42a471b8cd24be59c4117fbbe57032db19"
+    },
+    {
+      "path": "corpus/compiler/includes/included_relative.yar",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/includes/included_relative.yar",
+      "sha256": "0d3b748e74435b3103f93be685ad886909d50903b36cae57dc5188553475b24d"
+    },
+    {
+      "path": "corpus/compiler/warnings/1.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/1.in",
+      "sha256": "7ef819600696cb401b849482f9b348137c9aa1215b1133a1cfdb47334a181199"
+    },
+    {
+      "path": "corpus/compiler/warnings/1.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/1.out",
+      "sha256": "df0723cccaf0287fbf30eb43ecd52ecd66bac5b10b645f8079808e6fedf9ab74"
+    },
+    {
+      "path": "corpus/compiler/warnings/10.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/10.in",
+      "sha256": "a91528f0a76e82f9a3ead1b803a09775cf85f8a82501de24c65febc6dc8c9ce4"
+    },
+    {
+      "path": "corpus/compiler/warnings/10.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/10.out",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+    },
+    {
+      "path": "corpus/compiler/warnings/11.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/11.in",
+      "sha256": "33f67caf93580f9498c3a0f98e7a7ec8e8819e9899b7361c82b76e8f20dc8e43"
+    },
+    {
+      "path": "corpus/compiler/warnings/11.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/11.out",
+      "sha256": "66ebbf63a7ede1f352723b015ae93fb49eb1a8adabc3658cbe3b93eca23d76eb"
+    },
+    {
+      "path": "corpus/compiler/warnings/12.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/12.in",
+      "sha256": "c6cd620cc6109e500eef945917ae7e139511f475370ceac9a5ea24af71dd5ff6"
+    },
+    {
+      "path": "corpus/compiler/warnings/12.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/12.out",
+      "sha256": "61ed07e6fd0e255442ee5b1001227e91a520a763c99a8099ac001f2536a35eca"
+    },
+    {
+      "path": "corpus/compiler/warnings/13.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/13.in",
+      "sha256": "ba350edbe1cdd256db0a69c01dfe1385c9a9e645c08604c201ba21cc6f94abbd"
+    },
+    {
+      "path": "corpus/compiler/warnings/13.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/13.out",
+      "sha256": "1e67a376d6fc7cb1c42051a129310baec38ed4cc22eec175728f91860812327d"
+    },
+    {
+      "path": "corpus/compiler/warnings/14.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/14.in",
+      "sha256": "a1dfcb793b5c9b293b20a42aeec6b6e2eaa6a7c6a64fcd11902e2e25ea9ac87d"
+    },
+    {
+      "path": "corpus/compiler/warnings/14.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/14.out",
+      "sha256": "9ffbd7c4a7ad9cb97b95c347c63fdb350cfacd053fd58a7d78a878edd446347d"
+    },
+    {
+      "path": "corpus/compiler/warnings/15.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/15.in",
+      "sha256": "f6a8aca58087ced2e080b1ce5fd2fcaac5ef0cb4641ec81c346925f2a6c9ffd4"
+    },
+    {
+      "path": "corpus/compiler/warnings/15.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/15.out",
+      "sha256": "d015c3122fcbae37149f134c6a1cacbfec7f9bd8f5ead723635a9009fce89c39"
+    },
+    {
+      "path": "corpus/compiler/warnings/16.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/16.in",
+      "sha256": "f90f6e82a878eeb8eea609f1c578d6dcbc0e515e3aef0887925bbcc1e86ffdae"
+    },
+    {
+      "path": "corpus/compiler/warnings/16.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/16.out",
+      "sha256": "fb900e7c2bc2f75f25a7633517103fbb45bd19d538b3dbd5c42ee609dffbc2e0"
+    },
+    {
+      "path": "corpus/compiler/warnings/17.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/17.in",
+      "sha256": "656db5929f4dd1b5dd9f39fbff10dfd1766c582688800f860d63bafcb363b377"
+    },
+    {
+      "path": "corpus/compiler/warnings/17.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/17.out",
+      "sha256": "f07b6a0b21640ee7dd5cc449d38a5c521358cd0fb8325b7fb755666e005317b7"
+    },
+    {
+      "path": "corpus/compiler/warnings/18.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/18.in",
+      "sha256": "a17b77ea222e5281fc3132f24851c0f8352e79787e69d7a155238dda15fbb9f4"
+    },
+    {
+      "path": "corpus/compiler/warnings/18.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/18.out",
+      "sha256": "067eeb97991502cb675b679128c1c205a8b97bc82d144277f36a90a011e46562"
+    },
+    {
+      "path": "corpus/compiler/warnings/19.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/19.in",
+      "sha256": "bf1ca948325f2f356bac0f5a1cfba713e1df121198bf0ebf337b62ffdd566254"
+    },
+    {
+      "path": "corpus/compiler/warnings/19.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/19.out",
+      "sha256": "7233ecfa4eaa93b2b901bd85720dcc82184f96880b2cf084b8bf4aff825eae66"
+    },
+    {
+      "path": "corpus/compiler/warnings/2.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/2.in",
+      "sha256": "4796ad5c554c151abd235ec84fdab90fd777f1b81974285d5a1d0a700bbdab56"
+    },
+    {
+      "path": "corpus/compiler/warnings/2.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/2.out",
+      "sha256": "2113cbe04a36b7d89ef4d4be96f5eac89ccb6308f47ae495c0431d2e768e68b0"
+    },
+    {
+      "path": "corpus/compiler/warnings/20.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/20.in",
+      "sha256": "0e7305f94df9ad79622f4e4651fecd13461c8caad35a4b6036d8700c31bbe1ca"
+    },
+    {
+      "path": "corpus/compiler/warnings/20.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/20.out",
+      "sha256": "72e51edc76f60fb1b53100e45722be0f9b678cac420a56225b29aa36c0bf7800"
+    },
+    {
+      "path": "corpus/compiler/warnings/21.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/21.in",
+      "sha256": "86bb7c31b6c7b7f54feacb541aee4a9fceb86fdaadefc77092a4a08a9731b905"
+    },
+    {
+      "path": "corpus/compiler/warnings/21.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/21.out",
+      "sha256": "63ebd7cad99421afce366720b08b249eefbf460422e2cb4dc0fa204f7cb5e9ba"
+    },
+    {
+      "path": "corpus/compiler/warnings/22.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/22.in",
+      "sha256": "d4967198412dd65c63c8d9fd86baedbe60b945d94276a661e6ce5bd0309d0c4d"
+    },
+    {
+      "path": "corpus/compiler/warnings/22.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/22.out",
+      "sha256": "ba641e2cd40e1d030e4caf2816c61aa766e53f550779a601782c5ad900a74b5f"
+    },
+    {
+      "path": "corpus/compiler/warnings/23.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/23.in",
+      "sha256": "089e73028d41d16d606d8326135bb0d9c06b41901c027989ac8c502773824f04"
+    },
+    {
+      "path": "corpus/compiler/warnings/23.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/23.out",
+      "sha256": "f09cdd6400bf602264168688127b6a822c9c2aeff6d99faa21fdcd7cca2be9d6"
+    },
+    {
+      "path": "corpus/compiler/warnings/24.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/24.in",
+      "sha256": "a8321ccb51d3cd5d81d0a6f32ad570eda763ab42c5c0bcac046cb9694d98aa16"
+    },
+    {
+      "path": "corpus/compiler/warnings/24.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/24.out",
+      "sha256": "fb32c773681aabc53188592d03a1d25b90fb51b7072f3033eb26cdaa74f75066"
+    },
+    {
+      "path": "corpus/compiler/warnings/25.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/25.in",
+      "sha256": "e48c1b6843de987fb64d73600bcd391a3b6b68a595c3b763bea290475ae65460"
+    },
+    {
+      "path": "corpus/compiler/warnings/25.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/25.out",
+      "sha256": "8defd9a2fa2cc34d4db4b02f07b5467b990935a23ea4491df88bc34ef9c2d481"
+    },
+    {
+      "path": "corpus/compiler/warnings/26.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/26.in",
+      "sha256": "80e1fb8e8d34a22653f14a331a17ad059d063f9a802b53342ef4225d2e3f3e64"
+    },
+    {
+      "path": "corpus/compiler/warnings/26.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/26.out",
+      "sha256": "0df2c3a9506be657a4c2dc41e2624bd630433435eda5457207e84183d2e1c09b"
+    },
+    {
+      "path": "corpus/compiler/warnings/27.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/27.in",
+      "sha256": "166452f1531606003bd6e86a6eecb4cfaece1a972ccf301e46539ed83288c873"
+    },
+    {
+      "path": "corpus/compiler/warnings/27.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/27.out",
+      "sha256": "5577b695b8b54f9d653bc5e289b37ca56abd04f2a584850186c2edfc8f7a5ee1"
+    },
+    {
+      "path": "corpus/compiler/warnings/28.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/28.in",
+      "sha256": "a60aa86ae877302f4e026cb928b4e6ac1cd1eed7109e91c307cd9d2a5af1aea0"
+    },
+    {
+      "path": "corpus/compiler/warnings/28.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/28.out",
+      "sha256": "8bb09b7558b91a267ebeb7ba8c74b39b4feee15a9d68b193aa43e8528ddf1fae"
+    },
+    {
+      "path": "corpus/compiler/warnings/29.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/29.in",
+      "sha256": "981dc30c055e11f0726ac1367bad16d9becafdda3cbb9745ea8d183c9676b336"
+    },
+    {
+      "path": "corpus/compiler/warnings/29.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/29.out",
+      "sha256": "e3e360efb740079de5a8e060fe486c1e50a0bf0b2a4bb8ad6f1eabb80e1a7770"
+    },
+    {
+      "path": "corpus/compiler/warnings/3.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/3.in",
+      "sha256": "8e33ed4ab4b9263a566ae245a7ce578eef0daed3f638f669ba32a063e7cb91f0"
+    },
+    {
+      "path": "corpus/compiler/warnings/3.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/3.out",
+      "sha256": "0d8bb35cd1ba9cab55d0624e71b5cd5a473ffaa415f68bf11366bb56abb4c280"
+    },
+    {
+      "path": "corpus/compiler/warnings/30.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/30.in",
+      "sha256": "2b1b2136a3e3e8641b2f4da9bf29c0e7585049c24114bf8de3871e2b675270fd"
+    },
+    {
+      "path": "corpus/compiler/warnings/30.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/30.out",
+      "sha256": "5dc4d6b5af2a0178669d4ce79f789bb2c7ba2fac2117b57f7ec1afdb2bd1d363"
+    },
+    {
+      "path": "corpus/compiler/warnings/31.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/31.in",
+      "sha256": "5ef093398179be646d3aef95400bfeb582af622fe13cf5aa326ae899ab0eefac"
+    },
+    {
+      "path": "corpus/compiler/warnings/31.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/31.out",
+      "sha256": "f16298a504c6cedb312c2dbef516f9789f5a6acff5a36b7d010b0988835646ab"
+    },
+    {
+      "path": "corpus/compiler/warnings/32.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/32.in",
+      "sha256": "caac26d4bc167513a6f4321048c5054f738078458a87b9c8f70231cf7da71906"
+    },
+    {
+      "path": "corpus/compiler/warnings/32.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/32.out",
+      "sha256": "4aa0d94a541dc4ae247ee5f2fabec0afe085b3abb6fb8fdc151ab71edfcb4e2e"
+    },
+    {
+      "path": "corpus/compiler/warnings/33.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/33.in",
+      "sha256": "ac86bd7764381084cc0b5072c9f0cfe8963f7abf24e7fd953661d621ae321774"
+    },
+    {
+      "path": "corpus/compiler/warnings/33.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/33.out",
+      "sha256": "98bfdc4f05f81d2291c6b7afe2cd4fa0891460f81f4ade24ac419e6ad74b5c11"
+    },
+    {
+      "path": "corpus/compiler/warnings/34.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/34.in",
+      "sha256": "ad3f1da0fd0b18afbf45bb2951170065a71e3e547313290f725eb23535096ee5"
+    },
+    {
+      "path": "corpus/compiler/warnings/34.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/34.out",
+      "sha256": "800005c30e231ba2b48ed54fb2c9ba65738ca4628b2b39ec0dfad1e4e28252b3"
+    },
+    {
+      "path": "corpus/compiler/warnings/35.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/35.in",
+      "sha256": "9d35ed88b961710c4b16a2f5cf7e5d6372732c941efa8508f950b7d4da15f4db"
+    },
+    {
+      "path": "corpus/compiler/warnings/35.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/35.out",
+      "sha256": "c5dbe5564b55af63515005d17ae9a31ce92f476d8bc46acc055a87c745b5859f"
+    },
+    {
+      "path": "corpus/compiler/warnings/36.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/36.in",
+      "sha256": "acf7b30f6f8f1912f77ef513f091fe069a8cff0f9e00090500c4f95bd1b42b1b"
+    },
+    {
+      "path": "corpus/compiler/warnings/36.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/36.out",
+      "sha256": "5c65f689652c56344a566ae437f3c015545d6ee72ba79892efd18cbd5426fa71"
+    },
+    {
+      "path": "corpus/compiler/warnings/37.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/37.in",
+      "sha256": "1ae5c5a6f3f0fa4d62b74c063bfc689fcc6eb48d0a002cbd0214703234964a13"
+    },
+    {
+      "path": "corpus/compiler/warnings/37.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/37.out",
+      "sha256": "13322ba024f6f3678ff6787d01df99136637e3fd7f32cd0bc969d492aa671ee1"
+    },
+    {
+      "path": "corpus/compiler/warnings/38.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/38.in",
+      "sha256": "ae68c2ec2d8ea7eb542e66d9ab055b68c5a25ead83735482b081ac7c547b2f80"
+    },
+    {
+      "path": "corpus/compiler/warnings/38.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/38.out",
+      "sha256": "4acf86bc39482dca2d4f4b23c1324c70dbcf224404619d7fa83beffdd1ee0ac4"
+    },
+    {
+      "path": "corpus/compiler/warnings/39.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/39.in",
+      "sha256": "86150e1640c1f7f395c42794d4ce25ceaf6d8d83c4a9cc6d23b64e229d10a5dd"
+    },
+    {
+      "path": "corpus/compiler/warnings/39.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/39.out",
+      "sha256": "7e3658e5cc2ba8ea14ac03459faa8847ee8dabc981467465519f7e7fe88cdc0d"
+    },
+    {
+      "path": "corpus/compiler/warnings/4.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/4.in",
+      "sha256": "679ab82d7c18829f80df5b16b6c5cb610f893d2b90b9166986d4508bd3d81d3f"
+    },
+    {
+      "path": "corpus/compiler/warnings/4.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/4.out",
+      "sha256": "4256cfbbfa25b7573398f81c6ccfa71968f87f1a329c83957514b0dfd1ce4e86"
+    },
+    {
+      "path": "corpus/compiler/warnings/40.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/40.in",
+      "sha256": "8529cc403ae15fc5afd61adf341b1bf39d4bb31bd9be0ca581006dc81ce551c7"
+    },
+    {
+      "path": "corpus/compiler/warnings/40.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/40.out",
+      "sha256": "02497db059710d423cd1e79456dfd736feaf2fa64cdfbd526aa9a0366ae79bb9"
+    },
+    {
+      "path": "corpus/compiler/warnings/41.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/41.in",
+      "sha256": "678f1972e069c13e88b877ac8199b1c099e6a7468ad70c1db5d433853d2e4a3b"
+    },
+    {
+      "path": "corpus/compiler/warnings/41.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/41.out",
+      "sha256": "39af174077e3ec4a7a608352558fa86b33224b3cc805ff08d6d880bd15486816"
+    },
+    {
+      "path": "corpus/compiler/warnings/42.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/42.in",
+      "sha256": "ede1521ec1c052730f76bfd318a96736e32ebdd1c54700280331ecdb4bc9fb7e"
+    },
+    {
+      "path": "corpus/compiler/warnings/42.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/42.out",
+      "sha256": "69d3b2b42cb746a0623bd310da09496fa008c3635e5b10916d42f23bb7165e2d"
+    },
+    {
+      "path": "corpus/compiler/warnings/43.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/43.in",
+      "sha256": "0eb208d660de6e19655a790366c94c51ec265b61770103e31915627c62a5a103"
+    },
+    {
+      "path": "corpus/compiler/warnings/43.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/43.out",
+      "sha256": "a01d61a3764b3964625f5a9412e7228336db5dd1c61140fedce73bf93d6fa499"
+    },
+    {
+      "path": "corpus/compiler/warnings/44.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/44.in",
+      "sha256": "3269f959838aa2f19865deeaf89848352d8592c694fb9b79a9801165d932c432"
+    },
+    {
+      "path": "corpus/compiler/warnings/44.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/44.out",
+      "sha256": "5703485638a4d1d125879181a5b5582a8f0a7b1b469dbc4470c06861ad635fe2"
+    },
+    {
+      "path": "corpus/compiler/warnings/45.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/45.in",
+      "sha256": "a7908fcfd48e076b00fc2597089782e9b5e421d5604705114e1bfd8a191fec38"
+    },
+    {
+      "path": "corpus/compiler/warnings/45.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/45.out",
+      "sha256": "7b2a18a88b67f2d5a39882987b7f613568dcbb852f2b58d9bd685ed117e352cd"
+    },
+    {
+      "path": "corpus/compiler/warnings/46.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/46.in",
+      "sha256": "d2530b6c695b724df288df5244bdd6fb3c4a31ba661535b059f6fc5a536f0d88"
+    },
+    {
+      "path": "corpus/compiler/warnings/46.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/46.out",
+      "sha256": "e189f044b2a4013b7d24546b2f494f708b8528bf446592a2b6829108990b4869"
+    },
+    {
+      "path": "corpus/compiler/warnings/47.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/47.in",
+      "sha256": "34922e6878cf291bde82490ba436cf4717e17f0b807f8f6b3e88c7537a8d8d4f"
+    },
+    {
+      "path": "corpus/compiler/warnings/47.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/47.out",
+      "sha256": "f105c55eaa1a41b5c89db5809c90992d8df248161cec5e1a323492e6c3e4f71a"
+    },
+    {
+      "path": "corpus/compiler/warnings/48.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/48.in",
+      "sha256": "5e748a420b0b8e3feaadb49b2a75a88cdaf6fc919ad717b12a21980f707acc68"
+    },
+    {
+      "path": "corpus/compiler/warnings/48.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/48.out",
+      "sha256": "1d0bc40702f5b13eb8eb2783e4b93c5789c50448936268d7092ed21c60b7ebdc"
+    },
+    {
+      "path": "corpus/compiler/warnings/49.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/49.in",
+      "sha256": "f85be2eff4a0bfa0465ad7750713d49720cbca5eafd4a7ff14d6b9e4e6607d5e"
+    },
+    {
+      "path": "corpus/compiler/warnings/49.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/49.out",
+      "sha256": "649d5656bea950059121b2f79d4a5f8e519d79f9947bce270c11792d04659c8c"
+    },
+    {
+      "path": "corpus/compiler/warnings/5.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/5.in",
+      "sha256": "679ab82d7c18829f80df5b16b6c5cb610f893d2b90b9166986d4508bd3d81d3f"
+    },
+    {
+      "path": "corpus/compiler/warnings/5.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/5.out",
+      "sha256": "4256cfbbfa25b7573398f81c6ccfa71968f87f1a329c83957514b0dfd1ce4e86"
+    },
+    {
+      "path": "corpus/compiler/warnings/50.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/50.in",
+      "sha256": "caa16bdea85a4e3da33ce2b744fa70d0009ded18beb6d81269fd20ab3eeded1a"
+    },
+    {
+      "path": "corpus/compiler/warnings/50.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/50.out",
+      "sha256": "7f3db45b64da4382970280b6b394ac2dc5b8b36fa4d269f193c4949cdcc3d17a"
+    },
+    {
+      "path": "corpus/compiler/warnings/51.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/51.in",
+      "sha256": "391a09493fd95bdfdf09546c961331fbd5516a5a210e37180e809d54f3471df9"
+    },
+    {
+      "path": "corpus/compiler/warnings/51.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/51.out",
+      "sha256": "ccb4b0140b5d3ffa2aedb949f3d9be88a8c52d1e029564b283e52f109754d7f5"
+    },
+    {
+      "path": "corpus/compiler/warnings/52.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/52.in",
+      "sha256": "8d600df3e60176b4ae68df7b0b972960bd3d8781877e5779c4674b8f2994b94e"
+    },
+    {
+      "path": "corpus/compiler/warnings/52.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/52.out",
+      "sha256": "3441e3285c01b55dad4cc92ce4fc8049c81ff20650dc8cedad91d1134954f441"
+    },
+    {
+      "path": "corpus/compiler/warnings/6.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/6.in",
+      "sha256": "4796ad5c554c151abd235ec84fdab90fd777f1b81974285d5a1d0a700bbdab56"
+    },
+    {
+      "path": "corpus/compiler/warnings/6.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/6.out",
+      "sha256": "2113cbe04a36b7d89ef4d4be96f5eac89ccb6308f47ae495c0431d2e768e68b0"
+    },
+    {
+      "path": "corpus/compiler/warnings/7.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/7.in",
+      "sha256": "8e33ed4ab4b9263a566ae245a7ce578eef0daed3f638f669ba32a063e7cb91f0"
+    },
+    {
+      "path": "corpus/compiler/warnings/7.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/7.out",
+      "sha256": "0d8bb35cd1ba9cab55d0624e71b5cd5a473ffaa415f68bf11366bb56abb4c280"
+    },
+    {
+      "path": "corpus/compiler/warnings/8.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/8.in",
+      "sha256": "679ab82d7c18829f80df5b16b6c5cb610f893d2b90b9166986d4508bd3d81d3f"
+    },
+    {
+      "path": "corpus/compiler/warnings/8.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/8.out",
+      "sha256": "4256cfbbfa25b7573398f81c6ccfa71968f87f1a329c83957514b0dfd1ce4e86"
+    },
+    {
+      "path": "corpus/compiler/warnings/9.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/9.in",
+      "sha256": "0933317bf0aa4b38904a3668c3b2a393fd9e49a35e7d6ef6c86883cf2751ce25"
+    },
+    {
+      "path": "corpus/compiler/warnings/9.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/9.out",
+      "sha256": "67d13bbfc78b0528a8425afcdcf9a09bec66d976afb0846f939b649d012765a4"
+    },
+    {
+      "path": "corpus/compiler/warnings/no_warnings.in",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/no_warnings.in",
+      "sha256": "4b608b330df142abca4c2cb6e4171ac0285878c9812e402aaae9e42e4f718913"
+    },
+    {
+      "path": "corpus/compiler/warnings/no_warnings.out",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/compiler/tests/testdata/warnings/no_warnings.out",
+      "sha256": "8b3d87a70a1eeb551c0de24e6f343e55fddad7b68ddeb92d81892cda69c0ef27"
+    },
+    {
+      "path": "corpus/formatter/config_tests/align_metadata_false.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/align_metadata_false.formatted",
+      "sha256": "2233a6b814b1a94d46146758c8547a7cfde06c42f2c8a47b7bbfbf4ac3c18c92"
+    },
+    {
+      "path": "corpus/formatter/config_tests/align_patterns_false.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/align_patterns_false.formatted",
+      "sha256": "c375b0f1a08af4d295893a3dee51f3ad15077cae72ea8d90f60f2bd1369e48d0"
+    },
+    {
+      "path": "corpus/formatter/config_tests/align_rule.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/align_rule.unformatted",
+      "sha256": "4060bfc0cdec74f74e168065bad08cef2c5712d34b25bf8bbedc78170fe7b1c5"
+    },
+    {
+      "path": "corpus/formatter/config_tests/empty_line_after_section_header_true.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/empty_line_after_section_header_true.formatted",
+      "sha256": "705e16826ce20a161b12f60cccef06cec312b4e9089f381d0ac19ad8e0d85640"
+    },
+    {
+      "path": "corpus/formatter/config_tests/empty_line_before_section_header_false.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/empty_line_before_section_header_false.formatted",
+      "sha256": "e9004de5da36ea40761fe202d04ee48f74af717c270390d55a2baed62d83f581"
+    },
+    {
+      "path": "corpus/formatter/config_tests/generic_rule.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/generic_rule.unformatted",
+      "sha256": "c1f305a5c37c2106d062a4fefe552e183c1cb13fe5d5fc745825d0bccb5c547f"
+    },
+    {
+      "path": "corpus/formatter/config_tests/indent_section_contents_false.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/indent_section_contents_false.formatted",
+      "sha256": "1e72e158ff1d6de5903fb9b9458fece05c64510b6e86594b0d1d33286eccead0"
+    },
+    {
+      "path": "corpus/formatter/config_tests/indent_section_headers_false.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/indent_section_headers_false.formatted",
+      "sha256": "87a26cd708b3c1bfc88a1577fd2b327eadbcbebf679b8187bf502053c77ee782"
+    },
+    {
+      "path": "corpus/formatter/config_tests/indent_spaces_one.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/indent_spaces_one.formatted",
+      "sha256": "7ff4c080b27abcc74ed8a66b164e5564b0ef51ffdcb94ff2283eb86611462e6c"
+    },
+    {
+      "path": "corpus/formatter/config_tests/indent_spaces_zero.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/indent_spaces_zero.formatted",
+      "sha256": "84c77d48e5e3546a3c81f5ab6b4b54b43419515e1cc13b70129c0fb4759d2dd6"
+    },
+    {
+      "path": "corpus/formatter/config_tests/newline_before_curly_brace_true.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/config_tests/newline_before_curly_brace_true.formatted",
+      "sha256": "d9a4a3349d379786996ce7bbfe7a1c58afa2d62523902bb1e55e225f40611453"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test1.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test1.formatted",
+      "sha256": "e43cbcd44c0396bb2c1576d6171a148b803738bea94f1d88ca92956ebef53a10"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test1.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test1.unformatted",
+      "sha256": "b6a83f5ab369e51fa2d9a483d79d8bb0cc36b02208f3118213884aa42e4f3d8d"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test10.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test10.formatted",
+      "sha256": "ec1c2209cbc424e59d954e855c7a172764e362fad534eaae6433892414e9de75"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test10.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test10.unformatted",
+      "sha256": "2d9c0c9929d8596194a903deced8776ed411e67192043863a425bae1eb9d180d"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test11.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test11.formatted",
+      "sha256": "ab73ab20d20eba32616855c1c4dcc7b7136e9cbd0a9cb148f328bccda9d6b665"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test11.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test11.unformatted",
+      "sha256": "1fb33426fbdd66fef3c34e32573f004f1ff3f0acdf784f7e86a57092b325d4c9"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test12.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test12.formatted",
+      "sha256": "e7f0f0f2c623d29ad3a6ad57c31f611487cb81ada3bc9a654a6775f7a271ff93"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test12.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test12.unformatted",
+      "sha256": "aa3c126e784b57262ecc4cbc979f437803d04a45dce7c9244dc0cef1a1828cc0"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test13.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test13.formatted",
+      "sha256": "75e9920829f819d1e895940916fe2473decef1ad37c40fcbf3d91acd0b0297ad"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test13.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test13.unformatted",
+      "sha256": "1318cbe21a9eff10690c293b28dda67ebbed92af2685a20c5018cbc34e92583b"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test14.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test14.formatted",
+      "sha256": "2b6cfec608679ee8f72c8e686f1997b503e2b77a6ee8300728d7379ad5e7c194"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test14.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test14.unformatted",
+      "sha256": "51db3ccd0b07a56a05f4f465b79daaedd70eb483aca0af8973cdcade6a4b94ef"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test15.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test15.formatted",
+      "sha256": "b039c677104e5f70ca323a3bf93be95f636346ae89111abcb58087fd38de2243"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test15.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test15.unformatted",
+      "sha256": "7eafb7fb8f6ae907f27b6558869ae2925593d2bdcb2935d3cde7aaf542c8297c"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test16.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test16.formatted",
+      "sha256": "6ec6948e64ad8bec664ab10f729c88918ea0a3d88e380d06ae0ef6e065612132"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test16.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test16.unformatted",
+      "sha256": "af2bf286d942c07fea9238c8dd3a259c7abd700a54318d5cca0235e3027b9aad"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test17.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test17.formatted",
+      "sha256": "586bd54b6623abcbc9e05462796db334c4cc7f5ff123aae319f93c8479690b41"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test17.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test17.unformatted",
+      "sha256": "7c1980d8b54a42f52c1587db3d8901b0d45341588537cc8f8d3777a44e899321"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test18.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test18.formatted",
+      "sha256": "6d23906b5badafcf629ac3d8ab21cecfb210c293bdd33f375ebb33153dfc0ef9"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test18.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test18.unformatted",
+      "sha256": "f33c95658f822a98cc9a131a4f457ec2284290ffb388f156dbc632c769aa7acd"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test19.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test19.formatted",
+      "sha256": "fae36f9fcb4c8b0168b10db753831bf33cd8263a8fa73c04e22f7003124d5f2c"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test19.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test19.unformatted",
+      "sha256": "b21ff06072754f96d0fcba13fa127e14999952282ac1ffe78310c7485f033aa2"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test2.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test2.formatted",
+      "sha256": "e43cbcd44c0396bb2c1576d6171a148b803738bea94f1d88ca92956ebef53a10"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test2.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test2.unformatted",
+      "sha256": "0afd0efbbf5d10e13a4bc31672ac4334444c6d3435c9d1bd38c2edefbf76dc26"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test20.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test20.formatted",
+      "sha256": "370effdc43a329cb8a14f91f971ecde2264a15a412a0ca353f6d168c5e93b916"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test20.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test20.unformatted",
+      "sha256": "8eef2fd944ad75813467b5f08899982ec2663ed45910c493b4736221221f8756"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test21.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test21.formatted",
+      "sha256": "cc77bdd2e16405f4e48eabebb935fcd646badddb4826ba49a91496a74b4519dd"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test21.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test21.unformatted",
+      "sha256": "a83fce550fdaf796b6a20dc690af059fcf5ccf71a3ea58195229c8460995e283"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test22.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test22.formatted",
+      "sha256": "8ebee7b791ecacc8420ecf664cec544fdc6c6e74f5f42717d8bf44e326a0917e"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test22.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test22.unformatted",
+      "sha256": "f2796d972a88c31e2b3bad6ec61287e52dd0aec62cb7df06570703e127c25e15"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test23.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test23.formatted",
+      "sha256": "afb18feb196ef6015ea4117750e80ab71c84f4fcbf7d77f35c7485012278d77a"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test23.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test23.unformatted",
+      "sha256": "6a9d314f0b1d5eec50a74523b8fd55fc9b23b9eb54c988b0b2007110f5dab220"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test24.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test24.formatted",
+      "sha256": "6eb0a0da52562c49ed2eac929e7dab4e703a609740cc58f9a834605f6dfe50a6"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test24.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test24.unformatted",
+      "sha256": "2ae922cb43af1c042715f31770b74f6d619490d93c8115688364b9ba2c626d91"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test25.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test25.formatted",
+      "sha256": "79d41ed7126102e62f90ce49b94f11e9c7b521c7b64cbd92c440a62385830a50"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test25.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test25.unformatted",
+      "sha256": "9e1503964291bdd8c5c6601eb97679442861af572b73a4513acfdc4dc777c0b8"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test26.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test26.formatted",
+      "sha256": "db0b96aa95aa23d60967631be03c319252c750a9d9d29e473c08587d89a80999"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test26.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test26.unformatted",
+      "sha256": "dab81e82b13f86bf5938837ba227a504a6dcbf294812f87c1d3e64f93ce743ee"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test27.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test27.formatted",
+      "sha256": "62233c5a5a459350717850e620942d85ffc59e450e05604a4978bb8c2b17abf1"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test27.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test27.unformatted",
+      "sha256": "f40129fe63894d1d0d562e68b0348d84774e8bd2e3af808ca442b6b782cb66b7"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test28.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test28.formatted",
+      "sha256": "58f8491a5fee040352015d820d580174a59d9f722b88257e0b613d38bac9883f"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test28.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test28.unformatted",
+      "sha256": "c83b89f0f21cbf75fcae8ad75c1cff1e91af7e5c38cd82b785bb01536aa7f960"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test29.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test29.formatted",
+      "sha256": "0ba8f905443f2f1701ae2fa91ab47b297154966e7c365bdf1430dc80c5ed42d0"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test29.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test29.unformatted",
+      "sha256": "dc8cc4c79ed522001fe6435d5ddb81e15789f464fe4aec7263f003685ed4f3ec"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test3.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test3.formatted",
+      "sha256": "9a2e333353b2f8700b5c5a8d352cc1948b553608624d045fd76dc63551542f8e"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test3.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test3.unformatted",
+      "sha256": "87b738d8a57b7ee4781eba0396d2c732c990251da421d721dc3e6270b8acf1c6"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test30.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test30.formatted",
+      "sha256": "bb798b1d64758e59111467c08797ade40d4053ad3584e3f9ae90bc36371c8392"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test30.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test30.unformatted",
+      "sha256": "ddfee1ab2412b03949bca614d8ad8a1fa8c0b9c6e16479d6d4f23d0651b30a13"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test31.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test31.formatted",
+      "sha256": "61dab50834c266db3c5095bf5c2ae101c6feb8f9e9b6fbd7bb2ffbcb206c1ce1"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test31.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test31.unformatted",
+      "sha256": "30707e72a98f37f55a524e51cc07de1a0a5c410de58fda56c3de5f02c8f25e71"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test32.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test32.formatted",
+      "sha256": "b866efed28b9d0ad473e9d9d0448da4d013b102b65bceacb6d1dcf9aae928ac2"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test32.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test32.unformatted",
+      "sha256": "5eba5eea464fec3b22e0ef76ab4bb8096c0437d9c4bde5bdb66639bc7f54e82d"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test33.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test33.formatted",
+      "sha256": "04e5d0568d30028d505e41e992b7d69f3a0ccfd2566de782f2ffe0dae31b15a2"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test33.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test33.unformatted",
+      "sha256": "c659a2e33648705e60660502eeecf9f01104052b9fc09ed443546fac91dffb34"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test34.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test34.formatted",
+      "sha256": "b18e0d15c4d13550a9488a2dde44e4891150fc17c45286c8426cadf9c6b57b82"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test34.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test34.unformatted",
+      "sha256": "6ba0037c59a694d9aa06399944c22851fae599a0a1b160e9241dec5a2dea9823"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test35.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test35.formatted",
+      "sha256": "a40eb520b0090517e785a943369084a32eda256e165bb16febc87be18e478a38"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test35.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test35.unformatted",
+      "sha256": "f59e29350e06af782a32ada9668b24fb703de34195b62b07857126cf920ef6f5"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test36.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test36.formatted",
+      "sha256": "e43cbcd44c0396bb2c1576d6171a148b803738bea94f1d88ca92956ebef53a10"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test36.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test36.unformatted",
+      "sha256": "494d1f9aa2283e289b92a1311c2b8e7e3cf74909d555e4d95f2a2f80a7acc9c3"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test37.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test37.formatted",
+      "sha256": "7352d8a46fc398a7f4c56eb732aca730f13569b4258ad3983c2dbd22d75b3a61"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test37.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test37.unformatted",
+      "sha256": "b2adfb3825088723698a4197a0d4dc70f758d2e4bb8fb9459832c13756e07ae5"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test4.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test4.formatted",
+      "sha256": "df691edb045dd3de6240bdbe93b409e326ef7ae3fcd7803c17ca3f37cd2e7b29"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test4.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test4.unformatted",
+      "sha256": "3c79402c21dded0fda2c7c0b2ddadc4580989e5580db9f2d0666745e15527691"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test5.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test5.formatted",
+      "sha256": "b31d8f2bb6d6fac2e1b433c48a708bbc1aa210752d4e4939dd140374861fc0e6"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test5.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test5.unformatted",
+      "sha256": "2d717fe22d6becf1212627f1566457163c1b92843bb2a08f253054fa6ffc16d4"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test6.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test6.formatted",
+      "sha256": "527721fac42eed2f40651ba37fbfaf7d3bb3890aa7f9149b4409c95dff57e837"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test6.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test6.unformatted",
+      "sha256": "9c6972fabe266d28bd3f986ff305e42bcc053dfe6ed3d70d2fa395b5aba21764"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test7.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test7.formatted",
+      "sha256": "18e3eb5bbdb1ff773e3bca33b503f7b0ba1e9b30c90897cc6e3617de74abe3d0"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test7.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test7.unformatted",
+      "sha256": "0db103a631df7b3a2204679ae9b93a499cf068799245a929402802388e6d8c8f"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test8.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test8.formatted",
+      "sha256": "e5faa01aa7b98e2dc56f66f8db087a4a15ca73f13dc4b326f660fd28b5a0307e"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test8.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test8.unformatted",
+      "sha256": "00ad95362cf400d52dbcf905959658c98f73dac8ee80cfc5c794cffa126cf768"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test9.formatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test9.formatted",
+      "sha256": "adb4d5759b678ea76c793b731ed645bd9c5b7cbd5fadf2397f8d8b310a9ee479"
+    },
+    {
+      "path": "corpus/formatter/default_tests/test9.unformatted",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/fmt/src/testdata/default_tests/test9.unformatted",
+      "sha256": "ad803a6a0d85f7f2ef3da5b00f8f5a0a11d0afb04853c271d7420751846851dc"
+    },
+    {
+      "path": "grammar/builtins.rs",
+      "source": "https://github.com/VirusTotal/yara-x/blob/60ad06971467029e77967e59d580cbbe85a1474d/lib/src/wasm/mod.rs",
+      "sha256": "ff3008604585c851421a9bc3e6c748b13d9150374b8531907369198aebbf89cd"
+    }
+  ],
+  "export_count": 131,
+  "catalog_sha256": "e5d3b062744b3c2ecff07b68c7f6005c9bd2a293a7ac718348de2f994c35c313"
+}

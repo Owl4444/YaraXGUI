@@ -1,0 +1,76 @@
+# HTTPS deployment (public DNS or LAN IP). Only Caddy is exposed; the API port stays private.
+# Windows / Docker Desktop: see deployment/compose.windows.yaml.
+services:
+  yaraxgui-api:
+    build: .
+    image: yaraxgui-api:latest
+    restart: unless-stopped
+    user: "1000:1000"
+    read_only: true
+    security_opt: ["no-new-privileges:true"]
+    cap_drop: [ALL]
+    pids_limit: 128
+    mem_limit: 2g
+    cpus: 2
+    tmpfs:
+      - /tmp:size=536870912,mode=1777
+    environment:
+      YARAXGUI_API_KEY: ${YARAXGUI_API_KEY:?set a random key in .env}
+      YARAXGUI_ALLOWED_HOSTS: ${YARAXGUI_DOMAIN:?set the site hostname or LAN IP in .env},127.0.0.1
+      YARAXGUI_TRUSTED_PROXIES: 172.30.77.2
+      YARAXGUI_REQUIRE_HTTPS: "1"
+      YARAXGUI_CORS_ORIGINS: ${YARAXGUI_CORS_ORIGINS:-}
+      YARAXGUI_MAX_UPLOAD_MB: ${YARAXGUI_MAX_UPLOAD_MB:-100}
+      YARAXGUI_UPLOAD_QUOTA_MB: ${YARAXGUI_UPLOAD_QUOTA_MB:-1024}
+      YARAXGUI_MWDB_URL: ${YARAXGUI_MWDB_URL:-}
+      YARAXGUI_REPO_DB: /data/rules.db
+      YARAXGUI_UPLOAD_DIR: /data/uploads
+      YARAXGUI_ALLOWED_ROOTS: /data/samples
+    volumes:
+      - ${YARAXGUI_DATA_DIR:-/mnt/exthdd/yaraxgui-data}:/data
+    networks:
+      backend:
+        ipv4_address: 172.30.77.3
+      egress:
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:7777/health', timeout=3).close()"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      YARAXGUI_DOMAIN: ${YARAXGUI_DOMAIN:?set the site hostname or LAN IP in .env}
+    volumes:
+      - ./deployment/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      backend:
+        ipv4_address: 172.30.77.2
+      egress:
+    depends_on:
+      yaraxgui-api:
+        condition: service_healthy
+    security_opt: ["no-new-privileges:true"]
+    mem_limit: 256m
+    pids_limit: 128
+    logging:
+      options: {max-size: "10m", max-file: "3"}
+
+networks:
+  backend:
+    internal: true
+    ipam:
+      config: [{subnet: 172.30.77.0/29}]
+  egress:
+
+volumes:
+  caddy-data:
+  caddy-config:

@@ -1,0 +1,8 @@
+rule test {
+	strings:
+	  $a = "foo"
+	  $b = /foo/ private
+	  $c = { ab }
+  condition:
+	  true
+}

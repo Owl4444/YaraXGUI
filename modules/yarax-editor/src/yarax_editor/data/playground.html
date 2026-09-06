@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="en">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>YARA-X Editor Lab</title>
+<style>
+:root{color-scheme:dark;font:14px system-ui;background:#10141c;color:#dfe7f4}
+*{box-sizing:border-box}body{margin:0}header{padding:22px 30px;border-bottom:1px solid #2b3445;display:flex;align-items:center;gap:20px}h1{margin:0;font-size:21px;letter-spacing:-.5px}header small{color:#91a2bb}.badge{font-size:11px;background:#183c36;color:#8ce7cb;border:1px solid #2c6458;padding:5px 9px;border-radius:20px}button,input{font:inherit;border:1px solid #37445c;border-radius:6px;background:#202b3e;color:inherit;padding:8px 12px}button{cursor:pointer}button:hover{background:#2d3d55}button:focus-visible,input:focus-visible,textarea:focus-visible{outline:2px solid #7aa9ff}nav{display:flex;align-items:center;gap:10px;padding:16px 30px}.spacer{flex:1}#status{color:#93d7be}main{display:grid;grid-template-columns:minmax(0,1fr) 345px;height:calc(100vh - 175px);gap:16px;padding:0 30px 16px}.panel{border:1px solid #2b3445;border-radius:10px;background:#151c28;overflow:hidden}.editor-heading{padding:10px 18px;border-bottom:1px solid #2b3445;color:#aebfd6;font-size:12px;display:flex;justify-content:space-between}.editor{position:relative;height:calc(100% - 37px);overflow:hidden}#paint,#source{margin:0;border:0;padding:20px;position:absolute;inset:0;width:100%;height:100%;font:14px/1.65 ui-monospace,Consolas,monospace;tab-size:4;white-space:pre;overflow:auto;letter-spacing:0}#paint{pointer-events:none;color:#dfe7f4}#source{resize:none;background:transparent;color:transparent;caret-color:white;outline:none}#source::selection{background:#527ab76b;color:transparent}.keyword{color:#d89efd}.string,.multiline_string{color:#e8b17f}.comment{color:#82988b}.number{color:#9ed8b4}.regex{color:#e5be86}.hex{color:#a4d3be}.reference{color:#8bcdff}.operator{color:#f1a7ad}.diagnostic{text-decoration:underline wavy #f27886;text-underline-offset:4px}aside{display:flex;flex-direction:column;gap:16px;min-height:0}aside section{padding:18px;overflow:auto;flex:1}h2{font-size:13px;margin:0 0 14px;color:#aabbd4;letter-spacing:.4px}#issues{list-style:none;padding:0;margin:0}#issues li{border-bottom:1px solid #2b3445;padding:10px 0;cursor:pointer;font-size:12px;line-height:1.6}.error{color:#ff99a4}.warning{color:#e6c384}#details{white-space:pre-wrap;font-size:12px;line-height:1.65;color:#bbc9de;margin:0}footer{padding:0 30px;color:#8193ac;font-size:12px;display:flex;gap:22px}kbd{color:#c3d4ed}#suggestions{position:absolute;z-index:5;min-width:290px;max-width:470px;max-height:270px;overflow:auto;background:#243048;border:1px solid #4e6385;box-shadow:0 8px 30px #0008;border-radius:7px;padding:4px}#suggestions[hidden]{display:none}.item{padding:7px 10px;display:flex;gap:16px;cursor:pointer}.item.selected{background:#385379;border-radius:4px}.item small{margin-left:auto;color:#a7b9d3}.deprecated{text-decoration:line-through}dialog{background:#151c28;border:1px solid #42516c;border-radius:12px;color:inherit;width:min(950px,90vw);max-height:85vh}dialog::backdrop{background:#000a}#docresults{white-space:pre-wrap;font:13px/1.6 ui-monospace,monospace;overflow:auto;max-height:60vh}#docquery{width:65%}@media(max-width:850px){main{grid-template-columns:1fr;height:70vh}aside{display:none}header small{display:none}}
+#source.plain{color:#dfe7f4}#source.plain::selection{color:#dfe7f4}button:disabled{cursor:wait;opacity:.65}
+</style>
+<header><h1>YARA-X <span style="color:#8cb3ef">Editor Lab</span></h1><span class="badge">LOCAL · 1.20.0</span><small>Standalone language toolkit · integration preview</small></header>
+<nav><button id="format">Format</button><button id="check">Check rule</button><button id="docs">Offline reference</button><button id="download">Download .yar</button><span class="spacer"></span><span id="status" role="status">Ready</span></nav>
+<main>
+<section class="panel"><div class="editor-heading"><span>untitled.yar</span><span id="position">Ln 1, Col 1</span></div><div class="editor"><pre id="paint" aria-hidden="true"></pre><textarea id="source" aria-label="YARA source" spellcheck="false" autocorrect="off" autocapitalize="off" wrap="off"></textarea><div id="suggestions" role="listbox" aria-label="Suggestions" hidden></div></div></section>
+<aside><section class="panel"><h2>DIAGNOSTICS</h2><ul id="issues"></ul></section><section class="panel"><h2>SIGNATURE & DOCUMENTATION</h2><pre id="details">Place the cursor on a module member, or start a function call.</pre></section></aside>
+</main>
+<footer><span><kbd>Ctrl Space</kbd> suggestions</span><span><kbd>↑ ↓</kbd> choose · <kbd>Enter</kbd> accept selected · <kbd>Esc</kbd> dismiss</span><span><kbd>Ctrl Shift F</kbd> format</span></footer>
+<dialog id="reference"><h2>Offline YARA-X reference</h2><input id="docquery" aria-label="Search reference" placeholder="with, regex, pe imports…"><button id="searchdocs">Search</button><button id="closedocs">Close</button><pre id="docresults"></pre></dialog>
+<script>
+const $=id=>document.getElementById(id), source=$('source'),paint=$('paint'),popup=$('suggestions');
+let revision=0,generation=0,items=[],selected=-1,explicit=false,checkTimer,completeTimer,tabstops={},tabIndex=-1,tabOrder=[];
+const maxInteractiveBytes=__MAX_INTERACTIVE_BYTES__,maxAutomaticBytes=__MAX_AUTOMATIC_BYTES__;
+let formatPending=false,formatRevision=-1,nextFormatAt=0;
+const tooLarge=(limit)=>source.value.length>limit||new TextEncoder().encode(source.value).length>limit;
+function operationAllowed(){if(!tooLarge(maxInteractiveBytes))return true;$('status').textContent='Source exceeds the 256 KiB interactive limit. Editing and download remain available.';return false;}
+source.value=`import "pe"
+
+rule example : demo {
+    meta:
+        description = "Comment markers stay literal: // and /* */"
+    strings:
+        $mz = "MZ"
+    condition:
+        with size = filesize : (
+            size > 0 and $mz at 0 and pe.is_pe
+        )
+}
+`;
+const cp=(s,n)=>Array.from(s.slice(0,n)).length;
+const u16=(s,n)=>Array.from(s).slice(0,n).join('').length;
+const offset=()=>cp(source.value,source.selectionStart);
+async function request(path,data,signal){const r=await fetch('/api/'+path,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data),signal});const body=await r.json();if(!r.ok)throw Error(body.error||'Request failed');return body;}
+function snapshot(){return {text:source.value,offset:offset(),revision,generation};}
+function current(s,completion=false){return s.revision===revision&&s.text===source.value&&(!completion||(s.generation===generation&&s.offset===offset()&&document.activeElement===source));}
+function dismiss(){generation++;items=[];selected=-1;popup.hidden=true;clearTimeout(completeTimer);source.removeAttribute('aria-activedescendant');}
+function position(){const before=source.value.slice(0,source.selectionStart),lines=before.split('\n');$('position').textContent=`Ln ${lines.length}, Col ${Array.from(lines.at(-1)).length+1}`;}
+function draw(highlights=[],diagnostics=[]){
+ paint.replaceChildren();const text=source.value;
+ // Large files use the textarea alone, avoiding a second layout and offset map.
+ const plain=tooLarge(maxAutomaticBytes);source.classList.toggle('plain',plain);
+ if(plain)return;
+ if(!highlights.length){paint.textContent=text+'\n';paint.scrollTop=source.scrollTop;paint.scrollLeft=source.scrollLeft;return;}
+ const map=[0];for(const ch of text)map.push(map.at(-1)+ch.length);let at=0;
+ for(const [span,kind] of highlights){const start=map[span.start],end=map[span.end];paint.append(document.createTextNode(text.slice(at,start)));const node=document.createElement('span');node.className=kind;if(diagnostics.some(d=>d.span&&d.span.start<span.end&&d.span.end>span.start))node.classList.add('diagnostic');node.textContent=text.slice(start,end);paint.append(node);at=end;}
+ paint.append(document.createTextNode(text.slice(at)+'\n'));paint.scrollTop=source.scrollTop;paint.scrollLeft=source.scrollLeft;
+}
+async function analyze(){clearTimeout(checkTimer);if(!operationAllowed())return;const s=snapshot();try{const data=await request('analyze',s);if(!current(s))return;draw(data.highlights,data.diagnostics);$('issues').replaceChildren();if(!(formatPending&&formatRevision===s.revision))$('status').textContent=data.valid?'Valid YARA-X rule':'Needs attention';if(!data.diagnostics.length){const li=document.createElement('li');li.textContent='No errors or warnings.';$('issues').append(li);}for(const d of data.diagnostics){const li=document.createElement('li');li.className=d.severity;li.textContent=`${d.code}: ${d.message}`;li.onclick=()=>{if(d.span){source.focus();source.setSelectionRange(u16(source.value,d.span.start),u16(source.value,d.span.end));position();}};$('issues').append(li);}}catch(e){if(current(s)&&!(formatPending&&formatRevision===s.revision))$('status').textContent=e.message;}}
+function changed(){revision++;dismiss();$('issues').replaceChildren();draw();position();clearTimeout(checkTimer);if(!operationAllowed())return;if(tooLarge(maxAutomaticBytes)){$('status').textContent='Large file: use Check rule, Format or Ctrl Space manually.';return;}$('status').textContent='Checking…';checkTimer=setTimeout(analyze,280);completeTimer=setTimeout(()=>complete(false),90);}
+function renderItems(){popup.replaceChildren();items.forEach((item,i)=>{const row=document.createElement('div');row.className='item'+(selected===i?' selected':'')+(item.deprecated?' deprecated':'');row.role='option';row.id='suggestion-'+i;row.setAttribute('aria-selected',String(selected===i));const name=document.createElement('span');name.textContent=item.label;const kind=document.createElement('small');kind.textContent=item.kind;row.append(name,kind);row.onmousedown=e=>{e.preventDefault();selected=i;accept();};row.onmousemove=()=>{if(item.documentation)$('details').textContent=item.detail+'\n\n'+item.documentation;};popup.append(row);});popup.hidden=!items.length;if(selected>=0){$('suggestion-'+selected)?.scrollIntoView({block:'nearest'});source.setAttribute('aria-activedescendant','suggestion-'+selected);}}
+async function complete(force){clearTimeout(completeTimer);if(tooLarge(force?maxInteractiveBytes:maxAutomaticBytes)){dismiss();if(force)operationAllowed();return;}generation++;if(force){items=[];popup.hidden=true;}const s=snapshot();try{const data=await request('complete',{...s,explicit:force});if(!current(s,true))return;items=data.items;explicit=force;selected=force&&items.length?0:-1;if(data.signature)$('details').textContent=data.signature.signatures.join('\n\n')+`\n\nArgument ${data.signature.active_parameter+1}`;else if(data.hover)$('details').textContent=data.hover.title+'\n\n'+data.hover.documentation;
+ const lines=source.value.slice(0,source.selectionStart).split('\n'),col=Array.from(lines.at(-1)).length;popup.style.left=Math.min(20+col*8.4-source.scrollLeft,Math.max(10,source.clientWidth-360))+'px';popup.style.top=Math.max(5,Math.min(20+lines.length*23.1-source.scrollTop,source.clientHeight-270))+'px';renderItems();}catch(e){if(current(s,true))$('status').textContent=e.message;}}
+function replace(start,end,text,cursor=start+text.length){source.setRangeText(text,start,end,'end');source.setSelectionRange(cursor,cursor);changed();}
+async function accept(){if(selected<0||!items[selected])return;const item=items[selected],s=snapshot();let value=item.edit.text,stops={};if(item.snippet){try{const expanded=await request('snippet',{...s,snippet:value});if(!current(s,true))return;value=expanded.text;stops=expanded.tabstops;}catch(e){$('status').textContent=e.message;return;}}const start=u16(source.value,item.edit.span.start),end=u16(source.value,item.edit.span.end);replace(start,end,value,start+value.length-(item.kind==='function'&&value.endsWith('()')?1:0));tabstops=Object.fromEntries(Object.entries(stops).map(([n,spans])=>[n,spans.map(s=>({start:start+u16(value,s.start),end:start+u16(value,s.end)}))]));tabOrder=Object.keys(tabstops).map(Number).sort((a,b)=>(a===0)-(b===0)||a-b);tabIndex=-1;if(tabOrder.length)nextTab();}
+function nextTab(reverse=false){tabIndex+=reverse?-1:1;if(tabIndex<0)tabIndex=0;if(tabIndex>=tabOrder.length){tabOrder=[];return false;}const span=tabstops[tabOrder[tabIndex]][0];source.setSelectionRange(span.start,span.end);dismiss();position();return true;}
+source.addEventListener('beforeinput',e=>{
+ if(!tabOrder.length)return;
+ const spans=(tabstops[tabOrder[tabIndex]]||[]).map(s=>({...s})),active=spans[0],a=source.selectionStart,b=source.selectionEnd;
+ if(!active||a<active.start||b>active.end||!['insertText','deleteContentBackward'].includes(e.inputType)){tabOrder=[];return;}
+ e.preventDefault();const old=source.value,part=old.slice(active.start,active.end);
+ const left=e.inputType==='deleteContentBackward'&&a===b?Math.max(active.start,a-1):a;
+ const inserted=e.inputType==='insertText'?(e.data||''):'';
+ const value=part.slice(0,left-active.start)+inserted+part.slice(b-active.start);
+ let result=old;for(const span of [...spans].sort((a,b)=>b.start-a.start))result=result.slice(0,span.start)+value+result.slice(span.end);
+ source.value=result;
+ for(const [key,group]of Object.entries(tabstops))for(const span of group){const delta=spans.filter(s=>s.start<span.start).reduce((v,s)=>v+value.length-(s.end-s.start),0);span.start+=delta;span.end=Number(key)===tabOrder[tabIndex]?span.start+value.length:span.end+delta;}
+ const cursor=left+inserted.length;source.setSelectionRange(cursor,cursor);changed();
+});
+source.addEventListener('input',()=>{tabOrder=[];changed();});source.addEventListener('scroll',()=>{paint.scrollTop=source.scrollTop;paint.scrollLeft=source.scrollLeft;});source.addEventListener('click',()=>{dismiss();position();completeTimer=setTimeout(()=>complete(false),100);});source.addEventListener('blur',dismiss);
+source.addEventListener('keydown',e=>{
+ if(e.key==='Escape'){dismiss();return;}if(e.ctrlKey&&e.code==='Space'){e.preventDefault();complete(true);return;}if(e.ctrlKey&&e.shiftKey&&e.key.toLowerCase()==='f'){e.preventDefault();format();return;}
+ if(!popup.hidden&&['ArrowDown','ArrowUp'].includes(e.key)){e.preventDefault();selected=(selected+(e.key==='ArrowDown'?1:-1)+items.length)%items.length;renderItems();return;}
+ if(!popup.hidden&&selected>=0&&['Enter','Tab'].includes(e.key)){e.preventDefault();accept();return;}
+ if(e.key==='Tab'){e.preventDefault();if(tabOrder.length&&nextTab(e.shiftKey))return;replace(source.selectionStart,source.selectionEnd,'    ');return;}
+ if(['ArrowLeft','ArrowRight','ArrowUp','ArrowDown','Home','End','PageUp','PageDown'].includes(e.key))dismiss();
+ if(e.key==='Enter')dismiss();
+});
+source.addEventListener('keyup',position);
+async function format(){
+ if(formatPending||performance.now()<nextFormatAt||!operationAllowed())return;
+ const s=snapshot(),button=$('format');dismiss();clearTimeout(checkTimer);formatPending=true;formatRevision=s.revision;nextFormatAt=performance.now()+1000;
+ button.disabled=true;button.textContent='Formatting…';button.setAttribute('aria-busy','true');$('status').textContent='Formatting…';
+ const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),8000);
+ try{const data=await request('format',s,controller.signal);if(!current(s))return;tabOrder=[];replace(0,source.value.length,data.text,Math.min(source.selectionStart,data.text.length));source.focus();}
+ catch(e){if(current(s))$('status').textContent=e.name==='AbortError'?'Formatting request timed out; original source retained':e.message;}
+ finally{clearTimeout(timeout);formatPending=false;button.removeAttribute('aria-busy');setTimeout(()=>{button.disabled=false;button.textContent='Format';},Math.max(0,nextFormatAt-performance.now()));}
+}
+$('format').onclick=format;$('check').onclick=analyze;$('docs').onclick=()=>{$('reference').showModal();$('docquery').focus();};$('closedocs').onclick=()=>$('reference').close();
+async function docs(){try{const results=await request('docs',{query:$('docquery').value});$('docresults').textContent=results.map(r=>r.markdown).join('\n\n────────────────────\n\n')||'No reference pages found.';}catch(e){$('docresults').textContent=e.message;}}
+$('searchdocs').onclick=docs;$('docquery').onkeydown=e=>{if(e.key==='Enter')docs();};$('download').onclick=()=>{const url=URL.createObjectURL(new Blob([source.value],{type:'text/plain;charset=utf-8'})),a=document.createElement('a');a.href=url;a.download='rule.yar';a.click();URL.revokeObjectURL(url);};
+draw();analyze();source.focus();
+</script>
+</html>

@@ -1,0 +1,17 @@
+# Windows / Docker Desktop (Linux containers).
+# scripts/compose.bat selects this automatically. For plain docker compose on
+# a Windows-only checkout, copy it to compose.override.yaml instead.
+# /data uses persistent Docker storage instead of YARAXGUI_DATA_DIR.
+# Existing bind-mounted data is not migrated automatically.
+services:
+  yaraxgui-api:
+    volumes:
+      - type: volume
+        source: yaraxgui-data
+        target: /data
+        # A fresh volume inherits the image's prepared, UID 1000-owned /data.
+        volume:
+          nocopy: false
+
+volumes:
+  yaraxgui-data:

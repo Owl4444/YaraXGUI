@@ -1,0 +1,1 @@
+"""YaraXGUI generated components."""

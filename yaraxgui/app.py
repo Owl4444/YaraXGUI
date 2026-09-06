@@ -1,0 +1,3318 @@
+"""
+YaraXGUI - A GUI application for YARA-X rule scanning and analysis.
+
+Usage:
+    python -m yaraxgui
+"""
+
+# Standard library imports
+import fnmatch
+import os
+import re
+import sys
+from pathlib import Path
+from yaraxgui.paths import resource_root
+from typing import Dict, List
+
+# Third-party imports
+from PySide6.QtCore import QDir, QEvent, QModelIndex, QTimer, Qt
+from PySide6.QtGui import (QIcon, QPainter, QPen, QPixmap, QStandardItem,
+                           QTextCursor)
+from PySide6.QtWidgets import (QAbstractItemView, QApplication, QComboBox,
+                               QDockWidget, QFileDialog, QHBoxLayout,
+                               QHeaderView, QLabel, QLineEdit, QListWidgetItem,
+                               QMenu, QMainWindow, QMessageBox, QProgressBar,
+                               QPushButton, QSplitter, QTabWidget, QToolButton, QTreeView,
+                               QVBoxLayout, QWidget)
+
+# Local imports
+from yaraxgui.credentials import is_available
+from yaraxgui.ui.checkable_fs_model import CheckableFsModel
+from yaraxgui.scanning.results import HASHES_ROLE, ScanResultsManager
+from yaraxgui.scanning.search_filter import SEARCH_TEXT_ROLE
+from yaraxgui.scanning.scanner import YaraScanner, YARA_X_AVAILABLE, format_size
+from yaraxgui.scanning.worker import ScanWorker
+from yaraxgui.ui.themes import theme_manager
+from yaraxgui.ui.generated.mainwindow import Ui_MainWindow
+from yaraxgui.editor.widget import YaraTextEdit
+from yaraxgui.editor.highlighter import YaraHighlighter
+from hex_editor import HexEditorWindow
+from yaraxgui.ui.rule_browser import YaraRuleBrowser
+
+
+class MainWindow(QMainWindow):
+    """
+    Main application window for YaraXGUI.
+    
+    Provides a graphical interface for YARA-X rule scanning and analysis,
+    including file selection, rule editing with syntax highlighting,
+    compilation, scanning, and results visualization.
+    
+    Features:
+    - File system browser with selective scanning
+    - YARA rule editor with syntax highlighting
+    - Real-time compilation and validation
+    - Comprehensive scan results with multiple views
+    - Theme support (light/dark)
+    - YARA-X formatting and syntax validation
+    """
+    
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self.ui = Ui_MainWindow()
+        self.ui.setupUi(self)
+        
+        # Set custom window title and icon
+        self.setWindowTitle("YaraXGUI - YARA Rule Scanner & Analyzer")
+        self.setup_application_icon()
+
+        # Scanner (pure logic, no UI)
+        self.scanner = YaraScanner()
+
+        # Scan results manager
+        self.results = ScanResultsManager(self.ui, theme_manager, parent=self)
+
+        # Replace the placeholder editor with a tabbed editor widget
+        from yaraxgui.editor.tabs import EditorTabWidget
+        self._editor_tabs = EditorTabWidget(
+            theme_manager=theme_manager, parent=self.ui.layoutWidget)
+        self.ui.horizontalLayout.replaceWidget(
+            self.ui.te_yara_editor, self._editor_tabs)
+        self.ui.te_yara_editor.deleteLater()
+
+        # Create the initial tab with a default template
+        default_text = (
+            'rule example_rule {\n'
+            '    meta:\n'
+            '        author = ""\n'
+            '        description = ""\n'
+            '\n'
+            '    strings:\n'
+            '        $s1 = ""\n'
+            '\n'
+            '    condition:\n'
+            '        any of them\n'
+            '}\n'
+        )
+        initial_editor = self._editor_tabs.add_editor_tab(
+            text=default_text, title="Untitled")
+        initial_editor.document().setModified(False)
+
+        # Backward-compat: te_yara_editor always points to the active tab
+        self.ui.te_yara_editor = initial_editor
+        self.highlighter = self._editor_tabs.current_highlighter()
+
+        # Connect cursor info to status bar
+        self.ui.te_yara_editor.cursor_info_changed.connect(
+            self._show_cursor_info
+        )
+
+        # Invalidate compiled rules when editor text changes
+        self.ui.te_yara_editor.textChanged.connect(self.on_yara_text_changed)
+
+        # Swap references when the active tab changes
+        self._editor_tabs.current_editor_changed.connect(
+            self._on_active_editor_changed)
+
+        initial_editor.language_status.connect(self._show_language_status)
+        initial_editor.formatting_changed.connect(self._on_formatting_changed)
+        self._large_file_indicator = QLabel("Large file · automatic features paused")
+        self._large_file_indicator.setToolTip(
+            "Above 64 KiB UTF-8: plain typing; automatic highlighting, checks and suggestions pause. "
+            "Features resume at or below 64 KiB. Manual formatting/checking is limited to 256 KiB.")
+        self.statusBar().addPermanentWidget(self._large_file_indicator)
+        initial_editor.large_file_mode_changed.connect(self._large_file_indicator.setVisible)
+        self._large_file_indicator.setVisible(initial_editor.large_file_mode)
+        self._draft_error_indicator = QLabel('Recovery error — save rule')
+        self.statusBar().addPermanentWidget(self._draft_error_indicator)
+        self._draft_error_indicator.hide()
+        initial_editor._recovery.status_changed.connect(self._on_recovery_status)
+
+        # ── YARA Rule Browser (tree with preview tooltips) ─────────
+        # Created here; placed into a QDockWidget by _setup_dock_layout()
+        self._yara_browser = YaraRuleBrowser(self)
+        self._yara_browser.file_requested.connect(self._on_yara_file_requested)
+        self._yara_browser.files_requested.connect(self._on_yara_files_requested)
+        self._yara_browser.files_combine_requested.connect(self._on_yara_files_combine)
+
+        # File system model
+        self.fs_model = CheckableFsModel(self)
+        self.fs_model.setFilter(QDir.AllEntries | QDir.NoDotAndDotDot)
+        self.fs_model.setReadOnly(True)
+        # Don't set any root path - tree will be empty until user selects a directory
+
+        # QTreeView
+        self.fs_view = QTreeView(self.ui.tab_scan_dir)
+        self.fs_view.setAlternatingRowColors(True)
+        self.fs_view.setUniformRowHeights(True)
+        self.fs_view.setSelectionBehavior(QAbstractItemView.SelectionBehavior.SelectRows)
+        self.fs_view.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.fs_view.setSortingEnabled(True)
+        self.fs_view.sortByColumn(0, Qt.AscendingOrder)
+        
+        # Don't connect model yet - tree should be empty until directory is selected
+        # self.fs_view.setModel(self.fs_model) will be called in on_select_scan_dir
+
+        header = self.fs_view.header()
+        # Name column stretches to fill the rest; the fixed-width metadata
+        # columns (size/type/date) start at reasonable defaults so Name
+        # isn't squeezed to a sliver on startup. All three remain user-
+        # resizable via Interactive mode.
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Interactive)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.Interactive)
+        header.setStretchLastSection(False)
+        header.resizeSection(1, 90)   # Size
+        header.resizeSection(2, 100)  # Type
+        header.resizeSection(3, 140)  # Date Modified
+        self.fs_view.setColumnWidth(0, 420)  # Name — generous starting width
+
+        # Build a container that pairs a filter bar with the file tree.
+        # The filter bar lets the user quickly include/exclude files in
+        # the current scan root by glob or regex pattern without having
+        # to click through the tree.
+        self.fs_container = QWidget(self.ui.tab_scan_dir)
+        fs_layout = QVBoxLayout(self.fs_container)
+        fs_layout.setContentsMargins(0, 0, 0, 0)
+        fs_layout.setSpacing(3)
+        fs_layout.addWidget(self._build_fs_filter_bar(self.fs_container))
+        fs_layout.addWidget(self.fs_view, 1)
+
+        # Replace treeWidget with the fs_container in the splitter
+        self.ui.treeWidget.setVisible(False)  # Hide original immediately
+
+        # QSplitter.replaceWidget requires an index, not the widget reference
+        # The treeWidget should be the first widget (index 0) in splitter_3
+        self.ui.splitter_3.replaceWidget(0, self.fs_container)
+        self.ui.treeWidget.deleteLater()
+        self.fs_container.setVisible(True)
+        self.fs_view.setVisible(True)
+        self.fs_container.show()
+        self.fs_view.show()
+
+        # Connect to expansion events to update children's checkboxes on-demand
+        self.fs_view.expanded.connect(self.on_tree_expanded)
+
+        # Context menu for file system tree: "Open in Hex Editor"
+        self.fs_view.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.fs_view.customContextMenuRequested.connect(self._show_fs_context_menu)
+
+        # Setup
+        self.last_dir = str(Path.home())
+        self.scan_root: Path | None = None
+        self.compiled_rules = None  # Store compiled YARA rules
+        
+        # Flag to prevent recursive selection updates
+        self._updating_selection = False
+        
+        # Scan results data
+        self.scan_hits = []  # List of hit file data
+        self.scan_misses = []  # List of miss file data
+
+        # Background scan worker (None when idle)
+        self._scan_worker: ScanWorker | None = None
+
+        # Status-bar progress widgets (hidden until a scan starts)
+        self._scan_progress = QProgressBar()
+        self._scan_progress.setMaximumWidth(280)
+        self._scan_progress.setMinimumWidth(180)
+        self._scan_progress.setTextVisible(True)
+        self._scan_progress.hide()
+        self.statusBar().addPermanentWidget(self._scan_progress)
+
+        self._scan_cancel_btn = QToolButton()
+        self._scan_cancel_btn.setText("\u2716 Cancel")
+        self._scan_cancel_btn.setToolTip("Cancel the running scan")
+        self._scan_cancel_btn.hide()
+        self._scan_cancel_btn.clicked.connect(self._on_scan_cancel_clicked)
+        self.statusBar().addPermanentWidget(self._scan_cancel_btn)
+
+        # Hex editor windows
+        self._hex_editor_windows: list = []
+
+        # Accept drops at the window level. Child widgets (QPlainTextEdit,
+        # QTreeView, QTextBrowser, QListWidget, ...) that accept drops
+        # by default would otherwise swallow URL drops before they reach
+        # the window, so we later walk every descendant and install an
+        # event filter on it. That pass happens at the end of __init__,
+        # after the results UI and any other dynamic widgets exist.
+        self.setAcceptDrops(True)
+
+        # Setup scan results UI
+        self.results.setup_scan_results_ui()
+
+        # Connect hits selection to our handler (must be after model is set)
+        self.ui.tv_file_hits.selectionModel().selectionChanged.connect(self.on_hits_selection_changed)
+
+        # Context menu for hits table: "Open in Hex Editor"
+        self.ui.tv_file_hits.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ui.tv_file_hits.customContextMenuRequested.connect(self._show_hits_context_menu)
+
+        # Connect results manager signals
+        self.results.file_selection_requested.connect(self._on_file_selection_requested)
+        self.results.tag_highlight_requested.connect(self.highlight_tag_in_editor)
+        self.results.status_message_requested.connect(lambda msg, timeout: self.statusBar().showMessage(msg, timeout))
+        self.results.hex_editor_requested.connect(self.open_hex_editor)
+        self.results.file_info_requested.connect(self._show_file_info_dialog)
+
+        # Lazy load misses when tab changes
+        self.ui.tabWidget_2.currentChanged.connect(self.on_results_tab_changed)
+        
+        # Configure built-in splitters from UI form
+        self.configure_builtin_splitters()
+
+        # Connect buttons
+        self.ui.pb_browse_yara.clicked.connect(self.on_browse_yara)
+        self.ui.pb_select_scan_dir.clicked.connect(self.on_select_scan_dir)
+        self.ui.pb_save_rule.clicked.connect(self.on_save_rule)
+        self.ui.pb_reset.clicked.connect(self.on_reset)
+        self.ui.pb_format_yara.clicked.connect(self.on_format_yara)
+        self.ui.pb_scan.clicked.connect(self.on_scan)
+
+        # Setup keyboard shortcuts
+        self.setup_keyboard_shortcuts()
+
+        # Update list when exclusions change (debounced)
+        self.update_timer = QTimer()
+        self.update_timer.setSingleShot(True)
+        self.update_timer.setInterval(100)
+        self.update_timer.timeout.connect(self.update_exclusion_list)
+
+        self.fs_model.exclusionsChanged.connect(lambda: self.update_timer.start())
+
+        # ListWidget
+        self.ui.listWidget.setUniformItemSizes(True)
+        self.ui.listWidget.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
+
+        # Set initial helpful message
+        self.ui.tb_compilation_output.setHtml(
+            '<span style="color: gray;"><b>Ready to scan</b></span><br><br>'
+            '<b>Steps to get started:</b><br>'
+            '1. Load or write YARA rules in the editor above<br>'
+            '2. Use <b>File → Select Scan Folder…</b> to choose what to scan<br>'
+            '3. Click <b>"SCAN"</b> to start the scan<br>'
+        )
+        
+        # Setup context menu for compilation output
+        self.setup_compilation_output_context_menu()
+        
+        # Convert fixed splitter layout to dockable panels (must happen
+        # before load_theme_settings which restores dock state, and before
+        # reset_interface_on_startup which references dock widgets)
+        self._setup_dock_layout()
+
+        # Initialize theming system
+        self.theme_manager = theme_manager
+        self.setup_theming()
+        self.load_theme_settings()
+
+        # Reset interface to default state on application startup
+        self.reset_interface_on_startup()
+
+        # Drag & drop: make every child widget forward URL drops to us.
+        # Done at the end of __init__ so every child (including widgets
+        # built by ScanResultsManager) is already parented under self.
+        self._install_drop_filter_recursive()
+        self._recovery_dialog = None
+        QTimer.singleShot(0, self._offer_recovery)
+
+    def _offer_recovery(self):
+        from yaraxgui.recovery.store import recoverable_entries
+        if recoverable_entries():
+            self._show_recovery()
+
+    def _show_recovery(self):
+        from yaraxgui.recovery.widgets import RecoveryDialog
+        if self._recovery_dialog is None:
+            self._recovery_dialog = RecoveryDialog(self)
+            self._recovery_dialog.recovered.connect(self._restore_document)
+            self._recovery_dialog.destroyed.connect(lambda: setattr(self, '_recovery_dialog', None))
+        self._recovery_dialog.show()
+        self._recovery_dialog.raise_()
+
+    def _restore_document(self, entry, metadata, value):
+        if metadata['kind'] == 'yara':
+            title = Path(metadata.get('source') or metadata.get('title') or 'Untitled').name.removeprefix('Recovered — ')
+            editor = self._editor_tabs.add_editor_tab(value, 'Recovered — ' + title)
+            editor.document().setModified(True)
+            editor._recovery.restored_entry = entry
+            cursor = editor.textCursor()
+            cursor.setPosition(min(max(0, int(metadata.get('cursor', 0))), editor.document().characterCount()-1))
+            editor.setTextCursor(cursor)
+        else:
+            window = HexEditorWindow(theme_manager=self.theme_manager)
+            if not window.open_file(str(value)):
+                window.deleteLater()
+                return
+            window._restored_entry = entry
+            window._recovered_unsaved = True
+            window.setWindowTitle('Recovered Hex — ' + Path(metadata.get('source') or 'Untitled').name + ' *')
+            window.yara_pattern_generated.connect(self._insert_yara_pattern)
+            self._hex_editor_windows.append(window)
+            window.show()
+
+    # ── Dockable layout ────────────────────────────────────────────────
+
+    def _setup_dock_layout(self):
+        """Convert the fixed splitter layout into movable QDockWidgets.
+
+        Central widget: editor (buttons + text editor) + compilation output.
+        Right dock tabs: Scan Directory (active), Rule Repository, and MWDB.
+        Other panels start hidden and remain available from View.
+        """
+        # -- Central widget: editor + compilation in a vertical splitter --
+        central = QWidget()
+        central.setObjectName("central_editor_panel")
+        central_layout = QVBoxLayout(central)
+        central_layout.setContentsMargins(0, 0, 0, 0)
+
+        self._central_splitter = QSplitter(Qt.Orientation.Vertical)
+        editor_panel = QWidget()
+        editor_layout = QVBoxLayout(editor_panel)
+        editor_layout.setContentsMargins(6, 6, 6, 0)
+        self._editor_actions = QWidget()
+        action_layout = QHBoxLayout(self._editor_actions)
+        action_layout.setContentsMargins(0, 0, 0, 0)
+        for button in (self.ui.pb_save_rule, self.ui.pb_format_yara, self.ui.pb_scan):
+            action_layout.addWidget(button)
+        action_layout.addStretch(1)
+        editor_layout.addWidget(self._editor_actions)
+        from yaraxgui.repository.editor import RepositoryEditorController
+        self._repository_editor = RepositoryEditorController(
+            self._editor_tabs, self.ui.pb_save_rule, self)
+        editor_layout.addWidget(self._repository_editor.bar)
+        editor_layout.addWidget(self._editor_tabs, 1)
+        for button in (self.ui.pb_browse_yara, self.ui.pb_select_scan_dir, self.ui.pb_reset):
+            button.hide()
+        self.ui.layoutWidget.setParent(editor_panel)
+        self.ui.layoutWidget.hide()
+        self._central_splitter.addWidget(editor_panel)
+        # Remove the fixed max-height so the user can resize freely
+        self.ui.tb_compilation_output.setMaximumSize(16777215, 16777215)
+        self._central_splitter.addWidget(self.ui.tb_compilation_output)
+        self._central_splitter.setStretchFactor(0, 80)
+        self._central_splitter.setStretchFactor(1, 20)
+        self._central_splitter.setChildrenCollapsible(False)
+
+        central_layout.addWidget(self._central_splitter)
+        self.setCentralWidget(central)
+
+        # -- Dock: Scan Results --
+        self.dock_scan_results = QDockWidget("Scan Results", self)
+        self.dock_scan_results.setObjectName("dock_scan_results")
+        scan_results_container = QWidget()
+        scan_results_layout = QVBoxLayout(scan_results_container)
+        scan_results_layout.setContentsMargins(0, 0, 0, 0)
+        scan_results_layout.addWidget(self.ui.splitter_2)
+        self.dock_scan_results.setWidget(scan_results_container)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_scan_results)
+
+        # -- Dock: Scan Directory --
+        self.dock_scan_dir = QDockWidget("Scan Directory", self)
+        self.dock_scan_dir.setObjectName("dock_scan_dir")
+        scan_dir_container = QWidget()
+        scan_dir_layout = QVBoxLayout(scan_dir_container)
+        scan_dir_layout.setContentsMargins(0, 0, 0, 0)
+        scan_dir_layout.addWidget(self.ui.splitter_3)
+        self.dock_scan_dir.setWidget(scan_dir_container)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_scan_dir)
+
+        # -- Dock: Rule Browser --
+        self.dock_rule_browser = QDockWidget("Rule Browser", self)
+        self.dock_rule_browser.setObjectName("dock_rule_browser")
+        self._yara_browser.setVisible(True)
+        self.dock_rule_browser.setWidget(self._yara_browser)
+        self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea,
+                           self.dock_rule_browser)
+
+        # -- Load plugins (docks, menu actions) --
+        self._plugin_docks: dict[str, QDockWidget] = {}
+        self._load_gui_plugins()
+        self._reset_dock_layout()
+
+        # Right docks span full height
+        self.setCorner(Qt.Corner.BottomRightCorner,
+                       Qt.DockWidgetArea.RightDockWidgetArea)
+        self.setCorner(Qt.Corner.TopRightCorner,
+                       Qt.DockWidgetArea.RightDockWidgetArea)
+
+        # Hide the now-empty old tabWidget (its children were reparented)
+        self.ui.tabWidget.setVisible(False)
+
+        # Menus
+        self._setup_file_menu()
+        self._setup_view_menu()
+        self._setup_settings_menu()
+        self._setup_help_menu()
+
+    def _setup_file_menu(self):
+        menu = QMenu('File', self)
+        actions = self.ui.menubar.actions()
+        self.ui.menubar.insertMenu(actions[0] if actions else None, menu)
+        menu.addAction('New Rule', lambda: self._editor_tabs.add_editor_tab())
+        menu.addAction('Open YARA File…', self._open_single_yara_file)
+        menu.addAction('Open YARA Folder…', self.on_browse_yara)
+        menu.addAction('Select Scan Folder…', self.on_select_scan_dir)
+        menu.addSeparator()
+        menu.addAction('Save Rule…', self.on_save_rule)
+        menu.addAction('Recover Unsaved Work…', self._show_recovery)
+        menu.addAction('Reset…', self.on_reset)
+        menu.addSeparator()
+        menu.addAction('Exit', self.close)
+
+    def _setup_help_menu(self):
+        menu = self.ui.menubar.addMenu('Help')
+        for topic in ('User Guide', 'YARA-X Reference', 'Keyboard Shortcuts', 'Recovery & Troubleshooting'):
+            menu.addAction(topic, lambda checked=False, topic=topic: self._show_help(topic))
+        menu.addSeparator()
+        menu.addAction('About', self._show_about)
+        self._help_windows = []
+
+    def _show_help(self, topic='User Guide'):
+        from yaraxgui.ui.help import HelpViewer
+        viewer = HelpViewer(topic, self)
+        self._help_windows.append(viewer)
+        viewer.destroyed.connect(lambda: self._help_windows.remove(viewer) if viewer in self._help_windows else None)
+        viewer.show()
+
+    def _show_about(self):
+        from importlib.metadata import version, PackageNotFoundError
+        try:
+            engine = version('yara-x')
+        except PackageNotFoundError:
+            engine = 'not installed'
+        QMessageBox.about(self, 'About YaraXGUI',
+            'YaraXGUI — YARA rule editor, scanner and binary analysis.\n'
+            f'YARA-X engine: {engine}\nOffline reference is bundled with the editor toolkit.')
+
+    def _setup_view_menu(self):
+        """Add a View menu with dock toggle actions and layout reset."""
+        view_menu = self.ui.menubar.addMenu("View")
+
+        view_menu.addAction(self.dock_rule_browser.toggleViewAction())
+        view_menu.addAction(self.dock_scan_dir.toggleViewAction())
+        view_menu.addAction(self.dock_scan_results.toggleViewAction())
+
+        # Plugin docks
+        for dock in self._plugin_docks.values():
+            view_menu.addAction(dock.toggleViewAction())
+
+        view_menu.addSeparator()
+
+        reset_action = view_menu.addAction("Reset Layout")
+        reset_action.triggered.connect(self._reset_dock_layout)
+
+    def _reset_dock_layout(self):
+        """Rebuild one right-hand tab group, including detached plugin docks."""
+        defaults = [self.dock_scan_dir]
+        defaults.extend(self._plugin_docks[name] for name in ('rule_repository', 'mwdb')
+                        if name in self._plugin_docks)
+        hidden = [self.dock_scan_results, self.dock_rule_browser]
+        hidden.extend(dock for dock in self._plugin_docks.values() if dock not in defaults)
+        docks = defaults + hidden
+
+        updates_enabled = self.updatesEnabled()
+        self.setUpdatesEnabled(False)
+        try:
+            # Remove every dock first so old splits and floating windows cannot
+            # leave plugin panels stacked above or below the rebuilt group.
+            for dock in docks:
+                dock.hide()
+                dock.setFloating(False)
+                self.removeDockWidget(dock)
+
+            self.setTabPosition(Qt.DockWidgetArea.AllDockWidgetAreas,
+                                QTabWidget.TabPosition.South)
+            for dock in docks:
+                self.addDockWidget(Qt.DockWidgetArea.RightDockWidgetArea, dock)
+                if dock is not self.dock_scan_dir:
+                    self.tabifyDockWidget(self.dock_scan_dir, dock)
+
+            for dock in hidden:
+                dock.hide()
+            for dock in defaults:
+                dock.show()
+            self.dock_scan_dir.raise_()
+        finally:
+            self.setUpdatesEnabled(updates_enabled)
+
+    # ── Settings menu ──────────────────────────────────────────────
+
+    def _setup_settings_menu(self):
+        """Add a Settings menu to the menu bar."""
+        from PySide6.QtGui import QKeySequence
+        settings_menu = self.ui.menubar.addMenu("Settings")
+        act = settings_menu.addAction("Editor Settings...")
+        act.setShortcut(QKeySequence("Ctrl+,"))
+        act.triggered.connect(self._open_settings_dialog)
+
+    def _open_settings_dialog(self):
+        """Show the settings dialog and apply changes."""
+        from PySide6.QtWidgets import QDialog
+        from yaraxgui.ui.settings import SettingsDialog
+
+        theme = self.theme_manager.current_theme if hasattr(self, 'theme_manager') else None
+        app_font = QApplication.font()
+
+        # Load credentials from OS keyring
+        import yaraxgui.credentials as _cs
+        _api_key = _cs.api_server_key(self._get_setting)
+        _mwdb_token = _cs.load_setting_secret(_cs.MWDB_TOKEN, 'mwdb_token', self._get_setting)
+
+        dlg = SettingsDialog(
+            current_ui_font_family=self._get_setting(
+                'ui_font_family', app_font.family()),
+            current_ui_font_size=self._get_setting(
+                'ui_font_size', app_font.pointSize()),
+            current_editor_font_family=self._get_setting(
+                'editor_font_family',
+                theme.editor_font_family if theme else 'Consolas'),
+            current_editor_font_size=self._get_setting(
+                'editor_font_size',
+                theme.editor_font_size if theme else 12),
+            current_tab_size=self._get_setting('editor_tab_size', 4),
+            current_download_dir=self._get_setting('mwdb_download_dir', ''),
+            current_auto_delete=self._get_setting('auto_delete_downloads', False),
+            parent=self,
+            # Connection settings
+            api_server_url=self._get_setting('repo_server_url', ''),
+            api_server_key=_api_key,
+            api_https_enabled=self._get_setting('api_https_enabled', True),
+            api_ca_file=self._get_setting('api_ca_file', ''),
+            mwdb_url=self._get_setting('mwdb_url', ''),
+            mwdb_token=_mwdb_token,
+        )
+        if dlg.exec() != QDialog.DialogCode.Accepted:
+            return
+
+        # Persist every setting first then apply font/themes. if an apply call raises, we dont it to swallow
+        # a connection-url save
+        ui_family = dlg.ui_font_family()
+        ui_size = dlg.ui_font_size()
+        
+        family = dlg.font_family()
+        size = dlg.font_size()
+        tab_size = dlg.tab_size()
+        self._save_setting('ui_font_family', ui_family)
+        self._save_setting('ui_font_size', ui_size)
+        self._save_setting('editor_font_family', family)
+        self._save_setting('editor_font_size', size)
+        self._save_setting('editor_tab_size', tab_size)
+        
+        self._save_setting('mwdb_download_dir', dlg.download_dir())
+        self._save_setting('auto_delete_downloads',
+                           dlg.auto_delete_downloads())
+
+        self._save_setting('auto_delete_downloads', dlg.auto_delete_downloads())
+        self._save_setting('repo_server_url', dlg.api_server_url())
+        self._save_setting('api_https_enabled', dlg.api_https_enabled())
+        self._save_setting('api_ca_file', dlg.api_ca_file())
+        self._save_setting('mwdb_url', dlg.mwdb_url())
+
+        _cs.save_setting_secret(
+            _cs.API_SERVER_KEY, 'repo_api_key', dlg.api_server_key(), self._save_setting)
+        _cs.save_setting_secret(
+            _cs.MWDB_TOKEN, 'mwdb_token', dlg.mwdb_token(), self._save_setting)
+        if any(self._get_setting(f'{key}_storage', '') == 'session'
+               for key in (_cs.API_SERVER_KEY, _cs.MWDB_TOKEN)):
+            self.statusBar().showMessage('OS keyring unavailable: credentials are kept for this session only.', 15000)
+
+        # Apply UI changes after everything has been written to disk.
+        self._apply_ui_font(ui_family, ui_size)
+        self._apply_editor_font(family, size)
+
+    def _settings_path(self) -> Path:
+        """Stable path to settings.json.
+        When run from source, lives next tot he script (config/settings.json).
+        When frozen by PyInstaller, lives in the user's os config directory
+        instead . otherwsise it lands in the temp extraction dir and is wiped on every restart
+        """
+        if getattr(sys, 'frozen', False):
+            if sys.platform == "win32":
+                base = Path(os.environ.get('APPDATA', Path.home() / 'AppData/Roaming'))
+            elif sys.platform == 'darwin':
+                base=Path.home() / 'Library/Application Support'
+            else:
+                base = Path(os.environ.get('XDG_CONFIG_HOME', Path.home() / '.config'))
+            cfg_dir = base / "YaraXGUI"
+        else:
+            cfg_dir = resource_root() / "config"
+        cfg_dir.mkdir(parents=True, exist_ok=True)
+        return cfg_dir / "settings.json"
+
+
+
+    def _get_setting(self, key, default=None):
+        """
+        Read a single value from settings.json."""
+        config_path = self._settings_path()
+        try:
+            if config_path.exists():
+                import json
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    return json.load(f).get(key, default)
+        except Exception:
+            pass
+        return default
+
+    def _apply_editor_font(self, family: str, size: int):
+        """Apply font to every open editor tab (not compilation output)."""
+        self._editor_tabs.setup_all_fonts(family, size)
+
+    def _apply_ui_font(self, family: str, size: int):
+        """Apply font to the entire application UI (buttons, tabs, labels)."""
+        from PySide6.QtGui import QFont
+        font = QFont(family, size)
+        QApplication.setFont(font)
+        # Update the theme's font metrics so the QSS stylesheet uses the
+        # user-chosen size instead of the theme's built-in default.
+        if hasattr(self, 'theme_manager') and self.theme_manager.current_theme:
+            theme = self.theme_manager.current_theme
+            theme.font_family = family
+            theme.font_size = size
+            stylesheet = self.theme_manager.generate_qss_stylesheet(theme)
+            self.setStyleSheet(stylesheet)
+
+    # ── Multi-tab editor helpers ─────────────────────────────────
+
+    def _on_recovery_status(self, error):
+        self._draft_error_indicator.setToolTip(error)
+        self._draft_error_indicator.setVisible(bool(error))
+
+    def _on_active_editor_changed(self, editor):
+        """Swap signal connections when the user switches editor tabs."""
+        old = self.ui.te_yara_editor
+        # Disconnect only host callbacks, preserving editor backend listeners.
+        callbacks = (
+            (old.cursor_info_changed, self._show_cursor_info),
+            (old.textChanged, self.on_yara_text_changed),
+            (old.language_status, self._show_language_status),
+            (old.formatting_changed, self._on_formatting_changed),
+            (old.large_file_mode_changed, self._large_file_indicator.setVisible),
+            (old._recovery.status_changed, self._on_recovery_status),
+            (old.vim_mode_changed, self._update_vim_mode_display),
+            (old._vim_handler.save_requested, self.on_save_rule),
+            (old._vim_handler.quit_requested, self.close),
+        )
+        for signal, callback in callbacks:
+            try:
+                signal.disconnect(callback)
+            except (RuntimeError, TypeError):
+                pass
+
+        # Update the backward-compat reference
+        self.ui.te_yara_editor = editor
+        self.highlighter = getattr(editor, '_tab_highlighter', self.highlighter)
+
+        # Reconnect to new editor
+        editor.cursor_info_changed.connect(
+            self._show_cursor_info)
+        editor.textChanged.connect(self.on_yara_text_changed)
+        editor.language_status.connect(self._show_language_status)
+        editor.formatting_changed.connect(self._on_formatting_changed)
+        self._on_formatting_changed(editor.formatting)
+        editor.large_file_mode_changed.connect(self._large_file_indicator.setVisible)
+        self._large_file_indicator.setVisible(editor.large_file_mode)
+        editor._recovery.status_changed.connect(self._on_recovery_status)
+        self._on_recovery_status(editor._recovery.error)
+        editor.vim_mode_changed.connect(self._update_vim_mode_display)
+        try:
+            editor._vim_handler.save_requested.connect(self.on_save_rule)
+            editor._vim_handler.quit_requested.connect(self.close)
+        except AttributeError:
+            pass
+
+        # Apply current vim mode
+        if hasattr(self, 'vim_checkbox'):
+            editor.set_vim_mode(self.vim_checkbox.isChecked())
+
+        self.compiled_rules = None
+
+    # ── Plugin integration ────────────────────────────────────────────
+
+    def _load_gui_plugins(self):
+        """Discover and load plugins that provide GUI docks or menu actions."""
+        from plugins.base import load_plugins, PLUGIN_REGISTRY, PluginContext
+
+        # When frozen with PyInstaller, files are in sys._MEIPASS
+        _base = resource_root()
+        plugins_dir = _base / "plugins"
+        load_plugins(plugins_dir)
+
+        # Build context for plugins
+        ctx = PluginContext()
+        ctx.register("load_rule_to_editor", self._on_plugin_load_rule)
+        ctx.register("edit_repository_rule", self._repository_editor.open_rule)
+        ctx.register("get_editor_text",
+                      lambda: self.ui.te_yara_editor.toPlainText())
+        ctx.register("get_setting", self._get_setting)
+        ctx.register("save_setting", self._save_setting)
+        ctx.register("status_message",
+                      lambda msg, ms=3000: self.statusBar().showMessage(msg, ms))
+        ctx.register("open_hex_editor", self.open_hex_editor)
+        ctx.register("set_hex_match_data", self._set_last_hex_match_data)
+        ctx.register("hex_goto_offset", self._hex_goto_offset)
+
+        _AREA_MAP = {
+            "left": Qt.DockWidgetArea.LeftDockWidgetArea,
+            "right": Qt.DockWidgetArea.RightDockWidgetArea,
+            "bottom": Qt.DockWidgetArea.BottomDockWidgetArea,
+        }
+
+        for name, spec in PLUGIN_REGISTRY.items():
+            # -- Dock widgets --
+            if spec.dock_factory:
+                try:
+                    widget = spec.dock_factory(ctx)
+                    dock = QDockWidget(spec.dock_title, self)
+                    dock.setObjectName(f"dock_plugin_{name}")
+                    dock.setWidget(widget)
+                    area = _AREA_MAP.get(spec.dock_area,
+                                         Qt.DockWidgetArea.RightDockWidgetArea)
+                    self.addDockWidget(area, dock)
+                    self._plugin_docks[name] = dock
+                except Exception as e:
+                    print(f"[plugin] {name} dock failed: {e}",
+                          file=__import__('sys').stderr)
+
+            # -- Menu actions --
+            for action_spec in spec.menu_actions:
+                try:
+                    menu_name = action_spec.menu
+                    # Find or create the menu
+                    menu = None
+                    for a in self.ui.menubar.actions():
+                        if a.text() == menu_name:
+                            menu = a.menu()
+                            break
+                    if menu is None:
+                        menu = self.ui.menubar.addMenu(menu_name)
+                    act = menu.addAction(action_spec.label)
+                    act.triggered.connect(lambda checked, cb=action_spec.callback: cb(ctx))
+                except Exception as e:
+                    print(f"[plugin] {name} menu action failed: {e}",
+                          file=__import__('sys').stderr)
+
+    def _auto_delete_file(self, filepath: str):
+        """Delete a downloaded file after the hex editor closes."""
+        try:
+            p = Path(filepath)
+            if p.exists():
+                p.unlink()
+        except Exception:
+            pass
+
+    def _set_last_hex_match_data(self, matched_rules: list,
+                                 file_data: bytes = b""):
+        """Set YARA match data on the most recently opened hex editor."""
+        if not self._hex_editor_windows:
+            return
+        # Find the last visible hex editor window
+        for win in reversed(self._hex_editor_windows):
+            try:
+                if win.isVisible():
+                    win.set_match_data(matched_rules, file_data)
+                    return
+            except RuntimeError:
+                continue
+
+    def _on_plugin_load_rule(self, rule_text: str, title: str):
+        """Load a rule from a plugin into a new editor tab."""
+        self._editor_tabs.add_editor_tab(
+            text=rule_text, title=f"[plugin] {title}")
+        self.statusBar().showMessage(f"Loaded: {title}", 3000)
+
+    def _show_language_status(self, message):
+        self.statusBar().showMessage(message, 5000)
+
+    def _on_formatting_changed(self, running):
+        self.ui.pb_format_yara.setEnabled(not running)
+        self.ui.pb_format_yara.setText("Formatting…" if running else "Format YARA")
+
+    def _install_drop_filter_recursive(self) -> None:
+        """Make every descendant widget accept URL drops and forward them
+        to :meth:`eventFilter`.
+
+        Many Qt widgets (QPlainTextEdit, QTreeView, QListWidget,
+        QTextBrowser, QLineEdit, ...) accept drops by default and will
+        swallow a file-URL drop before it reaches the main window.
+        Widgets that don't accept drops are worse: Qt never even sends
+        them drag events, and the drag "falls through" only if the
+        parent widget chain has ``acceptDrops=True`` the whole way.
+
+        To make drops work *anywhere* inside the window we:
+
+        1. Set ``acceptDrops(True)`` on every descendant widget so drag
+           events actually reach it.
+        2. Install ``self`` as an event filter so we see DragEnter /
+           DragMove / Drop *before* the widget's own handler and can
+           intercept URL drops (returning True), while letting every
+           other event (internal text drag, selection, etc.) pass
+           through unchanged.
+        """
+        for w in self.findChildren(QWidget):
+            try:
+                w.setAcceptDrops(True)
+                w.installEventFilter(self)
+            except Exception:
+                # Some private/native widgets can refuse these calls.
+                pass
+
+    def reset_interface_on_startup(self):
+        """Reset the interface to default state when application starts."""
+        self._reset_all_tabs()
+        self.results.initialize_similar_tags_widget()
+        self.statusBar().showMessage("Application ready - select directory and YARA rules to begin", 4000)
+
+    def setup_application_icon(self):
+        """Setup application icon from YaraXGUI.ico file"""
+        from PySide6.QtGui import QIcon
+        from pathlib import Path
+        
+        try:
+            # Use the specific YaraXGUI.ico file
+            icon_path = resource_root() / "assets" / "YaraXGUI.ico"
+            
+            if icon_path.exists():
+                # Load the icon file
+                icon = QIcon(str(icon_path))
+                
+                # Verify the icon was loaded properly
+                if not icon.isNull():
+                    self.setWindowIcon(icon)
+                    print(f"✅ Application icon loaded successfully: {icon_path}")
+                else:
+                    print(f"❌ Failed to load icon - file may be corrupted: {icon_path}")
+                    self._use_fallback_icon()
+            else:
+                print(f"❌ Icon file not found: {icon_path}")
+                self._use_fallback_icon()
+                
+        except Exception as e:
+            print(f"❌ Error setting up application icon: {e}")
+            self._use_fallback_icon()
+
+    def _use_fallback_icon(self):
+        """Use a fallback icon when the main icon fails to load"""
+        try:
+            # Try to use a system icon as fallback
+            icon = self.style().standardIcon(self.style().StandardPixmap.SP_FileDialogDetailedView)
+            if not icon.isNull():
+                self.setWindowIcon(icon)
+                print("🔄 Using fallback system icon")
+            else:
+                print("⚠️  No icon available - running without window icon")
+        except Exception as e:
+            print(f"⚠️  Fallback icon also failed: {e}")
+
+    def setup_keyboard_shortcuts(self):
+        """Setup keyboard shortcuts for the application"""
+        from PySide6.QtGui import QShortcut, QKeySequence
+        
+        # Word wrap toggle: Ctrl+W
+        self.wrap_shortcut = QShortcut(QKeySequence("Ctrl+W"), self)
+        self.wrap_shortcut.activated.connect(self.toggle_word_wrap)
+        
+        # Save rule: Ctrl+S
+        self.save_shortcut = QShortcut(QKeySequence("Ctrl+S"), self)
+        self.save_shortcut.activated.connect(self.on_save_rule)
+
+        # Hex editor: Ctrl+H
+        self.hex_shortcut = QShortcut(QKeySequence("Ctrl+H"), self)
+        self.hex_shortcut.activated.connect(lambda: self.open_hex_editor())
+
+        # New editor tab: Ctrl+T
+        self.new_tab_shortcut = QShortcut(QKeySequence("Ctrl+T"), self)
+        self.new_tab_shortcut.activated.connect(
+            lambda: self._editor_tabs.add_editor_tab())
+
+        # Go to line: Ctrl+G
+        self.goto_line_shortcut = QShortcut(QKeySequence("Ctrl+G"), self)
+        self.goto_line_shortcut.activated.connect(self._goto_line)
+
+    def _show_cursor_info(self, message):
+        self.statusBar().showMessage(message)
+
+    def _has_unsaved_changes(self) -> bool:
+        return any(self._editor_tabs.widget(i).document().isModified()
+                   for i in range(self._editor_tabs.count()))
+
+    def closeEvent(self, event):
+        """Handle window close event - prompt for unsaved changes"""
+        if not self._editor_tabs.confirm_close_all():
+            event.ignore()
+            return
+
+        for index in range(self._editor_tabs.count()):
+            self._editor_tabs.widget(index)._recovery.discard()
+            self._editor_tabs.widget(index).shutdown_backend()
+
+        # Stop any in-flight scan worker before the window goes away
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self._scan_worker.cancel()
+            # Give the worker up to 3 s to finish its current file gracefully
+            if not self._scan_worker.wait(3000):
+                self._scan_worker.terminate()
+                self._scan_worker.wait(1000)
+
+        # Persist current theme so it survives restarts
+        current_theme = self.theme_combo.currentText()
+        if current_theme:
+            self._save_setting("theme", current_theme)
+
+        # Persist dock layout so the user's arrangement is restored next time
+        import base64
+        state_bytes = self.saveState().data()
+        self._save_setting("dock_state", base64.b64encode(state_bytes).decode("ascii"))
+        geometry_bytes = self.saveGeometry().data()
+        self._save_setting("window_geometry", base64.b64encode(geometry_bytes).decode("ascii"))
+
+        event.accept()
+
+    def _goto_line(self):
+        """Prompt for a line number and jump to it in the YARA editor."""
+        from PySide6.QtWidgets import QInputDialog
+        editor = self.ui.te_yara_editor
+        max_line = editor.document().blockCount()
+        current_line = editor.textCursor().blockNumber() + 1
+
+        line, ok = QInputDialog.getInt(
+            self, "Go to Line", f"Line number (1-{max_line}):",
+            current_line, 1, max_line)
+        if not ok:
+            return
+
+        block = editor.document().findBlockByNumber(line - 1)
+        if block.isValid():
+            cursor = editor.textCursor()
+            cursor.setPosition(block.position())
+            editor.setTextCursor(cursor)
+            editor.centerCursor()
+            self.statusBar().showMessage(f"Line {line}", 2000)
+
+    def toggle_word_wrap(self):
+        """Toggle word wrap in the YARA editor."""
+        enabled = self.ui.te_yara_editor.toggle_word_wrap()
+        self.statusBar().showMessage(
+            "Word wrap enabled" if enabled else "Word wrap disabled", 2000
+        )
+
+    def refresh_word_wrap_display(self):
+        """Force refresh of word wrap display and line numbers."""
+        self.ui.te_yara_editor.refresh_word_wrap_display()
+
+    def resizeEvent(self, event):
+        """Handle main window resize to improve word wrap responsiveness."""
+        super().resizeEvent(event)
+        if self.ui.te_yara_editor.word_wrap_enabled:
+            QTimer.singleShot(10, self.refresh_word_wrap_display)
+
+    def setup_compilation_output_context_menu(self):
+        """Setup context menu for compilation output widget"""
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtCore import Qt
+        
+        # Enable context menu
+        self.ui.tb_compilation_output.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self.ui.tb_compilation_output.customContextMenuRequested.connect(self.show_compilation_output_context_menu)
+    
+    def show_compilation_output_context_menu(self, position):
+        """Show context menu for compilation output"""
+        from PySide6.QtWidgets import QMenu
+        from PySide6.QtGui import QAction
+        
+        menu = QMenu(self)
+        
+        # Clear Output action
+        clear_action = QAction("Clear Output", self)
+        clear_action.triggered.connect(self.clear_compilation_output)
+        menu.addAction(clear_action)
+        
+        # Copy All action
+        copy_action = QAction("Copy All Text", self)
+        copy_action.triggered.connect(lambda: QApplication.clipboard().setText(self.ui.tb_compilation_output.toPlainText()))
+        menu.addAction(copy_action)
+        
+        # Rule Info uses the scan compiler.
+        if YARA_X_AVAILABLE:
+            menu.addSeparator()
+            rule_info_action = QAction("Show Rule Info", self)
+            rule_info_action.triggered.connect(self.show_rule_info)
+            menu.addAction(rule_info_action)
+        
+        # Show menu at cursor position
+        menu.exec(self.ui.tb_compilation_output.mapToGlobal(position))
+    
+    def clear_compilation_output(self):
+        """Clear the compilation output and show ready message"""
+        self.ui.tb_compilation_output.clear()
+        self.ui.tb_compilation_output.setHtml(
+            '<span style="color: gray;"><i>Output cleared - ready for new operations</i></span>'
+        )
+    
+    def show_rule_info(self):
+        """Show detailed YARA rule information using the scan compiler"""
+        text = self.ui.te_yara_editor.toPlainText()
+        
+        if not text.strip():
+            self.ui.tb_compilation_output.setHtml(
+                '<span style="color: orange;">⚠ No YARA rule to analyze.</span>'
+            )
+            return
+        
+        try:
+            rule_info = self.scanner.get_rule_info(text)
+            
+            # Display in compilation output with consistent monospace formatting
+            formatted_code = self._format_code_html(rule_info, "gray")
+            
+            self.ui.tb_compilation_output.setHtml(
+                '<span style="color: blue;"><b>📊 YARA Rule Analysis</b></span><br><br>' +
+                formatted_code
+            )
+            
+        except Exception as e:
+            self.ui.tb_compilation_output.setHtml(
+                '<span style="color: red;"><b>✗ Rule Analysis Failed</b></span><br><br>' +
+                f'<span style="color: red;">Error: {str(e)}</span>'
+            )
+
+
+
+    def configure_builtin_splitters(self):
+        """Configure the built-in splitters from the UI form"""
+        # Configure the horizontal splitter (hits/misses vs rule details/similar files)
+        if hasattr(self.ui, 'splitter'):
+            # Set proportions (60% hits, 40% rule details)
+            self.ui.splitter.setStretchFactor(0, 60)  # Hits/Misses tab
+            self.ui.splitter.setStretchFactor(1, 40)  # Rule Details/Similar Files tab
+            
+            # Set minimum sizes to prevent panels from becoming too small
+            self.ui.splitter.setChildrenCollapsible(False)  # Prevent complete collapse
+            self.ui.tabWidget_2.setMinimumWidth(200)  # Min width for hits/misses
+            self.ui.tabWidget_3.setMinimumWidth(250)  # Min width for rule details
+        
+        # Configure the main vertical splitter (results vs bottom tabs)
+        if hasattr(self.ui, 'splitter_2'):
+            # Set proportions (70% for results, 30% for bottom tabs)
+            self.ui.splitter_2.setStretchFactor(0, 70)  # Results section (splitter)
+            self.ui.splitter_2.setStretchFactor(1, 30)  # Bottom tabs (tabWidget_4)
+            self.ui.splitter_2.setChildrenCollapsible(False)  # Prevent complete collapse
+        
+        # Configure the directory tree splitter
+        if hasattr(self.ui, 'splitter_3'):
+            # Set proportions (80% for tree, 20% for exclusion list)
+            self.ui.splitter_3.setStretchFactor(0, 80)  # Directory tree
+            self.ui.splitter_3.setStretchFactor(1, 20)  # Exclusion list
+            self.ui.splitter_3.setChildrenCollapsible(False)  # Prevent complete collapse
+            
+            # Remove the restrictive maximum height on listWidget to allow more splitter movement
+            self.ui.listWidget.setMaximumSize(16777215, 16777215)  # Remove height restriction
+
+    # Utility Methods
+    def _handle_error(self, error: Exception, context: str = "Operation") -> None:
+        """
+        Centralized error handling with consistent logging and user feedback.
+        
+        Args:
+            error: The exception that occurred
+            context: Description of the operation that failed
+        """
+        error_msg = str(error)
+        
+        # Format compilation error with better HTML formatting
+        formatted_error = self._format_compilation_error(error_msg, context)
+        
+        # Log to compilation output for user visibility
+        self.ui.tb_compilation_output.append(formatted_error)
+        
+        # Show simplified message in status bar
+        status_msg = f"{context} failed: {error_msg[:80]}{'...' if len(error_msg) > 80 else ''}"
+        self.statusBar().showMessage(status_msg, 5000)
+
+    def _safe_get_item_info(self, item):
+        """
+        Safely extract information from a tree widget item to avoid RuntimeError.
+        
+        Args:
+            item: QTreeWidgetItem to extract info from
+            
+        Returns:
+            dict: Dictionary with item information or None if item is invalid
+        """
+        if not item:
+            return None
+            
+        try:
+            return {
+                'text': item.text(0),
+                'parent': item.parent(),
+                'parent_text': item.parent().text(0) if item.parent() else None,
+                'child_count': item.childCount(),
+                'data': item.data(0, 32)  # Qt.UserRole
+            }
+        except RuntimeError:
+            # Item was deleted
+            return None
+
+    def _format_compilation_error(self, error_msg: str, context: str) -> str:
+        """
+        Format compilation errors with nice HTML styling and better readability.
+        
+        Args:
+            error_msg: The raw error message
+            context: The context where the error occurred
+            
+        Returns:
+            HTML-formatted error message
+        """
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        # Get theme-aware colors
+        theme_colors = self._get_theme_colors_for_output()
+        
+        # Parse common YARA error patterns for better formatting
+        if "syntax error" in error_msg.lower():
+            error_type = "Syntax Error"
+            icon = "📝"
+            color = "#d32f2f"  # Red
+        elif "undefined" in error_msg.lower():
+            error_type = "Undefined Reference"
+            icon = "❓"
+            color = "#f57c00"  # Orange
+        elif "duplicate" in error_msg.lower():
+            error_type = "Duplicate Definition"
+            icon = "🔄"
+            color = "#f57c00"  # Orange
+        elif "compilation" in context.lower():
+            error_type = "Compilation Error"
+            icon = "❌"
+            color = "#d32f2f"  # Red
+        else:
+            error_type = "Error"
+            icon = "⚠️"
+            color = "#d32f2f"  # Red
+        
+        # Extract line number if present
+        line_info = ""
+        import re
+        line_match = re.search(r'line (\d+)', error_msg, re.IGNORECASE)
+        if line_match:
+            line_num = line_match.group(1)
+            line_info = f'<span style="color: {theme_colors["secondary_text"]};"> (Line {line_num})</span>'
+        
+        # Clean up the error message
+        clean_error = error_msg.strip()
+        if clean_error.startswith('line ') and ':' in clean_error:
+            # Remove redundant line info from beginning
+            clean_error = clean_error.split(':', 1)[1].strip()
+        
+        # Format the complete error with nice styling
+        formatted_error = f'''
+        <div style="border-left: 4px solid {color}; padding: 8px 12px; margin: 4px 0; background-color: {theme_colors["error_bg"]};">
+            <div style="color: {color}; font-weight: bold; margin-bottom: 4px;">
+                {icon} {error_type} <span style="color: {theme_colors["secondary_text"]};">[{timestamp}]</span>{line_info}
+            </div>
+            <div style="color: {theme_colors["main_text"]}; font-family: 'Consolas', 'Courier New', monospace; line-height: 1.4;">
+                {self._escape_html(clean_error)}
+            </div>
+        </div>
+        '''
+        
+        return formatted_error
+
+    def _get_theme_colors_for_output(self):
+        """Get theme-appropriate colors for compilation output formatting"""
+        # Default colors (for light theme)
+        colors = {
+            "main_text": "#333333",
+            "secondary_text": "#666666", 
+            "error_bg": "rgba(211, 47, 47, 0.1)"
+        }
+        
+        # Check if we have a theme manager and current theme
+        if hasattr(self, 'theme_manager') and self.theme_manager.current_theme:
+            theme = self.theme_manager.current_theme
+            if hasattr(theme, 'colors'):
+                # Use theme colors for better dark mode support
+                colors["main_text"] = theme.colors.editor_text
+                colors["secondary_text"] = theme.colors.editor_text + "AA"  # Add some transparency
+                
+                # Adjust error background based on theme
+                if "dark" in theme.name.lower():
+                    colors["error_bg"] = "rgba(211, 47, 47, 0.2)"  # Slightly more visible in dark theme
+                else:
+                    colors["error_bg"] = "rgba(211, 47, 47, 0.1)"
+        
+        return colors
+
+    def _escape_html(self, text: str) -> str:
+        """Escape HTML characters in text for safe display"""
+        import html
+        return html.escape(text)
+    
+    def _show_compilation_error_dialog(self, error_msg: str) -> None:
+        """
+        Show compilation error dialog for immediate user notification.
+        
+        Args:
+            error_msg: The compilation error message to display
+        """
+        from PySide6.QtWidgets import QMessageBox
+        import re
+        
+        msg = QMessageBox(self)
+        msg.setIcon(QMessageBox.Icon.Critical)
+        msg.setWindowTitle("⚠️ YARA Compilation Error")
+        
+        # Extract line number for better context
+        line_match = re.search(r'line (\d+)', error_msg, re.IGNORECASE)
+        if line_match:
+            line_num = line_match.group(1)
+            msg.setText(f"Compilation failed at line {line_num}")
+        else:
+            msg.setText("YARA rule compilation failed")
+        
+        # Clean up error message
+        clean_error = error_msg.strip()
+        if clean_error.startswith('line ') and ':' in clean_error:
+            clean_error = clean_error.split(':', 1)[1].strip()
+        
+        # Format the error message for better readability
+        if len(clean_error) > 250:
+            short_msg = clean_error[:250] + "..."
+            msg.setInformativeText(f"Error: {short_msg}")
+            msg.setDetailedText(f"Complete error message:\n\n{error_msg}")
+        else:
+            msg.setInformativeText(clean_error)
+        
+        # Simple styling for better appearance
+        msg.setStyleSheet("""
+            QMessageBox {
+                min-width: 300px;
+            }
+            QMessageBox QLabel {
+                min-width: 280px;
+            }
+        """)
+        
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
+
+    def _show_reset_confirmation_dialog(self):
+        """Show a simple reset confirmation dialog"""
+        from PySide6.QtWidgets import QMessageBox
+        
+        reply = QMessageBox.question(
+            self, 
+            "Reset All", 
+            "This will clear ALL data:\n• YARA editor\n• Compilation output\n• Scan results\n• Directory selection\n• All tables and lists\n\nContinue?",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No
+        )
+        
+        return reply
+    
+    def _format_code_html(self, code: str, color: str = "black") -> str:
+        """
+        Format code text for HTML display with proper monospace styling.
+        
+        Args:
+            code: The code text to format
+            color: Text color for the code
+            
+        Returns:
+            HTML-formatted code with proper monospace styling
+        """
+        # Escape HTML characters
+        import html
+        escaped_code = html.escape(code)
+        
+        # Use proper monospace font family with fallbacks
+        return (
+            f'<pre style="'
+            f'font-family: Consolas, \'Courier New\', Monaco, monospace; '
+            f'color: {color}; '
+            f'margin: 0; '
+            f'padding: 0; '
+            f'white-space: pre-wrap; '
+            f'word-wrap: break-word;'
+            f'">{escaped_code}</pre>'
+        )
+
+    def _setup_monospace_fonts(self) -> None:
+        """Setup consistent monospace fonts across editor and compilation output."""
+        from PySide6.QtGui import QFont
+
+        # User overrides take priority over theme defaults
+        font_family = self._get_setting('editor_font_family', '')
+        font_size = self._get_setting('editor_font_size', 0)
+        if not font_family or not font_size:
+            theme = self.theme_manager.current_theme if hasattr(self, 'theme_manager') else None
+            if theme:
+                font_family = font_family or theme.editor_font_family
+                font_size = font_size or theme.editor_font_size
+            else:
+                font_family = font_family or "Consolas"
+                font_size = font_size or 8
+
+        self._apply_editor_font(font_family, font_size)
+
+    def setup_theming(self):
+        """Setup theming system and add theme selector to UI"""
+        from PySide6.QtWidgets import QCheckBox, QComboBox, QLabel, QHBoxLayout, QWidget, QSpacerItem, QSizePolicy
+
+        # Create theme selector widget
+        theme_widget = QWidget()
+        theme_layout = QHBoxLayout(theme_widget)
+        theme_layout.setContentsMargins(0, 0, 0, 0)
+
+        # Add spacer to push controls to the right
+        spacer = QSpacerItem(40, 20, QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        theme_layout.addItem(spacer)
+
+        # Vim checkbox
+        self.vim_checkbox = QCheckBox("Vim")
+        self.vim_checkbox.setToolTip("Enable vim-style keybindings in the editor")
+        self.vim_checkbox.toggled.connect(self._on_vim_toggled)
+        theme_layout.addWidget(self.vim_checkbox)
+
+        # Vim mode indicator label
+        self.vim_mode_label = QLabel("")
+        self.vim_mode_label.setStyleSheet("font-weight: bold; margin-left: 4px; margin-right: 8px;")
+        theme_layout.addWidget(self.vim_mode_label)
+
+        # Theme label
+        theme_label = QLabel("Theme:")
+        theme_layout.addWidget(theme_label)
+
+        # Theme selector combo box
+        self.theme_combo = QComboBox()
+        available_themes = self.theme_manager.get_available_themes()
+        for theme_name in available_themes.keys():
+            self.theme_combo.addItem(theme_name)
+
+        # Connect theme change
+        self.theme_combo.currentTextChanged.connect(self.on_theme_changed)
+        theme_layout.addWidget(self.theme_combo)
+
+        # Add theme selector to status bar
+        self.statusBar().addPermanentWidget(theme_widget)
+
+        # Connect vim mode display and save/quit signals
+        self.ui.te_yara_editor.vim_mode_changed.connect(self._update_vim_mode_display)
+        self.ui.te_yara_editor._vim_handler.save_requested.connect(self.on_save_rule)
+        self.ui.te_yara_editor._vim_handler.quit_requested.connect(self.close)
+    
+    def load_theme_settings(self):
+        """Load saved theme settings or apply default theme"""
+        config_path = self._settings_path()
+
+        # Default to light theme
+        current_theme = "Light"
+        vim_enabled = False
+        yara_folder = ''
+
+        # Try to load saved preferences
+        try:
+            if config_path.exists():
+                import json
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+                current_theme = settings.get('theme', 'Light')
+                vim_enabled = settings.get('vim_mode', False)
+                yara_folder = settings.get('yara_rules_folder', '')
+        except Exception as e:
+            print(f"Error loading theme settings: {e}")
+
+        # Set theme in combo box and apply (block signals to avoid
+        # on_theme_changed re-saving during initialisation)
+        print(f"[THEME DEBUG] load_theme_settings: config_path='{config_path}' (exists={config_path.exists()})")
+        print(f"[THEME DEBUG] load_theme_settings: read theme='{current_theme}' from settings.json")
+        print(f"[THEME DEBUG] combo current text BEFORE set: '{self.theme_combo.currentText()}'")
+        self.theme_combo.blockSignals(True)
+        if current_theme in [self.theme_combo.itemText(i) for i in range(self.theme_combo.count())]:
+            self.theme_combo.setCurrentText(current_theme)
+        else:
+            print(f"[THEME DEBUG] WARNING: theme '{current_theme}' not found in combo items!")
+        self.theme_combo.blockSignals(False)
+        print(f"[THEME DEBUG] combo current text AFTER set: '{self.theme_combo.currentText()}'")
+
+        self.apply_theme(current_theme)
+
+        # Restore vim mode setting (after theme is applied)
+        self.vim_checkbox.setChecked(vim_enabled)
+
+        # Restore YARA rules folder (browser stays hidden until user clicks Browse)
+        if yara_folder and Path(yara_folder).is_dir():
+            self._yara_browser.set_root(yara_folder)
+
+        # Restore user font overrides (after theme is applied)
+        try:
+            if config_path.exists():
+                import json as _json
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    _s = _json.load(f)
+                _ff = _s.get('editor_font_family', '')
+                _fs = _s.get('editor_font_size', 0)
+                if _ff and _fs:
+                    self._apply_editor_font(_ff, _fs)
+                _uf = _s.get('ui_font_family', '')
+                _us = _s.get('ui_font_size', 0)
+                if _uf and _us:
+                    self._apply_ui_font(_uf, _us)
+        except Exception:
+            pass
+
+        # Restore dock layout and window geometry from previous session
+        try:
+            if config_path.exists():
+                import json, base64
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+                dock_state = settings.get('dock_state', '')
+                if dock_state:
+                    self.restoreState(base64.b64decode(dock_state))
+                win_geo = settings.get('window_geometry', '')
+                if win_geo:
+                    self.restoreGeometry(base64.b64decode(win_geo))
+        except Exception:
+            pass  # Use default layout on error
+    
+    def save_theme_settings(self, theme_name):
+        """Save theme preference to config file."""
+        print(f"[THEME DEBUG] save_theme_settings('{theme_name}')")
+        self._save_setting('theme', theme_name)
+    
+    def on_theme_changed(self, theme_name):
+        """Handle theme change from combo box"""
+        if theme_name:
+            import traceback
+            print(f"[THEME DEBUG] on_theme_changed('{theme_name}') called from:")
+            traceback.print_stack(limit=6)
+            self.apply_theme(theme_name)
+            self.save_theme_settings(theme_name)
+
+    # ─── Vim integration ─────────────────────────────────────────────
+
+    def _on_vim_toggled(self, enabled):
+        """Handle vim checkbox toggle."""
+        if hasattr(self, '_editor_tabs'):
+            self._editor_tabs.set_all_vim_mode(enabled)
+        else:
+            self.ui.te_yara_editor.set_vim_mode(enabled)
+        self._save_vim_setting(enabled)
+
+    def _update_vim_mode_display(self, text):
+        """Update vim mode indicator label."""
+        self.vim_mode_label.setText(text)
+
+    def _save_setting(self, key: str, value):
+        """Persist a single key to settings.json"""
+        config_path = self._settings_path()
+
+        try:
+            import json
+            settings = {}
+            if config_path.exists():
+                with open(config_path, 'r', encoding='utf-8') as f:
+                    settings = json.load(f)
+            settings[key] = value
+            with open(config_path, 'w', encoding='utf-8') as f:
+                json.dump(settings, f, indent=2)
+        except Exception as e:
+            # Surface to the user so the next "why didn't my setting save"
+            # debug session takes 10 seconds, not 10 minutes.
+            try:
+                QMessageBox.warning(self,
+                                    "Settings saved failed",
+                                    f"could not write {key} to {config_path}:\n{e}",)
+            except Exception:
+                pass
+            print(f"Error saving setting '{key}' to {config_path}: {e}")
+
+    def _save_vim_setting(self, enabled):
+        """Persist vim_mode to config/settings.json."""
+        self._save_setting('vim_mode', enabled)
+
+    def _save_yara_folder(self, folder: str):
+        """Persist YARA rules folder to config/settings.json."""
+        self._save_setting('yara_rules_folder', folder)
+    
+    def apply_theme(self, theme_name):
+        """Apply the selected theme to the entire application."""
+        theme = self.theme_manager.get_theme(theme_name)
+        self.theme_manager.set_current_theme(theme_name)
+
+        # Font preferences survive switching themes and apply to dialogs too.
+        self._apply_ui_font(self._get_setting('ui_font_family', theme.font_family),
+                            self._get_setting('ui_font_size', theme.font_size))
+
+        # Apply theme to all editor tabs (and the active one)
+        if hasattr(self, '_editor_tabs'):
+            self._editor_tabs.update_all_themes(theme)
+        else:
+            self.ui.te_yara_editor.set_theme_manager(self.theme_manager)
+            if hasattr(self, 'highlighter') and self.highlighter:
+                self.highlighter.update_theme(theme)
+
+        self.update_themed_widgets(theme)
+
+        # Propagate theme to open hex editor windows
+        if hasattr(self, '_hex_editor_windows'):
+            for win in self._hex_editor_windows:
+                try:
+                    if win.isVisible():
+                        win.apply_theme()
+                except RuntimeError:
+                    pass
+    
+    def update_themed_widgets(self, theme):
+        """Update widgets that need specific theme-aware styling"""
+        colors = theme.colors
+        
+        # Update persistent selection highlighting for hits table
+        hits_selection_style = f"""
+            QTableView::item:selected {{
+                background-color: {colors.selection_background};
+                color: {colors.selection_text};
+            }}
+            QTableView::item:selected:!active {{
+                background-color: {colors.selection_inactive};
+                color: {colors.selection_text};
+            }}
+        """
+        
+        if hasattr(self.ui, 'tv_file_hits'):
+            current_style = self.ui.tv_file_hits.styleSheet()
+            # Replace existing selection styles or add new ones
+            if "QTableView::item:selected" in current_style:
+                # Remove old selection styles and add new ones
+                import re
+                pattern = r'QTableView::item:selected[^}]*}[^}]*}'
+                current_style = re.sub(pattern, '', current_style)
+            
+            self.ui.tv_file_hits.setStyleSheet(current_style + hits_selection_style)
+        
+        # Update similar files tree selection styling
+        tree_selection_style = f"""
+            QTreeWidget::item:selected {{
+                background-color: {colors.selection_background};
+                color: {colors.selection_text};
+            }}
+            QTreeWidget::item:selected:!active {{
+                background-color: {colors.selection_inactive};
+                color: {colors.selection_text};
+            }}
+        """
+        
+        if hasattr(self.ui, 'tw_similar_files'):
+            current_tree_style = self.ui.tw_similar_files.styleSheet()
+            if "QTreeWidget::item:selected" in current_tree_style:
+                import re
+                pattern = r'QTreeWidget::item:selected[^}]*}[^}]*}'
+                current_tree_style = re.sub(pattern, '', current_tree_style)
+            
+            self.ui.tw_similar_files.setStyleSheet(current_tree_style + tree_selection_style)
+        
+        # Update match details table selection styling
+        if hasattr(self.ui, 'tw_match_details'):
+            self.ui.tw_match_details.setStyleSheet(tree_selection_style.replace('QTreeWidget', 'QTableWidget'))
+        
+        # Update compilation output styling for theme
+        self._update_compilation_output_theme(theme)
+        
+        # Update checkbox icons with theme colors
+        self.update_checkbox_icons(theme)
+        
+        # Update editor fonts with theme font settings
+        self._setup_monospace_fonts()
+        
+        # Force text editor selection colors using palette
+        self._update_text_editor_palette(theme)
+
+    def _update_compilation_output_theme(self, theme):
+        """Update compilation output styling based on current theme"""
+        colors = theme.colors
+        
+        # Apply theme-appropriate styling to compilation output
+        compilation_output_style = f"""
+        QTextBrowser {{
+            background-color: {colors.editor_background};
+            color: {colors.editor_text};
+            border: 1px solid {colors.editor_background};
+            selection-background-color: {colors.editor_selection};
+            selection-color: {colors.editor_text};
+        }}
+        """
+        
+        self.ui.tb_compilation_output.setStyleSheet(compilation_output_style)
+
+    def _update_text_editor_palette(self, theme):
+        """Force text editor selection colors using direct stylesheet"""
+        
+        # Get all text editors in the UI
+        text_editors = []
+        if hasattr(self.ui, 'te_rule_content'):
+            text_editors.append(self.ui.te_rule_content)
+        if hasattr(self.ui, 'te_file_content'):
+            text_editors.append(self.ui.te_file_content)
+        
+        # Create direct stylesheet for text editor selection
+        selection_stylesheet = f"""
+        QTextEdit, QPlainTextEdit {{
+            selection-background-color: {theme.colors.editor_selection};
+            selection-color: {theme.colors.editor_text};
+        }}
+        """
+        
+        for editor in text_editors:
+            # Apply the direct selection stylesheet to each editor
+            editor.setStyleSheet(selection_stylesheet)
+            
+            # Configure scrollbars to only show when needed
+            from PySide6.QtCore import Qt
+            editor.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            editor.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+            
+            # Refresh current line highlighting with new theme colors
+            if hasattr(editor, 'cursorPositionChanged'):
+                # Trigger current line highlight refresh
+                editor.cursorPositionChanged.emit()
+    
+    def create_checkbox_icon(self, size=16, checked=False, theme=None):
+        """Create a custom checkbox icon with proper checkmark"""
+        if theme is None:
+            theme = self.theme_manager.current_theme
+        
+        colors = theme.colors
+        
+        # Create pixmap
+        pixmap = QPixmap(size, size)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        
+        # Create painter
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        
+        # Draw checkbox border and background
+        if checked:
+            # Checked: white background with colored border
+            painter.fillRect(1, 1, size-2, size-2, Qt.GlobalColor.white)
+            pen = QPen(Qt.GlobalColor.red, 2)  # Red border for checked
+        else:
+            # Unchecked: light background with gray border  
+            painter.fillRect(1, 1, size-2, size-2, Qt.GlobalColor.white)
+            pen = QPen(Qt.GlobalColor.gray, 1)  # Gray border for unchecked
+        
+        painter.setPen(pen)
+        painter.drawRect(1, 1, size-3, size-3)
+        
+        if checked:
+            # Draw checkmark
+            pen = QPen(Qt.GlobalColor.red, 2)
+            pen.setCapStyle(Qt.PenCapStyle.RoundCap)
+            pen.setJoinStyle(Qt.PenJoinStyle.RoundJoin)
+            painter.setPen(pen)
+            
+            # Draw checkmark path
+            # Start from left-middle, go to bottom-center, then to top-right
+            checkmark_points = [
+                (size * 0.25, size * 0.5),      # Left point
+                (size * 0.45, size * 0.7),      # Bottom point  
+                (size * 0.75, size * 0.3)       # Right point
+            ]
+            
+            # Draw the checkmark lines
+            painter.drawLine(int(checkmark_points[0][0]), int(checkmark_points[0][1]),
+                           int(checkmark_points[1][0]), int(checkmark_points[1][1]))
+            painter.drawLine(int(checkmark_points[1][0]), int(checkmark_points[1][1]),
+                           int(checkmark_points[2][0]), int(checkmark_points[2][1]))
+        
+        painter.end()
+        return QIcon(pixmap)
+
+    def update_checkbox_icons(self, theme):
+        """Update tree view checkbox icons with theme-appropriate colors"""
+        # Create custom checkbox icons
+        checked_icon = self.create_checkbox_icon(16, checked=True, theme=theme)
+        unchecked_icon = self.create_checkbox_icon(16, checked=False, theme=theme)
+        
+        # Apply to the file system tree view
+        if hasattr(self, 'fs_view'):
+            # Note: Qt doesn't have a direct way to set checkbox icons via stylesheet
+            # We would need to implement a custom delegate or use a different approach
+            # TODO: Implement custom delegate for checkbox styling
+            return
+
+    def on_browse_yara(self):
+        """Toggle the YARA rule browser panel.
+
+        If the browser has no root folder set yet, prompt the user to
+        pick one.  Otherwise just toggle visibility so repeated clicks
+        show/hide the panel.
+        """
+        if self.dock_rule_browser.isVisible():
+            self.dock_rule_browser.setVisible(False)
+            return
+
+        # Show the Rule Browser dock
+        self.dock_rule_browser.setVisible(True)
+        self.dock_rule_browser.raise_()
+
+        # If no root set yet, prompt immediately
+        if not self._yara_browser.root_path():
+            folder = QFileDialog.getExistingDirectory(
+                self, "Select YARA rules folder", self.last_dir)
+            if folder:
+                self._yara_browser.set_root(folder)
+                self.last_dir = folder
+                self._save_yara_folder(folder)
+            else:
+                # Also offer single-file fallback
+                self._open_single_yara_file()
+                return
+
+    def _open_single_yara_file(self):
+        """Open a single YARA file via the classic file dialog."""
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Open YARA rule", self.last_dir,
+            "YARA files (*.yar *.yara);;All files (*)")
+        if not path:
+            return
+        try:
+            text = Path(path).read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            QMessageBox.critical(self, "Open failed", f"Could not read file:\n{e}")
+            return
+        self._load_text_to_editor(text, source_path=path)
+
+    def _on_yara_file_requested(self, filepath: str):
+        """Handle double-click on a rule file — open in a tab."""
+        # If already open, just switch to that tab
+        existing = self._editor_tabs.find_tab_by_path(filepath)
+        if existing >= 0:
+            self._editor_tabs.setCurrentIndex(existing)
+            return
+        try:
+            text = Path(filepath).read_text(encoding="utf-8", errors="replace")
+        except Exception as e:
+            QMessageBox.critical(self, "Open failed", f"Could not read file:\n{e}")
+            return
+        self._load_text_to_editor(text, source_path=filepath)
+
+    def _on_yara_files_requested(self, filepaths: list):
+        """Handle multi-file request — open each in its own tab."""
+        if not filepaths:
+            return
+        if len(filepaths) > 20:
+            reply = QMessageBox.question(
+                self, "Open many files",
+                f"This will open {len(filepaths)} files in separate tabs.\n\nContinue?",
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No)
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        opened = 0
+        errors: list[str] = []
+        for fp in filepaths:
+            if self._editor_tabs.find_tab_by_path(fp) >= 0:
+                continue  # already open
+            try:
+                text = Path(fp).read_text(encoding="utf-8", errors="replace")
+                self._editor_tabs.add_editor_tab(
+                    text=text, title=Path(fp).name, source_path=fp)
+                opened += 1
+            except Exception as e:
+                errors.append(f"{Path(fp).name}: {e}")
+        msg = f"Opened {opened} file(s) in tabs"
+        if errors:
+            msg += f" ({len(errors)} failed)"
+        self.statusBar().showMessage(msg, 4000)
+
+    def _on_yara_files_combine(self, filepaths: list):
+        """Combine multiple YARA files into a single new tab."""
+        if not filepaths:
+            return
+        parts: list[str] = []
+        errors: list[str] = []
+        for fp in filepaths:
+            try:
+                parts.append(Path(fp).read_text(encoding="utf-8", errors="replace"))
+            except Exception as e:
+                errors.append(f"{Path(fp).name}: {e}")
+        if not parts:
+            QMessageBox.warning(self, "No rules loaded",
+                                "Could not read any of the selected files.")
+            return
+        combined = "\n\n".join(parts)
+        names = [Path(fp).name for fp in filepaths[:3]]
+        title = " + ".join(names)
+        if len(filepaths) > 3:
+            title += f" (+{len(filepaths) - 3})"
+        # No source_path — force "Save As" prompt on save
+        self._editor_tabs.add_editor_tab(
+            text=combined, title=title, source_path="")
+        msg = f"Combined {len(parts)} file(s) into one tab"
+        if errors:
+            msg += f" ({len(errors)} failed)"
+        self.statusBar().showMessage(msg, 4000)
+
+    def on_yara_text_changed(self):
+        """Invalidate compiled rules when YARA text is modified"""
+        # If rules were compiled, invalidate them since text changed
+        if self.compiled_rules is not None:
+            self.compiled_rules = None
+            self.ui.tb_compilation_output.setHtml(
+                '<span style="color: orange;">ℹ️ Rules modified - please recompile before scanning</span>'
+            )
+            self.statusBar().showMessage("⚠ Rules modified - recompile required", 3000)
+
+    def _load_text_to_editor(self, text: str, source_path: str | None = None):
+        """Load text into a new editor tab (or switch to an existing one)."""
+        try:
+            # If already open, just switch to that tab
+            if source_path:
+                existing = self._editor_tabs.find_tab_by_path(source_path)
+                if existing >= 0:
+                    self._editor_tabs.setCurrentIndex(existing)
+                    return
+
+            title = Path(source_path).name if source_path else "Untitled"
+            editor = self._editor_tabs.add_editor_tab(
+                text=text, title=title, source_path=source_path or "")
+
+            if source_path:
+                self.last_dir = str(Path(source_path).parent)
+                self.statusBar().showMessage(f"Loaded YARA: {source_path}", 4000)
+
+        except Exception as e:
+            QMessageBox.critical(self, "Load failed", f"Could not load YARA text:\n{e}")
+    
+    def on_save_rule(self):
+        """Save the active editor using the same flow as tab/window closing."""
+        editor = self.ui.te_yara_editor
+        if getattr(editor, '_repository_binding', None):
+            return self._repository_editor.save(editor)
+        path = self._editor_tabs.save_editor(editor, self.last_dir)
+        if path:
+            self.last_dir = str(Path(path).parent)
+            self.statusBar().showMessage(f"YARA rule saved: {path}", 4000)
+        return bool(path)
+
+    def _reset_all_tabs(self):
+        """Reset every tab widget and dock to its default state."""
+        self.dock_scan_dir.raise_()
+        self.ui.tabWidget_2.setCurrentIndex(0)
+        self.ui.tabWidget_3.setCurrentIndex(0)
+        self.ui.tabWidget_4.setCurrentIndex(0)
+
+    def on_reset(self):
+        """Reset everything to a completely fresh start"""
+        reply = self._show_reset_confirmation_dialog()
+
+        if reply != QMessageBox.StandardButton.Yes:
+            return
+
+        # Clear YARA editor and compilation
+        self.ui.te_yara_editor._repository_binding = None
+        self.ui.te_yara_editor._repository_save = None
+        self._repository_editor.refresh()
+        self.ui.te_yara_editor.clear()
+        self.compiled_rules = None
+
+        self.ui.te_yara_editor.document().setModified(False)
+
+        # Clear all scan data
+        self.scan_hits = []
+        self.scan_misses = []
+        self.scan_root = None
+
+        # Clear all results views
+        self.results.clear_all()
+
+        # Clear exclusion list
+        self.ui.listWidget.clear()
+
+        # Reset directory tree
+        self.fs_view.setRootIndex(QModelIndex())
+        self.fs_model._unchecked.clear()
+
+        # Clear and reset compilation output with helpful message
+        self.ui.tb_compilation_output.clear()
+        self.ui.tb_compilation_output.setHtml(
+            '<span style="color: gray;"><b>Complete reset performed</b></span><br><br>'
+            '<b>Steps to get started:</b><br>'
+            '1. Load or write YARA rules in the editor above<br>'
+            '2. Use <b>File → Select Scan Folder…</b> to choose what to scan<br>'
+            '3. Click <b>"SCAN"</b> to start the scan<br>'
+        )
+
+        # Reset size warning flag so it can show again for large files
+        self._size_warning_shown = False
+
+        self._reset_all_tabs()
+        self.statusBar().showMessage("Complete reset - ready for fresh start", 5000)
+
+    def on_format_yara(self) -> None:
+        """Request bounded background formatting for the active document."""
+        self.ui.te_yara_editor.format_rule()
+
+    def on_scan(self) -> None:
+        """Scan selected files with compiled YARA rules (runs on a worker thread).
+
+        While a scan is in progress, the SCAN button flips to CANCEL, so
+        clicking it a second time requests a graceful stop instead of
+        starting a new scan.
+        """
+        # If a scan is already running, the SCAN button acts as CANCEL.
+        if self._scan_worker is not None and self._scan_worker.isRunning():
+            self._on_scan_cancel_clicked()
+            return
+
+        if not self._validate_scan_prerequisites():
+            return
+
+        rule_text = self.ui.te_yara_editor.toPlainText()
+
+        # Compile rules first (fast — stays on main thread)
+        compiled_rules = self._compile_yara_rules(rule_text)
+        if not compiled_rules:
+            return
+
+        # Prepare for scanning
+        self._prepare_scan_ui()
+
+        # Collect files to scan
+        files_to_scan = list(self.iter_selected_files())
+        if not files_to_scan:
+            self.ui.tb_compilation_output.append("\u26a0 No files to scan (all excluded or empty directory).")
+            self.statusBar().showMessage("No files to scan", 3000)
+            return
+
+        # Derive filesize bounds from the rule text so the worker can
+        # skip files that can't possibly match without reading them.
+        size_bounds = self._compute_size_bounds(rule_text)
+
+        # Kick off the worker thread — returns immediately.
+        # Results are handled in _on_scan_finished.
+        self._perform_file_scanning(compiled_rules, files_to_scan, size_bounds)
+
+    def _validate_scan_prerequisites(self) -> bool:
+        """Validate that all prerequisites for scanning are met."""
+        if not YARA_X_AVAILABLE:
+            self.ui.tb_compilation_output.setHtml(
+                '<span style="color: red; font-weight: bold;">✗ YARA-X not installed!</span><br><br>'
+                'Please install it with: <code>pip install yara-x</code>'
+            )
+            self.statusBar().showMessage("YARA-X not installed", 4000)
+            return False
+
+        rule_text = self.ui.te_yara_editor.toPlainText()
+        if not rule_text.strip():
+            QMessageBox.warning(self, "No YARA Rule", "Please load or write a YARA rule first.")
+            return False
+
+        if self.scan_root is None:
+            QMessageBox.warning(self, "No Scan Directory", "Please select a directory to scan first.")
+            return False
+            
+        return True
+    
+    def _compile_yara_rules(self, rule_text: str):
+        """Compile YARA rules and return compiled rules object or None on failure."""
+        from datetime import datetime
+        timestamp = datetime.now().strftime("%H:%M:%S")
+        
+        try:
+            self.ui.tb_compilation_output.setHtml(
+                f'<span style="color: blue;">[{timestamp}] Compiling YARA rules...</span>'
+            )
+            QApplication.processEvents()
+            
+            rules = self.scanner.compile_rules(rule_text)
+            
+            # Format success message nicely with theme-aware colors
+            theme_colors = self._get_theme_colors_for_output()
+            success_bg = "rgba(76, 175, 80, 0.2)" if "dark" in getattr(self.theme_manager.current_theme, 'name', '').lower() else "rgba(76, 175, 80, 0.1)"
+            
+            success_msg = f'''
+            <div style="border-left: 4px solid #4caf50; padding: 8px 12px; margin: 4px 0; background-color: {success_bg};">
+                <div style="color: #4caf50; font-weight: bold; margin-bottom: 4px;">
+                    ✅ Compilation Successful <span style="color: {theme_colors["secondary_text"]};">[{timestamp}]</span>
+                </div>
+                <div style="color: {theme_colors["main_text"]};">
+                    YARA rules compiled and ready for scanning
+                </div>
+            </div>
+            '''
+            self.ui.tb_compilation_output.append(success_msg)
+            QApplication.processEvents()
+            return rules
+            
+        except Exception as e:
+            self._handle_error(e, "YARA compilation")
+            # Show error message box for immediate user notification
+            self._show_compilation_error_dialog(str(e))
+            return None
+    
+    def _prepare_scan_ui(self) -> None:
+        """Prepare the UI for scanning by switching tabs and clearing results."""
+        # Switch to Scan Results dock and focus on Hits
+        self.dock_scan_results.setVisible(True)
+        self.dock_scan_results.raise_()
+        self.ui.tabWidget_2.setCurrentIndex(0)  # Focus on Hits tab
+        
+        # Clear previous results
+        self.scan_hits.clear()
+        self.scan_misses.clear()
+        self.results.clear_all()
+    
+    def _compute_size_bounds(self, rule_text: str):
+        """Parse the rule text for `filesize` constraints and log the
+        derived skip bounds (if any) to the compilation output."""
+        from yaraxgui.scanning.scanner import compute_size_bounds, format_size
+        bounds = compute_size_bounds(rule_text)
+        if bounds.is_useful():
+            parts = []
+            if bounds.min_size > 0:
+                parts.append(f"min={format_size(bounds.min_size)}")
+            if bounds.max_size is not None:
+                parts.append(f"max={format_size(bounds.max_size)}")
+            self.ui.tb_compilation_output.append(
+                f"\u26A1 filesize pre-filter active: {', '.join(parts)} "
+                f"\u2014 files outside this range will be skipped "
+                f"without being read."
+            )
+        return bounds
+
+    def _perform_file_scanning(self, rules, files_to_scan: List[Path],
+                                size_bounds=None) -> None:
+        """Launch the background scan worker; results land in ``_on_scan_finished``."""
+        total = len(files_to_scan)
+        self.ui.tb_compilation_output.append(f"Scanning {total} files...\n")
+        self.statusBar().showMessage(f"Scanning {total} files...", 0)
+
+        # Show progress bar + cancel button in status bar
+        self._scan_progress.setRange(0, total)
+        self._scan_progress.setValue(0)
+        self._scan_progress.setFormat("Scanning %v / %m  (%p%)")
+        self._scan_progress.show()
+        self._scan_cancel_btn.setEnabled(True)
+        self._scan_cancel_btn.show()
+
+        # Flip the SCAN button into a CANCEL button so the user has an
+        # obvious way to stop a runaway scan (e.g. accidentally scanning
+        # a folder full of 2 GB files). The click handler already checks
+        # for a running worker and routes to cancel in that case.
+        if not hasattr(self, "_scan_btn_default_text"):
+            self._scan_btn_default_text = self.ui.pb_scan.text()
+            self._scan_btn_default_tooltip = self.ui.pb_scan.toolTip()
+        self.ui.pb_scan.setText("\u26D4 CANCEL SCAN")
+        self.ui.pb_scan.setToolTip("Cancel the running scan")
+        self.ui.pb_scan.setEnabled(True)
+
+        # Spin up the worker thread
+        self._scan_worker = ScanWorker(
+            self.scanner, rules, files_to_scan, parent=self,
+            size_bounds=size_bounds,
+        )
+        self._scan_worker.progress.connect(self._on_scan_progress)
+        self._scan_worker.result_ready.connect(self._on_scan_finished)
+        self._scan_worker.error.connect(self._on_scan_error)
+        self._scan_worker.finished.connect(self._on_scan_thread_done)
+        self._scan_worker.start()
+
+    def _on_scan_progress(self, scanned: int, total: int, filename: str) -> None:
+        """Worker thread → main thread progress update."""
+        self._scan_progress.setValue(scanned)
+        # Truncate very long filenames so the status bar stays readable
+        display = filename if len(filename) <= 60 else filename[:57] + "..."
+        self.statusBar().showMessage(
+            f"Scanning ({scanned}/{total}): {display}", 0)
+
+    def _on_scan_finished(self, result: dict) -> None:
+        """Worker finished (successfully or cancelled). Populate results into UI."""
+        # Process hits
+        for hit in result['hits']:
+            self.scan_hits.append(hit)
+            self._add_hit_to_table(hit)
+
+        # Stash misses (displayed lazily via the tab-change hook)
+        for miss in result['misses']:
+            self.scan_misses.append(miss)
+
+        # Surface per-file errors
+        for msg in result['error_messages']:
+            self.ui.tb_compilation_output.append(f"\n{msg}")
+
+        cancelled = bool(result.get('cancelled'))
+        stats = result['stats']
+        if cancelled:
+            self.ui.tb_compilation_output.append(
+                f"\n\u26a0 Scan cancelled after {stats['scanned']} file(s)."
+            )
+            self.statusBar().showMessage(
+                f"Scan cancelled \u2014 {stats['scanned']} scanned, "
+                f"{stats['matches']} matches",
+                6000
+            )
+
+        # Finalize (populate aggregate views, switch tabs, show summary)
+        self._finalize_scan_results(stats)
+
+    def _on_scan_error(self, msg: str) -> None:
+        """Fatal worker-thread error."""
+        self.ui.tb_compilation_output.append(f"\n\u2717 {msg}")
+        self.statusBar().showMessage("Scan failed", 5000)
+
+    def _on_scan_thread_done(self) -> None:
+        """Hide progress widgets and drop the worker reference (UI thread)."""
+        self._scan_progress.hide()
+        self._scan_cancel_btn.hide()
+        # Restore the SCAN button label/tooltip (it was swapped to CANCEL
+        # for the duration of the scan).
+        if hasattr(self, "_scan_btn_default_text"):
+            self.ui.pb_scan.setText(self._scan_btn_default_text)
+            self.ui.pb_scan.setToolTip(self._scan_btn_default_tooltip)
+        self.ui.pb_scan.setEnabled(True)
+        # Let Qt clean up the QThread before releasing our reference
+        if self._scan_worker is not None:
+            self._scan_worker.deleteLater()
+            self._scan_worker = None
+
+    def _on_scan_cancel_clicked(self) -> None:
+        """User clicked cancel (either the status-bar button or the main
+        SCAN/CANCEL button in the toolbar)."""
+        if self._scan_worker is None or not self._scan_worker.isRunning():
+            return
+        self._scan_worker.cancel()
+        self._scan_cancel_btn.setEnabled(False)
+        # Gray out the main button and update its label so the user gets
+        # immediate feedback while the current file finishes scanning.
+        self.ui.pb_scan.setEnabled(False)
+        self.ui.pb_scan.setText("Cancelling...")
+        self.statusBar().showMessage(
+            "Cancelling scan \u2014 finishing current file...", 0)
+    
+    def _add_hit_to_table(self, hit: Dict) -> None:
+        """Add a hit to the hits table with appropriate styling."""
+        filename = hit['filename']
+        filepath = hit['filepath']
+        matched_rules = hit['matched_rules']
+        file_size = hit.get('file_size', 0)
+        rules_count = len(matched_rules)
+
+        # Choose display based on severity
+        if rules_count == 1:
+            filename_display = f"\u26a0 {filename}"
+        elif rules_count <= 3:
+            filename_display = f"\U0001f534 {filename} ({rules_count})"
+        else:
+            filename_display = f"\U0001f6a8 {filename} ({rules_count})"
+
+        filename_item = QStandardItem(filename_display)
+        tooltip = (
+            f"File: {filename}\nPath: {filepath}\n"
+            f"Rules matched: {', '.join([r['identifier'] for r in matched_rules])}"
+        )
+        hashes = {algo: hit[algo] for algo in ('md5', 'sha1', 'sha256')
+                  if hit.get(algo)}
+        if hashes.get('sha256'):
+            tooltip += f"\nMD5: {hashes.get('md5', '')}\nSHA256: {hashes['sha256']}"
+        filename_item.setToolTip(tooltip)
+        # Store filepath in UserRole so consumers can retrieve it without a Path column
+        filename_item.setData(filepath, Qt.ItemDataRole.UserRole)
+        filename_item.setData(hashes, HASHES_ROLE)
+        # Make full path + hashes findable via the filter bar (partial matches work)
+        filename_item.setData(" ".join([filepath, *hashes.values()]), SEARCH_TEXT_ROLE)
+
+        size_item = QStandardItem(format_size(file_size))
+        size_item.setData(file_size, Qt.ItemDataRole.UserRole)  # for sorting
+        size_item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+
+        ext = Path(filename).suffix.lower() if '.' in filename else ''
+        ext_item = QStandardItem(ext)
+
+        self.results.hits_model.appendRow([filename_item, size_item, ext_item])
+    
+    def _finalize_scan_results(self, stats: Dict[str, int]) -> None:
+        """Finalize scan results and update UI."""
+        # Format table
+        self.results._force_thin_rows(self.ui.tv_file_hits)
+        self.ui.tv_file_hits.resizeColumnToContents(0)
+
+        # Switch to results dock
+        self.dock_scan_results.setVisible(True)
+        self.dock_scan_results.raise_()
+        self.ui.tabWidget_2.setCurrentIndex(0)
+
+        # Populate additional views
+        self.results.populate_similar_files(self.scan_hits)
+        self.results.initialize_similar_tags_widget()
+        self.results.populate_match_details(self.scan_hits)
+
+        # Show summary
+        self._display_scan_summary(stats)
+
+    def _display_scan_summary(self, stats: Dict[str, int]) -> None:
+        """Display scan completion summary."""
+        self.ui.tb_compilation_output.append("\n=== Scan Complete ===")
+        self.ui.tb_compilation_output.append(f"Files scanned: {stats['scanned']}")
+        self.ui.tb_compilation_output.append(f"Matches found: {stats['matches']}")
+        self.ui.tb_compilation_output.append(f"Files without matches: {len(self.scan_misses)}")
+
+        skipped = stats.get('skipped', 0)
+        if skipped > 0:
+            self.ui.tb_compilation_output.append(
+                f"\u26A1 Skipped via filesize pre-filter: {skipped} "
+                f"(outside rule bounds \u2014 not read from disk)"
+            )
+
+        if stats['errors'] > 0:
+            self.ui.tb_compilation_output.append(f"Errors: {stats['errors']}")
+
+        if stats['matches'] > 0:
+            self.ui.tb_compilation_output.append(f"\n✓ Results populated in Scan Results tab")
+            
+            # Populate all views immediately after scan completion
+            if self.scan_hits:
+                all_filepaths = {h['filepath'] for h in self.scan_hits}
+                self.results.populate_rule_details(self.scan_hits)
+                self.results.populate_similar_files(self.scan_hits, all_filepaths)
+                self.results.populate_similar_tags(self.scan_hits, all_filepaths)
+                self.results.populate_match_details(self.scan_hits)
+        else:
+            self.ui.tb_compilation_output.append(f"\n✓ No threats detected - all files clean")
+
+        self.statusBar().showMessage(
+            f"Scan complete: {stats['scanned']} files, {stats['matches']} matches",
+            10000
+        )
+
+    # ── scan-dir filter bar ──────────────────────────────────────
+    def _build_fs_filter_bar(self, parent: QWidget) -> QWidget:
+        """Build the filter row that sits above the file-system tree.
+
+        Compact layout:
+            [Filter: ______________] [Glob|Regex] [Name|Path] [Apply ▾]
+
+        The ``Apply`` tool button's default click triggers
+        ``Select matching only`` (the common case). The dropdown
+        arrow exposes the other three actions. Pressing Enter in the
+        filter field is also wired to ``Select matching only``.
+        """
+        from PySide6.QtGui import QAction  # local import to avoid top-level clutter
+
+        bar = QWidget(parent)
+        layout = QHBoxLayout(bar)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(4)
+
+        layout.addWidget(QLabel("Filter:"))
+
+        self.fs_filter_edit = QLineEdit(bar)
+        self.fs_filter_edit.setPlaceholderText(
+            "*.exe,*.dll   or   \\.(exe|dll)$")
+        self.fs_filter_edit.setClearButtonEnabled(True)
+        self.fs_filter_edit.setToolTip(
+            "Glob: comma-separated patterns (e.g. *.exe,*.dll).\n"
+            "Regex: Python re syntax. Case-insensitive.\n"
+            "Press Enter to select matching only.")
+        self.fs_filter_edit.returnPressed.connect(
+            self._on_fs_select_matching_only)
+        layout.addWidget(self.fs_filter_edit, 1)
+
+        self.fs_filter_mode = QComboBox(bar)
+        self.fs_filter_mode.addItems(["Glob", "Regex"])
+        self.fs_filter_mode.setToolTip("How to interpret the filter text")
+        layout.addWidget(self.fs_filter_mode)
+
+        self.fs_filter_target = QComboBox(bar)
+        self.fs_filter_target.addItems(["Name", "Path"])
+        self.fs_filter_target.setToolTip(
+            "Match against the file name only, or the full path")
+        layout.addWidget(self.fs_filter_target)
+
+        # Single compact tool button with a dropdown menu carrying all
+        # four actions. Clicking the button body runs the default
+        # action (select matching only); the little arrow opens the
+        # menu with the rest.
+        act_keep = QAction("Select matching only", self)
+        act_keep.setToolTip(
+            "Clear exclusions, then exclude every file that does NOT "
+            "match the filter")
+        act_keep.triggered.connect(self._on_fs_select_matching_only)
+
+        act_excl = QAction("Exclude matching", self)
+        act_excl.setToolTip(
+            "Add every file that matches the filter to the exclusion "
+            "list (keeps existing exclusions)")
+        act_excl.triggered.connect(self._on_fs_exclude_matching)
+
+        act_all = QAction("Select all", self)
+        act_all.setToolTip("Clear all exclusions")
+        act_all.triggered.connect(self._on_fs_select_all)
+
+        act_none = QAction("Deselect all", self)
+        act_none.setToolTip("Exclude the entire scan root")
+        act_none.triggered.connect(self._on_fs_deselect_all)
+
+        menu = QMenu(bar)
+        menu.addAction(act_keep)
+        menu.addAction(act_excl)
+        menu.addSeparator()
+        menu.addAction(act_all)
+        menu.addAction(act_none)
+
+        self.fs_filter_btn = QToolButton(bar)
+        self.fs_filter_btn.setText("Apply")
+        self.fs_filter_btn.setToolTip(
+            "Click: select matching only.  \u25BE: more actions.")
+        self.fs_filter_btn.setPopupMode(
+            QToolButton.ToolButtonPopupMode.MenuButtonPopup)
+        self.fs_filter_btn.setDefaultAction(act_keep)
+        self.fs_filter_btn.setMenu(menu)
+        layout.addWidget(self.fs_filter_btn)
+
+        return bar
+
+    def _fs_filter_predicate(self):
+        """Build a ``match(name, full_path) -> bool`` callable from the
+        current filter bar state.
+
+        Returns ``None`` if the filter text is empty or if the pattern
+        is invalid (status bar receives an explanatory message in the
+        latter case).
+        """
+        text = self.fs_filter_edit.text().strip()
+        if not text:
+            return None
+
+        mode = self.fs_filter_mode.currentText()
+        target = self.fs_filter_target.currentText()
+        use_full_path = target == "Full path"
+
+        if mode == "Regex":
+            try:
+                pat = re.compile(text, re.IGNORECASE)
+            except re.error as e:
+                self.statusBar().showMessage(f"Bad regex: {e}", 5000)
+                return None
+
+            def match(name: str, full_path: str) -> bool:
+                return pat.search(full_path if use_full_path else name) is not None
+
+            return match
+
+        # Glob: comma-separated list, case-insensitive (fnmatch on Windows
+        # is already case-insensitive via fnmatch.fnmatch, but we force
+        # lowercase to behave the same everywhere).
+        patterns = [p.strip() for p in text.split(",") if p.strip()]
+        if not patterns:
+            return None
+        lowered = [p.lower() for p in patterns]
+
+        def match(name: str, full_path: str) -> bool:
+            subject = (full_path if use_full_path else name).lower()
+            for pat in lowered:
+                if fnmatch.fnmatchcase(subject, pat):
+                    return True
+            return False
+
+        return match
+
+    def _fs_require_scan_root(self) -> bool:
+        if self.scan_root is None:
+            self.statusBar().showMessage(
+                "Select a scan directory first", 4000)
+            return False
+        return True
+
+    def _fs_refresh_view(self) -> None:
+        """Refresh the tree and exclusion list after bulk changes to
+        ``_unchecked`` (direct mutation bypasses :meth:`setData`)."""
+        root_idx = self.fs_view.rootIndex()
+        if root_idx.isValid():
+            self.fs_model._update_visible_children(root_idx)
+        self.update_exclusion_list()
+        self.fs_model.exclusionsChanged.emit()
+
+    def _on_fs_select_all(self) -> None:
+        if not self._fs_require_scan_root():
+            return
+        self.fs_model._unchecked.clear()
+        self._fs_refresh_view()
+        self.statusBar().showMessage("All files selected", 3000)
+
+    def _on_fs_deselect_all(self) -> None:
+        if not self._fs_require_scan_root():
+            return
+        root = self.fs_model._normalize_path(str(self.scan_root))
+        self.fs_model._unchecked.clear()
+        self.fs_model._unchecked.add(root)
+        self._fs_refresh_view()
+        self.statusBar().showMessage("All files deselected", 3000)
+
+    def _on_fs_exclude_matching(self) -> None:
+        if not self._fs_require_scan_root():
+            return
+        match = self._fs_filter_predicate()
+        if match is None:
+            if not self.fs_filter_edit.text().strip():
+                self.statusBar().showMessage(
+                    "Enter a filter pattern first", 4000)
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            added = 0
+            normalize = self.fs_model._normalize_path
+            unchecked = self.fs_model._unchecked
+            for root, dirs, files in os.walk(self.scan_root):
+                for name in files:
+                    full = os.path.join(root, name)
+                    if match(name, full):
+                        norm = normalize(full)
+                        if norm not in unchecked:
+                            unchecked.add(norm)
+                            added += 1
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self._fs_refresh_view()
+        self.statusBar().showMessage(
+            f"Excluded {added} matching file(s)", 5000)
+
+    def _on_fs_select_matching_only(self) -> None:
+        """Clear exclusions, then exclude everything that does not match
+        the filter.
+
+        Uses a two-pass walk:
+
+        1. Bottom-up: count matching files per directory subtree.
+        2. Top-down: directories whose subtree has zero matches are
+           excluded wholesale (a single entry in ``_unchecked``).
+           Directories with matches are descended into, and each file
+           there is individually excluded if it doesn't match.
+
+        This keeps ``_unchecked`` small even for very large trees.
+        """
+        if not self._fs_require_scan_root():
+            return
+        match = self._fs_filter_predicate()
+        if match is None:
+            if not self.fs_filter_edit.text().strip():
+                self.statusBar().showMessage(
+                    "Enter a filter pattern first", 4000)
+            return
+
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        try:
+            # Pass 1: collect (dir_path, [matching_files], [non_matching_files])
+            # and match counts per directory using a single os.walk.
+            # match_count[dir] = number of matching files in dir's subtree.
+            match_count: Dict[str, int] = {}
+            dir_files: Dict[str, List[tuple]] = {}
+            dir_order: List[str] = []  # parents before children (os.walk default)
+            for root, dirs, files in os.walk(self.scan_root):
+                dir_order.append(root)
+                local = []
+                local_matches = 0
+                for name in files:
+                    full = os.path.join(root, name)
+                    is_match = match(name, full)
+                    local.append((name, full, is_match))
+                    if is_match:
+                        local_matches += 1
+                dir_files[root] = local
+                match_count[root] = local_matches
+
+            # Propagate counts up: walk dir_order in reverse so children
+            # aggregate into parents before parents are themselves read.
+            for d in reversed(dir_order):
+                parent = os.path.dirname(d)
+                if parent in match_count and parent != d:
+                    match_count[parent] += match_count[d]
+
+            # Pass 2: start fresh, then exclude empty branches wholesale
+            # and individual non-matching files in live branches.
+            unchecked = set()
+            normalize = self.fs_model._normalize_path
+            total_matches = match_count.get(str(self.scan_root), 0)
+
+            skipped_dirs: List[str] = []  # prefixes we've already excluded
+            for d in dir_order:
+                # If an ancestor was already excluded, skip quickly.
+                if any(d == s or d.startswith(s + os.sep)
+                       for s in skipped_dirs):
+                    continue
+                if match_count.get(d, 0) == 0:
+                    # Entire subtree has no matches - exclude the dir
+                    unchecked.add(normalize(d))
+                    skipped_dirs.append(d)
+                    continue
+                # Live branch: exclude non-matching files individually.
+                for name, full, is_match in dir_files[d]:
+                    if not is_match:
+                        unchecked.add(normalize(full))
+
+            self.fs_model._unchecked = unchecked
+        finally:
+            QApplication.restoreOverrideCursor()
+
+        self._fs_refresh_view()
+        self.statusBar().showMessage(
+            f"Kept {total_matches} matching file(s)", 5000)
+
+    def on_select_scan_dir(self):
+        path = QFileDialog.getExistingDirectory(
+            self, "Select folder to scan", self.last_dir,
+            options=QFileDialog.ShowDirsOnly | QFileDialog.DontResolveSymlinks,
+        )
+        if not path:
+            return
+        self._set_scan_root(Path(path))
+
+    def _set_scan_root(self, path: Path) -> None:
+        """Set *path* as the current scan directory and refresh the tree.
+
+        Shared by the File menu, drag/drop, and command-line handling.
+        """
+        path = Path(path).resolve()
+        if not path.is_dir():
+            self.statusBar().showMessage(
+                f"Not a directory: {path}", 4000)
+            return
+
+        self.scan_root = path
+        self.last_dir = str(path)
+
+        root_idx = self.fs_model.setRootPath(str(path))
+
+        # Connect model to view if not already connected (first directory selection)
+        if self.fs_view.model() is None:
+            self.fs_view.setModel(self.fs_model)
+
+        # Process events to allow the file system model to populate
+        QApplication.processEvents()
+
+        self.fs_view.setRootIndex(root_idx)
+        self.fs_view.expand(root_idx)
+
+        # Process events again after expanding
+        QApplication.processEvents()
+
+        self.statusBar().showMessage(
+            f"Selected root: {path} (all files selected by default)", 4000)
+        self.update_exclusion_list()
+
+        # Focus on the Scan Directory dock
+        self.dock_scan_dir.setVisible(True)
+        self.dock_scan_dir.raise_()
+
+    def _handle_input_paths(self, paths) -> None:
+        """Dispatch a list of path-like inputs from drag/drop or the CLI.
+
+        Dispatch rules:
+        * Directory  -> set as scan root (first dropped dir wins if many)
+        * .yar/.yara -> loaded into the YARA rule editor
+        * other file -> opened in a new hex editor window
+        Missing paths are silently ignored.
+        """
+        resolved = []
+        for p in paths:
+            try:
+                pp = Path(p)
+            except TypeError:
+                continue
+            if pp.exists():
+                resolved.append(pp)
+        if not resolved:
+            return
+
+        dirs = [p for p in resolved if p.is_dir()]
+        files = [p for p in resolved if p.is_file()]
+
+        if dirs:
+            self._set_scan_root(dirs[0])
+            if len(dirs) > 1:
+                self.statusBar().showMessage(
+                    f"Multiple folders dropped \u2014 using "
+                    f"'{dirs[0].name}' as scan root", 5000)
+
+        for fp in files:
+            ext = fp.suffix.lower()
+            if ext in (".yar", ".yara", ".yarax"):
+                try:
+                    text = fp.read_text(encoding="utf-8")
+                    self._load_text_to_editor(text, source_path=str(fp))
+                except Exception as e:
+                    self.statusBar().showMessage(
+                        f"Failed to load {fp.name}: {e}", 5000)
+            else:
+                self.open_hex_editor(str(fp))
+
+    # ── drag & drop plumbing ─────────────────────────────────────
+    @staticmethod
+    def _drop_urls(event) -> list:
+        md = event.mimeData()
+        if not md or not md.hasUrls():
+            return []
+        out = []
+        for u in md.urls():
+            if u.isLocalFile():
+                lf = u.toLocalFile()
+                if lf:
+                    out.append(lf)
+        return out
+
+    def dragEnterEvent(self, event) -> None:
+        if self._drop_urls(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dragMoveEvent(self, event) -> None:
+        if self._drop_urls(event):
+            event.acceptProposedAction()
+        else:
+            event.ignore()
+
+    def dropEvent(self, event) -> None:
+        paths = self._drop_urls(event)
+        if not paths:
+            event.ignore()
+            return
+        event.acceptProposedAction()
+        self._handle_input_paths(paths)
+
+    def eventFilter(self, obj, event):
+        """Intercept URL drops and Ctrl+Scroll zoom on child widgets."""
+        et = event.type()
+
+        # Ctrl+Scroll on compilation output → zoom its font
+        # Wheel events are delivered to the viewport, so check parent too
+        if (et == QEvent.Type.Wheel
+                and (obj is self.ui.tb_compilation_output
+                     or obj.parent() is self.ui.tb_compilation_output)
+                and event.modifiers() & Qt.KeyboardModifier.ControlModifier):
+            delta = event.angleDelta().y()
+            if delta != 0:
+                cur = getattr(self, '_comp_font_size', 0)
+                if not cur:
+                    cur = self.ui.tb_compilation_output.font().pointSize() or 10
+                new_size = cur + (1 if delta > 0 else -1)
+                new_size = max(6, min(72, new_size))
+                if new_size != cur:
+                    self._comp_font_size = new_size
+                    self.ui.tb_compilation_output.setStyleSheet(
+                        f"font-size: {new_size}pt;")
+                event.accept()
+                return True
+
+        if et in (QEvent.DragEnter, QEvent.DragMove):
+            if self._drop_urls(event):
+                event.acceptProposedAction()
+                return True
+        elif et == QEvent.Drop:
+            paths = self._drop_urls(event)
+            if paths:
+                event.acceptProposedAction()
+                self._handle_input_paths(paths)
+                return True
+        return super().eventFilter(obj, event)
+
+    def on_tree_expanded(self, index: QModelIndex):
+        """When user expands a node, update the checkboxes of its immediate children"""
+        row_count = self.fs_model.rowCount(index)
+        for row in range(row_count):
+            child_index = self.fs_model.index(row, 0, index)
+            if child_index.isValid():
+                # Trigger checkbox update
+                self.fs_model.dataChanged.emit(child_index, child_index, [Qt.CheckStateRole])
+
+    def update_exclusion_list(self):
+        """Update list widget to show EXCLUDED items"""
+        self.ui.listWidget.clear()
+
+        if self.scan_root is None:
+            return
+
+        exclusions = self.fs_model.get_exclusion_list()
+
+        if not exclusions:
+            # No exclusions - everything will be scanned
+            info_item = QListWidgetItem("✓ All files will be scanned (no exclusions)")
+            info_item.setData(Qt.UserRole, None)
+            self.ui.listWidget.addItem(info_item)
+
+            help_item = QListWidgetItem("   💡 Uncheck items in the tree to exclude them from scanning")
+            help_item.setData(Qt.UserRole, None)
+            self.ui.listWidget.addItem(help_item)
+
+            help_item2 = QListWidgetItem("   💡 Unchecked folders = entire folder tree is skipped")
+            help_item2.setData(Qt.UserRole, None)
+            self.ui.listWidget.addItem(help_item2)
+
+            self.statusBar().showMessage("All files selected (no exclusions)", 3000)
+        else:
+            # Show excluded items
+            header_item = QListWidgetItem(f"🚫 Excluded from scan ({len(exclusions)} items):")
+            header_item.setData(Qt.UserRole, None)
+            self.ui.listWidget.addItem(header_item)
+
+            help_item = QListWidgetItem("   ℹ️ These items and their children will be skipped")
+            help_item.setData(Qt.UserRole, None)
+            self.ui.listWidget.addItem(help_item)
+
+            self.ui.listWidget.addItem(QListWidgetItem(""))  # Blank line
+
+            for path in exclusions:
+                p = Path(path)
+                if p.is_dir():
+                    item = QListWidgetItem(f"   📁 {path.replace(os.sep, '/')}")
+                else:
+                    item = QListWidgetItem(f"   📄 {path.replace(os.sep, '/')}")
+                item.setData(Qt.UserRole, path)
+                self.ui.listWidget.addItem(item)
+
+            self.statusBar().showMessage(f"{len(exclusions)} item(s) excluded from scanning", 3000)
+
+    def get_exclusion_list(self) -> list[Path]:
+        """Get list of excluded paths (for saving/loading exclusions)"""
+        return [Path(p) for p in self.fs_model.get_exclusion_list()]
+
+    def iter_selected_files(self):
+        """
+        Iterate over files that should be scanned.
+        Yields Path objects, skipping excluded files/directories.
+        IMPORTANT: If a directory is excluded, we don't traverse into it at all.
+        """
+        if self.scan_root is None:
+            return
+
+        # Manual directory walk to avoid traversing into excluded directories
+        for root, dirs, files in os.walk(self.scan_root):
+            root_path = Path(root)
+
+            # Check if current directory is excluded
+            if self.fs_model.is_excluded(root_path):
+                # Skip this entire directory tree
+                dirs.clear()  # Don't descend into subdirectories
+                continue
+
+            # Filter out excluded subdirectories from dirs (modifies in-place)
+            dirs_to_remove = []
+            for dir_name in dirs:
+                dir_path = root_path / dir_name
+                if self.fs_model.is_excluded(dir_path):
+                    dirs_to_remove.append(dir_name)
+
+            for dir_name in dirs_to_remove:
+                dirs.remove(dir_name)
+
+            # Yield non-excluded files
+            for file_name in files:
+                file_path = root_path / file_name
+                if not self.fs_model.is_excluded(file_path):
+                    yield file_path
+
+    def on_results_tab_changed(self, index):
+        """Handle tab changes in scan results - lazy load misses when needed."""
+        if index == 1 and not self.results.misses_loaded:
+            self.results.populate_misses_tab(self.scan_misses)
+
+    def on_hits_selection_changed(self, selected, deselected):
+        """Handle selection changes in hits table to show details for all selected files."""
+        if self._updating_selection:
+            return
+
+        selection_model = self.ui.tv_file_hits.selectionModel()
+        selected_indexes = selection_model.selectedRows()
+
+        if not selected_indexes:
+            if self.scan_hits:
+                all_filepaths = {h['filepath'] for h in self.scan_hits}
+                self.results.populate_rule_details(self.scan_hits)
+                self.results.populate_similar_files(self.scan_hits, all_filepaths)
+                self.results.populate_similar_tags(self.scan_hits, all_filepaths)
+                self.results.populate_match_details(self.scan_hits)
+            else:
+                self.results.clear_rule_details()
+                self.results.clear_similar_files()
+                self.results.clear_match_details()
+            return
+
+        selected_hits = []
+        for index in selected_indexes:
+            source_index = self.results.hits_proxy.mapToSource(index)
+            row = source_index.row()
+            filename_item = self.results.hits_model.item(row, 0)
+            if not filename_item:
+                continue
+            filepath = filename_item.data(Qt.ItemDataRole.UserRole)
+            if not filepath:
+                continue
+            for hit in self.scan_hits:
+                if hit.get('filepath') == filepath:
+                    selected_hits.append(hit)
+                    break
+
+        if selected_hits:
+            selected_filepaths = {h['filepath'] for h in selected_hits}
+            self.results.populate_rule_details(selected_hits)
+            self.results.populate_similar_files(self.scan_hits, selected_filepaths)
+            self.results.populate_match_details(selected_hits)
+            self.results.populate_similar_tags(self.scan_hits, selected_filepaths)
+
+
+    def _on_file_selection_requested(self, identifier: str):
+        """Handle file selection request from results manager (filepath or filename)."""
+        if self._updating_selection:
+            return
+        self._updating_selection = True
+        try:
+            # Try exact filepath match first
+            for source_row, hit_data in enumerate(self.scan_hits):
+                if hit_data['filepath'] == identifier:
+                    source_index = self.results.hits_model.index(source_row, 0)
+                    proxy_index = self.results.hits_proxy.mapFromSource(source_index)
+                    if proxy_index.isValid():
+                        self.ui.tv_file_hits.selectRow(proxy_index.row())
+                    selected_hits = [hit_data]
+                    selected_filepaths = {hit_data['filepath']}
+                    self.results.populate_rule_details(selected_hits)
+                    self.results.populate_similar_files(self.scan_hits, selected_filepaths)
+                    self.results.populate_match_details(selected_hits)
+                    self.results.populate_similar_tags(self.scan_hits, selected_filepaths)
+                    self.statusBar().showMessage(
+                        f"Selected: {hit_data['filename']} | {len(hit_data.get('matched_rules', []))} rule(s) | Path: {identifier}",
+                        8000
+                    )
+                    return
+            # Fallback: try filename match
+            for source_row, hit_data in enumerate(self.scan_hits):
+                if hit_data['filename'] == identifier:
+                    source_index = self.results.hits_model.index(source_row, 0)
+                    proxy_index = self.results.hits_proxy.mapFromSource(source_index)
+                    if proxy_index.isValid():
+                        self.ui.tv_file_hits.selectRow(proxy_index.row())
+                    selected_hits = [hit_data]
+                    selected_filepaths = {hit_data['filepath']}
+                    self.results.populate_rule_details(selected_hits)
+                    self.results.populate_similar_files(self.scan_hits, selected_filepaths)
+                    self.results.populate_match_details(selected_hits)
+                    self.results.populate_similar_tags(self.scan_hits, selected_filepaths)
+                    return
+        finally:
+            self._updating_selection = False
+
+    # ─── Hex editor ───────────────────────────────────────────────────
+
+    def open_hex_editor(self, filepath: str = None, offset: int = 0, length: int = 0):
+        """Open a hex editor window.
+
+        *filepath* can be a full path or just a filename.  When called from
+        the match-details context menu it is a filename, so we resolve it
+        against scan_hits.  *length* selects that many bytes at *offset*.
+
+        If there are scan results, the hex editor gets a file list so the
+        user can cycle through all matched files with Prev/Next buttons.
+        """
+        # Clean up closed/deleted windows
+        def _alive(w):
+            try:
+                return w.isVisible()
+            except RuntimeError:
+                return False
+        self._hex_editor_windows = [w for w in self._hex_editor_windows if _alive(w)]
+
+        # Resolve filename -> filepath via scan_hits and misses
+        if filepath and not Path(filepath).exists():
+            for hit in self.scan_hits:
+                if hit.get('filename') == filepath or hit.get('filepath') == filepath:
+                    filepath = hit['filepath']
+                    break
+            else:
+                for miss in self.scan_misses:
+                    if miss.get('filename') == filepath or miss.get('filepath') == filepath:
+                        filepath = miss['filepath']
+                        break
+
+        win = HexEditorWindow(theme_manager=self.theme_manager, parent=None)
+        win.yara_pattern_generated.connect(self._insert_yara_pattern)
+        self._hex_editor_windows.append(win)
+
+        # Auto-delete downloaded file when hex editor closes
+        if (filepath and self._get_setting('auto_delete_downloads', False)):
+            dl_dir = self._get_setting('mwdb_download_dir', '')
+            if dl_dir and filepath.startswith(dl_dir):
+                _fp = filepath  # capture for lambda
+                win.destroyed.connect(
+                    lambda: self._auto_delete_file(_fp))
+
+        if filepath and Path(filepath).exists():
+            win.show()
+            win.open_file(filepath, offset, length)
+            # Pass scan results context to the hex editor
+            if self.scan_hits:
+                hit_paths = [h['filepath'] for h in self.scan_hits
+                             if h.get('filepath')]
+                if len(hit_paths) > 1:
+                    win.set_file_list(hit_paths, filepath,
+                                     hits_data=self.scan_hits)
+                # Load YARA match data for this specific file
+                for hit in self.scan_hits:
+                    if hit.get('filepath') == filepath or hit.get('filename') == filepath:
+                        win.set_match_data(
+                            hit.get('matched_rules', []),
+                            hit.get('file_data', b''))
+                        break
+        else:
+            win.show()
+            win._on_open()
+            return
+
+        win.show()
+
+    def _hex_goto_offset(self, offset: int, length: int = 0):
+        """Navigate the most recently opened hex editor to *offset*."""
+        for win in reversed(self._hex_editor_windows):
+            try:
+                if win.isVisible():
+                    win._hex_widget.navigate_to_offset(offset, length)
+                    win.activateWindow()
+                    win.raise_()
+                    return
+            except RuntimeError:
+                pass
+
+    def _insert_yara_pattern(self, pattern_text: str):
+        """Insert a YARA hex pattern from the hex editor at the current cursor position."""
+        cursor = self.ui.te_yara_editor.textCursor()
+        cursor.movePosition(QTextCursor.MoveOperation.EndOfLine)
+        cursor.insertText("\n    " + pattern_text)
+        self.ui.te_yara_editor.setTextCursor(cursor)
+        self.ui.te_yara_editor.ensureCursorVisible()
+        self.statusBar().showMessage("YARA pattern inserted from hex editor", 5000)
+
+    def _add_file_info_menu(self, menu: QMenu, filepath: str):
+        """Add a 'File Info' submenu with hashes and metadata to *menu*."""
+        info_menu = menu.addMenu("File Info")
+
+        act_info = info_menu.addAction("Show File Info...")
+        act_info.triggered.connect(lambda: self._show_file_info_dialog(filepath))
+
+        info_menu.addSeparator()
+        act_md5 = info_menu.addAction("Copy MD5")
+        act_md5.triggered.connect(lambda: self._copy_file_hash(filepath, "md5"))
+        act_sha1 = info_menu.addAction("Copy SHA1")
+        act_sha1.triggered.connect(lambda: self._copy_file_hash(filepath, "sha1"))
+        act_sha256 = info_menu.addAction("Copy SHA256")
+        act_sha256.triggered.connect(lambda: self._copy_file_hash(filepath, "sha256"))
+
+    def _copy_file_hash(self, filepath: str, algo: str):
+        """Compute and copy a file hash to clipboard."""
+        import hashlib
+        try:
+            h = hashlib.new(algo)
+            with open(filepath, 'rb') as f:
+                for chunk in iter(lambda: f.read(65536), b''):
+                    h.update(chunk)
+            digest = h.hexdigest()
+            QApplication.clipboard().setText(digest)
+            self.statusBar().showMessage(
+                f"{algo.upper()}: {digest}", 5000)
+        except Exception as e:
+            QMessageBox.warning(self, "Hash Error", f"Could not hash file:\n{e}")
+
+    def _show_file_info_dialog(self, filepath: str):
+        """Show a dialog with file hashes and metadata."""
+        import hashlib
+        import time as _time
+
+        p = Path(filepath)
+        if not p.exists():
+            QMessageBox.warning(self, "File Not Found", f"File not found:\n{filepath}")
+            return
+
+        try:
+            stat = p.stat()
+            size = stat.st_size
+            mtime = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                   _time.localtime(stat.st_mtime))
+            ctime = _time.strftime("%Y-%m-%d %H:%M:%S",
+                                   _time.localtime(stat.st_ctime))
+
+            data = p.read_bytes()
+            md5 = hashlib.md5(data).hexdigest()
+            sha1 = hashlib.sha1(data).hexdigest()
+            sha256 = hashlib.sha256(data).hexdigest()
+
+            # Detect file type by magic bytes
+            magic = data[:4] if len(data) >= 4 else data
+            if magic[:2] == b'MZ':
+                ftype = "PE (Windows Executable)"
+            elif magic[:4] == b'\x7fELF':
+                ftype = "ELF (Linux Executable)"
+            elif magic[:4] == b'\xfe\xed\xfa\xce' or magic[:4] == b'\xce\xfa\xed\xfe':
+                ftype = "Mach-O (macOS Executable)"
+            elif magic[:4] == b'\xcf\xfa\xed\xfe':
+                ftype = "Mach-O 64-bit"
+            elif magic[:3] == b'PK\x03':
+                ftype = "ZIP Archive"
+            elif magic[:2] == b'\x1f\x8b':
+                ftype = "Gzip Compressed"
+            elif magic[:4] == b'Rar!':
+                ftype = "RAR Archive"
+            elif magic[:4] == b'\x89PNG':
+                ftype = "PNG Image"
+            elif magic[:3] == b'\xff\xd8\xff':
+                ftype = "JPEG Image"
+            elif magic[:4] == b'%PDF':
+                ftype = "PDF Document"
+            else:
+                ftype = "Unknown"
+
+            # Format size
+            if size < 1024:
+                size_str = f"{size} bytes"
+            elif size < 1024 * 1024:
+                size_str = f"{size:,} bytes ({size / 1024:.1f} KB)"
+            else:
+                size_str = f"{size:,} bytes ({size / (1024*1024):.2f} MB)"
+
+            info_text = (
+                f"<b>File:</b> {p.name}<br>"
+                f"<b>Path:</b> {filepath}<br>"
+                f"<b>Size:</b> {size_str}<br>"
+                f"<b>Type:</b> {ftype}<br>"
+                f"<b>Modified:</b> {mtime}<br>"
+                f"<b>Created:</b> {ctime}<br>"
+                f"<br>"
+                f"<b>MD5:</b> <code>{md5}</code><br>"
+                f"<b>SHA1:</b> <code>{sha1}</code><br>"
+                f"<b>SHA256:</b> <code>{sha256}</code>"
+            )
+
+            from PySide6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser, QDialogButtonBox, QPushButton
+            dlg = QDialog(self)
+            dlg.setWindowTitle(f"File Info - {p.name}")
+            dlg.setMinimumWidth(550)
+            layout = QVBoxLayout(dlg)
+
+            browser = QTextBrowser()
+            browser.setHtml(info_text)
+            browser.setOpenExternalLinks(False)
+            layout.addWidget(browser)
+
+            btn_box = QDialogButtonBox()
+            btn_copy_all = QPushButton("Copy All Hashes")
+            btn_copy_all.clicked.connect(lambda: (
+                QApplication.clipboard().setText(
+                    f"MD5:    {md5}\nSHA1:   {sha1}\nSHA256: {sha256}"),
+                self.statusBar().showMessage("All hashes copied", 3000),
+            ))
+            btn_box.addButton(btn_copy_all, QDialogButtonBox.ButtonRole.ActionRole)
+            btn_box.addButton(QDialogButtonBox.StandardButton.Close)
+            btn_box.rejected.connect(dlg.close)
+            layout.addWidget(btn_box)
+
+            dlg.exec()
+
+        except Exception as e:
+            QMessageBox.critical(self, "Error", f"Could not read file info:\n{e}")
+
+    def _show_fs_context_menu(self, pos):
+        """Show context menu for the file system tree view."""
+        index = self.fs_view.indexAt(pos)
+        if not index.isValid():
+            return
+
+        filepath = self.fs_model.filePath(index)
+        if not filepath or not Path(filepath).is_file():
+            return
+
+        menu = QMenu(self)
+        act_hex = menu.addAction("Open in Hex Editor")
+        act_yara = None
+        if filepath.lower().endswith(('.yar', '.yara')):
+            act_yara = menu.addAction("Open in YARA Editor")
+        menu.addSeparator()
+        self._add_file_info_menu(menu, filepath)
+        act_copy = menu.addAction("Copy File Path")
+
+        action = menu.exec(self.fs_view.viewport().mapToGlobal(pos))
+        if action == act_hex:
+            self.open_hex_editor(filepath)
+        elif action == act_yara:
+            self._on_yara_file_requested(filepath)
+        elif action == act_copy:
+            QApplication.clipboard().setText(filepath)
+        elif action ==act_upload:
+            self._upload_file_to_mwdb(filepath)
+        
+    def _upload_file_to_mwdb(self, filepath: str):
+        """ Upload a single file tothe user configureed MWDB instnace 
+        The destination URL is read from settings (mwdb_url). We never
+        substitute a default. these samples are private and must not leak to a public
+        instance. if not url is configured, we tell the user to set it under settings -> connection
+        """
+        # 1. URL required, no fallback to anything external 
+        mwdb_url = (self._get_setting('mwdb_url', '') or '').strip()
+        if not mwdb_url:
+            QMessageBox.warning(
+                self, "MWDB URL not configured",
+                "No MWDB URL is set.\n\n",
+                "Open Settings -> Connection and enter the URL of your MWDB "
+                "instance before uploading. Samples are never sent to a "
+                "default or public MWDB.",
+            )
+            return
+        import yaraxgui.credentials as _cs
+        token = _cs.load_setting_secret(_cs.MWDB_TOKEN, 'mwdb_token', self._get_setting)
+        password = _cs.load_setting_secret(_cs.MWDB_PASSWORD, 'mwdb_password', self._get_setting)
+        username = (self._get_setting('mwdb_username', '') or '').strip()
+
+        if not token and not (username and password):
+            QMessageBox.warning(
+                self, "MWDB Credentials missing",
+                "MWDB needs either API token OR a username + password.\n\n"
+                "Set them under Settings -> Connection.",
+            )
+            return
+        
+        # 3. Sanity check the file
+        try:
+            size = Path(filepath).stat().st_size
+        except OSError as e:
+            QMessageBox.warning(self, "Upload failed",
+                                f"Could not read {filepath}:\n{e}")
+            return
+        if size == 0:
+            QMessageBox.warning(self, "Upload failed",
+                                "File is empty - MWDB rejects 0-byte uploads.")
+            return
+        
+        # 4. Upload using mwdblib (handles auth + retries cleanly)
+        from mwdblib import MWDB
+        api_url = mwdb_url.rstrip('/')
+        if not api_url.endswith('/api'):
+            api_url += '/api'
+        try:
+            from yaraxgui.network import mwdb_session
+            client = MWDB(api_url=api_url + '/', autologin=False)
+            client.api.session = mwdb_session()
+            if token:
+                client.api.set_api_key(token)
+            else:
+                client.login(username, password)
+            
+            with open(filepath, 'rb') as fp:
+                uploaded = client.upload_file(Path(filepath).name, fp.read())
+            sha256 = uploaded.sha256
+        except Exception as e:
+            QMessageBox.critical(self, "Upload to MWDB failed",
+                                 f"Could not upload to {api_url}\n\n{type(e).__name__}: {e}"
+                                 )
+            return
+        # 5. Show success with resulting MWDB URL (clickable).
+        view_url = f"{mwdb_url.rstrip('/')}/file/{sha256}"
+        QMessageBox.information(
+            self, "Uplaoded to MWDB",
+            f"Uploaded successfully.\n\n"
+            f"SHA256: {sha256}\n\n"
+            f"Size: {size:,} bytes\n\n"
+            f"View at :\n{view_url}",)
+        self.statusBar().showMessage(
+            f"Uploaded {Path(filepath).name} to MWDB (SHA256: {sha256}) (Size: {size:,} bytes)", 8000)
+        
+
+
+
+
+
+
+
+
+
+
+
+
+    def _show_hits_context_menu(self, pos):
+        """Show context menu for file hits table (selection-aware)."""
+        index = self.ui.tv_file_hits.indexAt(pos)
+        if not index.isValid():
+            return
+
+        source_index = self.results.hits_proxy.mapToSource(index.siblingAtColumn(0))
+        filename_item = self.results.hits_model.item(source_index.row(), 0)
+        if not filename_item:
+            return
+        filepath = filename_item.data(Qt.ItemDataRole.UserRole)
+        if not filepath:
+            return
+
+        entries = self.results.selected_file_entries(
+            self.ui.tv_file_hits, self.results.hits_proxy,
+            self.results.hits_model, index)
+
+        menu = QMenu(self)
+        act_hex = menu.addAction("Open in Hex Editor")
+        act_info = menu.addAction("Show File Info...")
+        menu.addSeparator()
+        self.results.add_copy_selection_menu(menu, entries)
+
+        action = menu.exec(self.ui.tv_file_hits.viewport().mapToGlobal(pos))
+        if action == act_hex:
+            self.open_hex_editor(filepath)
+        elif action == act_info:
+            self._show_file_info_dialog(filepath)
+
+    def highlight_tag_in_editor(self, tag_name):
+        """Highlight the specified tag in the YARA editor."""
+        if not tag_name:
+            return
+            
+        # Get the editor content
+        cursor = self.ui.te_yara_editor.textCursor()
+        document = self.ui.te_yara_editor.document()
+        
+        # Search for the tag in the editor
+        search_text = f'"{tag_name}"'
+        
+        # Find the tag in the document
+        found_cursor = document.find(search_text)
+        if not found_cursor.isNull():
+            # Move cursor to the found position and select the tag
+            found_cursor.select(QTextCursor.SelectionType.WordUnderCursor)
+            self.ui.te_yara_editor.setTextCursor(found_cursor)
+            
+            # Scroll to make sure it's visible
+            self.ui.te_yara_editor.ensureCursorVisible()
+            
+            # Show message
+            self.statusBar().showMessage(f"Highlighted tag '{tag_name}' in YARA editor", 3000)
+        else:
+            self.statusBar().showMessage(f"Tag '{tag_name}' not found in current YARA rule", 3000)
+    
+
+def main() -> int:
+    """Start the desktop application and dispatch optional input paths."""
+    app = QApplication(sys.argv)
+    widget = MainWindow()
+    widget.show()
+
+    # Handle command-line arguments (file association / drag onto .exe /
+    # Open-With). Same dispatcher as drag-and-drop onto the running window:
+    #   directory -> scan root
+    #   .yar/.yara -> YARA rule editor
+    #   any other file -> hex editor
+    if len(sys.argv) > 1:
+        widget._handle_input_paths(sys.argv[1:])
+
+    return app.exec()

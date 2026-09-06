@@ -1,0 +1,25 @@
+{
+	admin off
+	# IP clients omit SNI. Docker's internal address differs from the site's IP,
+	# so select this site's certificate when the client sends no server name.
+	default_sni {$YARAXGUI_DOMAIN}
+	servers {
+		timeouts {
+			read_header 10s
+			read_body 60s
+			idle 30s
+		}
+		max_header_size 16KB
+	}
+}
+
+{$YARAXGUI_DOMAIN} {
+	# No access logs: URLs may contain repository queries. Never log API keys.
+	header -Server
+	reverse_proxy 172.30.77.3:7777 {
+		transport http {
+			dial_timeout 5s
+			response_header_timeout 65s
+		}
+	}
+}

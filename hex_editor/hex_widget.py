@@ -25,6 +25,12 @@ from .clipboard_exporter import ClipboardExporter
 from .edit_controller import EditController
 
 
+_GRID_FONT_FAMILIES = [
+    "Cascadia Mono", "Consolas", "Courier New", "DejaVu Sans Mono",
+    "Liberation Mono", "Menlo", "Monaco",
+]
+
+
 class HexWidget(QAbstractScrollArea):
     """Custom hex view widget rendering offset | hex | ASCII columns.
 
@@ -85,10 +91,7 @@ class HexWidget(QAbstractScrollArea):
 
         # ── Font setup ─────────────────────────────────────────────
         self._font = QFont()
-        self._font.setFamilies([
-            "Cascadia Mono", "Consolas", "Courier New",
-            "DejaVu Sans Mono", "monospace",
-        ])
+        self._font.setFamilies(_GRID_FONT_FAMILIES)
         self._font.setPointSize(10)
         self._font.setStyleHint(QFont.StyleHint.Monospace,
                                 QFont.StyleStrategy.PreferDefault)
@@ -163,7 +166,14 @@ class HexWidget(QAbstractScrollArea):
     def _grid_font(font):
         font = QFont(font)
         if not QFontInfo(font).fixedPitch():
-            font.setFamily(QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family())
+            candidates = [QFontDatabase.systemFont(QFontDatabase.SystemFont.FixedFont).family(),
+                          *_GRID_FONT_FAMILIES, *QFontDatabase.families()]
+            for family in candidates:
+                if QFontDatabase.isFixedPitch(family):
+                    font.setFamilies([family])
+                    break
+        font.setStyleHint(QFont.StyleHint.Monospace)
+        font.setFixedPitch(True)
         font.setStretch(100)
         font.setLetterSpacing(QFont.SpacingType.AbsoluteSpacing, 0)
         font.setKerning(False)
@@ -171,7 +181,7 @@ class HexWidget(QAbstractScrollArea):
 
     def setFont(self, font):
         super().setFont(self._grid_font(font))
-        self._zoom_base_size = QFontInfo(self.font()).pointSizeF()
+        self._zoom_base_size = self._font_point_size()
         self._refresh_font_metrics()
         if self._buffer is not None:
             self._ensure_visible(self._selection.cursor)
@@ -184,8 +194,18 @@ class HexWidget(QAbstractScrollArea):
         self.addAction(action)
         return action
 
+    def _font_point_size(self):
+        # Use the requested size: QFontInfo can report -1 for an unresolved
+        # platform font, which would reset every zoom operation to the minimum.
+        font = self.font()
+        if font.pointSizeF() > 0:
+            return font.pointSizeF()
+        if font.pixelSize() > 0:
+            return font.pixelSize() * 72.0 / self.logicalDpiY()
+        return 10.0
+
     def zoom_font(self, steps, anchor=None):
-        self._set_zoom_size(QFontInfo(self.font()).pointSizeF() + steps, anchor)
+        self._set_zoom_size(self._font_point_size() + steps, anchor)
 
     def reset_font_zoom(self):
         self._set_zoom_size(self._zoom_base_size)

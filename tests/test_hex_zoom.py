@@ -75,6 +75,33 @@ def test_zoom_limits_and_plain_wheel_scroll(app, view):
     assert view.font().pointSize() == 12
 
 
+def test_zoom_does_not_use_unresolved_platform_point_size(app, view, monkeypatch):
+    import hex_editor.hex_widget as module
+    from types import SimpleNamespace
+
+    real_info = module.QFontInfo
+    monkeypatch.setattr(module, 'QFontInfo', lambda font: SimpleNamespace(
+        fixedPitch=real_info(font).fixedPitch, pointSizeF=lambda: -1))
+    view.setFont(QFont(view.font().family(), 12))
+    view.zoom_font(1)
+    assert view.font().pointSize() == 13
+    view.zoom_font(1)
+    assert view.font().pointSize() == 14
+    view.reset_font_zoom()
+    assert view.font().pointSize() == 12
+
+
+def test_pixel_font_zoom_and_reset_preserve_configured_size(app, view):
+    font = view.font()
+    font.setPixelSize(24)
+    view.setFont(font)
+    base = 24 * 72.0 / view.logicalDpiY()
+    view.zoom_font(1)
+    assert view.font().pointSizeF() == pytest.approx(base + 1, abs=.01)
+    view.reset_font_zoom()
+    assert view.font().pointSizeF() == pytest.approx(base, abs=.01)
+
+
 def test_shifted_and_keypad_plus_also_zoom_an_empty_view(app):
     widget = HexWidget()
     widget.show()

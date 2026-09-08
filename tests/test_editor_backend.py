@@ -1,5 +1,6 @@
 import threading
 import time
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -52,11 +53,12 @@ def test_real_live_linting_uses_toolkit_unicode_ranges(editor):
 def test_included_file_error_does_not_underline_current_file(editor, tmp_path):
     included = tmp_path / "common.yar"
     included.write_text('rule common {condition: missing}')
-    editor.setPlainText(f'include "{included}"\nrule root {{condition: true}}')
+    # Forward slashes are accepted on Windows without YARA string escapes.
+    editor.setPlainText(f'include "{included.as_posix()}"\nrule root {{condition: true}}')
     editor.check_rule()
     until(lambda: bool(editor._diagnostics))
     diagnostic = next(d for d in editor._diagnostics if 'missing' in d['message'])
-    assert diagnostic['origin'] == str(included)
+    assert Path(diagnostic['origin']) == included
     assert 'range' not in diagnostic
 
 

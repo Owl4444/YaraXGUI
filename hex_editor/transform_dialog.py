@@ -788,6 +788,8 @@ class TransformDialog(QDialog):
         )
 
     def _update_preview(self):
+        self._preview_in_label.setToolTip("")
+        self._preview_out_label.setToolTip("")
         max_bytes = self._preview_bytes
         steps = self._current_steps()
         enabled_flags = self._current_enabled_flags()
@@ -836,9 +838,13 @@ class TransformDialog(QDialog):
         # AT a step, not before it), so render that first.
         step_name = steps[focused].spec_name
         disabled_tag = "" if enabled_flags[focused] else " [disabled]"
+        # The picker identifies the operation. Keep captions compact so long
+        # operation names cannot wrap and shrink the byte previews.
+        self._preview_in_label.setToolTip(f"Step {focused + 1}: {step_name}{disabled_tag}")
+        self._preview_out_label.setToolTip(self._preview_in_label.toolTip())
         step_in = outputs[focused] if focused < len(outputs) else b""
         self._preview_in_label.setText(
-            f"Input to step {focused + 1} ({step_name}){disabled_tag}:  "
+            f"Input to step {focused + 1}:  "
             f"{len(step_in)} bytes"
         )
         self._preview_in.setPlainText(_hex_dump(step_in, max_bytes=max_bytes))
@@ -848,7 +854,7 @@ class TransformDialog(QDialog):
         if failed_at == -1 or failed_at > focused:
             step_out = outputs[focused + 1]
             out_label = (
-                f"Output of step {focused + 1} ({step_name}){disabled_tag}:  "
+                f"Output of step {focused + 1}:  "
                 f"{len(step_out)} bytes"
             )
             if not enabled_flags[focused]:
@@ -871,8 +877,7 @@ class TransformDialog(QDialog):
             # An earlier step died — the focused step's input is also missing.
             crashed_name = steps[failed_at].spec_name
             self._preview_in_label.setText(
-                f"Input to step {focused + 1} ({step_name}):  "
-                f"unavailable — step {failed_at + 1} ({crashed_name}) failed"
+                f"Input to step {focused + 1}:  unavailable (step {failed_at + 1} failed)"
             )
             self._preview_in.setPlainText("")
             self._set_preview_error(

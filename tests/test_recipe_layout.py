@@ -1,11 +1,13 @@
+import pytest
 from PySide6.QtTest import QTest
 from hex_editor.transform_dialog import TransformDialog
 from hex_editor.transforms import find_spec
 
 
-def test_recipe_growth_does_not_shrink_previews_and_expand_keeps_contents(app):
+@pytest.mark.parametrize('width', [900, 1200])
+def test_recipe_growth_does_not_shrink_previews_and_expand_keeps_contents(app, width):
     dialog = TransformDialog(True, 0, b'example input'*30)
-    dialog.resize(1200, 680)
+    dialog.resize(width, 680)
     dialog.show()
     QTest.qWait(20)
     before_height = dialog._preview_in.height()

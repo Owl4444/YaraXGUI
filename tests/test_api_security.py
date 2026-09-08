@@ -330,21 +330,42 @@ def test_protected_hardlinks_are_not_readable(tmp_path):
 
 def partial_reply_worker(connection, operation, payload):
     import struct
-    os.write(connection.fileno(), struct.pack('!i', 1024) + b'x')
+    if operation == 'partial':
+        # Connection uses socket I/O on Windows and fd I/O on Unix. A Windows
+        # named-pipe HANDLE is not an fd and cannot be passed to os.write().
+        connection._send(struct.pack('!i', 1024) + b'x')
+    else:
+        connection.send_bytes(b'{"progress": {}}')
     payload['ready'].set()
     time.sleep(15)
 
 
-def test_partial_worker_message_cannot_defeat_timeout(monkeypatch):
+@pytest.mark.parametrize('transport', ['native', 'stream'])
+def test_partial_worker_message_cannot_defeat_timeout(monkeypatch, transport):
     from concurrent.futures import ThreadPoolExecutor
+    from multiprocessing.connection import Connection
+    import socket
+    from types import SimpleNamespace
+
+    def stream_pipe(*, duplex):
+        assert not duplex
+        receiver, sender = socket.socketpair()
+        return (Connection(receiver.detach(), writable=False),
+                Connection(sender.detach(), readable=False))
+
     monkeypatch.setattr('api.workers.worker_main', partial_reply_worker)
     runner = ProcessRunner()
     ready = runner.context.Event()
+    if transport == 'stream':
+        # Exercise an incomplete length-prefixed message on every platform;
+        # the native case also checks blocking Windows named-pipe reads.
+        runner.context = SimpleNamespace(Pipe=stream_pipe, Process=runner.context.Process)
     with ThreadPoolExecutor(1) as pool:
-        pending = pool.submit(runner.run, 'unused', {'ready':ready}, timeout=3)
-        assert ready.wait(2)
-        with pytest.raises(TimeoutError):
-            pending.result(timeout=5)
+        operation = 'partial' if transport == 'stream' else 'progress'
+        pending = pool.submit(runner.run, operation, {'ready':ready}, timeout=5)
+        assert ready.wait(4), 'Worker did not reach the stalled-reply check'
+        with pytest.raises(TimeoutError, match='Operation exceeded its time limit'):
+            pending.result(timeout=8)
 
 
 def test_body_deadline_applies_even_when_chunks_are_already_buffered():

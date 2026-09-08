@@ -58,8 +58,11 @@ python -m pytest
 cd ../..
 ```
 
-Application tests use Qt's offscreen platform. Run the editor suite from its
-own directory so pytest uses its independent configuration and collection rules.
+Application tests use Qt's offscreen platform; on Windows, the test setup points
+Qt at the system Fonts directory so font and layout checks use real fonts.
+Recovery and desktop database paths are isolated for each test on both platforms.
+Run the editor suite from its own directory so pytest uses its independent
+configuration and collection rules.
 Optional Caddy, Windows/native-code, and external-corpus tests explain their
 requirements when skipped. See the editor
 package's [validation notes](../modules/yarax-editor/docs/VALIDATION.md) for its

@@ -89,8 +89,9 @@ def test_platform_location_is_independent_of_bundle(tmp_path, monkeypatch, platf
     assert local_rule_store.local_database_path() == tmp_path / folder / "YaraXGUI/local_rules.db"
 
 
-def test_migration_includes_wal_and_never_overwrites(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_migration_includes_wal_and_never_overwrites(tmp_path, monkeypatch, platform):
+    monkeypatch.setattr(sys, "platform", platform)
     monkeypatch.setattr(local_rule_store, "resource_root", lambda: tmp_path / "old")
     legacy = RuleRepository(tmp_path / "old/config/local_rules.db")
     try:
@@ -110,8 +111,9 @@ def test_migration_includes_wal_and_never_overwrites(tmp_path, monkeypatch):
         legacy.close()
 
 
-def test_failed_migration_does_not_publish_empty_database(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_failed_migration_does_not_publish_empty_database(tmp_path, monkeypatch, platform):
+    monkeypatch.setattr(sys, "platform", platform)
     monkeypatch.setattr(local_rule_store, "resource_root", lambda: tmp_path / "old")
     legacy = tmp_path / "old/config/local_rules.db"
     legacy.parent.mkdir(parents=True)
@@ -122,8 +124,9 @@ def test_failed_migration_does_not_publish_empty_database(tmp_path, monkeypatch)
     assert legacy.read_text() == "invalid database"
 
 
-def test_packaged_restart_uses_saved_copy_after_bundle_disappears(tmp_path, monkeypatch):
-    monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "data"))
+@pytest.mark.parametrize("platform", ["linux", "win32"])
+def test_packaged_restart_uses_saved_copy_after_bundle_disappears(tmp_path, monkeypatch, platform):
+    monkeypatch.setattr(sys, "platform", platform)
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(sys, "executable", str(tmp_path / "install/YaraXGUI.exe"))
     monkeypatch.setattr(local_rule_store, "resource_root", lambda: tmp_path / "_MEI_first")

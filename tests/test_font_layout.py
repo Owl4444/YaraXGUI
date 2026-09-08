@@ -39,6 +39,17 @@ def test_hex_font_cells_scroll_and_hit_testing(app, size):
     buffer.close()
 
 
+def test_grid_finds_a_fixed_font_when_platform_default_is_proportional(app, monkeypatch):
+    import hex_editor.hex_widget as module
+
+    proportional = next(family for family in module.QFontDatabase.families()
+                        if not module.QFontDatabase.isFixedPitch(family))
+    monkeypatch.setattr(module.QFontDatabase, 'systemFont', lambda _: QFont(proportional))
+    font = module.HexWidget._grid_font(QFont(proportional, 24))
+    assert QFontInfo(font).fixedPitch()
+    assert font.pointSize() == 24
+
+
 @pytest.mark.parametrize('wrap', [False, True])
 def test_gutter_tracks_font_size_baselines_and_scrolling(app, monkeypatch, wrap):
     import yaraxgui.editor.widget as module

@@ -18,6 +18,9 @@ def until(predicate, timeout=10):
     end = time.monotonic() + timeout
     while not predicate() and time.monotonic() < end:
         QTest.qWait(10)
+        # qWait processes Qt events but can retain the GIL; let the Python
+        # supervisor drain worker batches instead of starving it on Windows.
+        time.sleep(.001)
     assert predicate()
 
 

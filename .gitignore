@@ -126,6 +126,7 @@ docker-compose.override.yml
 run.sh
 
 # Test and lint caches
+/test-results/
 .pytest_cache/
 .hypothesis/
 .ruff_cache/

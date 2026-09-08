@@ -154,13 +154,13 @@ arrow keys and **Enter**, then click **Add to Recipe**. An incomplete or unknown
 name disables Add, so it cannot insert the previous selection by mistake.
 **Escape** cancels an unfinished search without closing the recipe dialog.
 
-For raw Windows XPRESS Huffman data, add **Compression → XPRESS Huffman
-decompress** and enter the original uncompressed size in bytes (decimal or
-`0x` hexadecimal). Select the payload without its container header. The
-operation needs no extra package and limits output to 64 MiB and decoding to
-2 seconds. Complete payloads up to 4 KiB can preview; larger inputs are
-processed when you Apply. See [XPRESS Huffman recipe](XPRESS_HUFFMAN.md) for
-format details and limits.
+Recipes chain operations for encoding, byte manipulation, decryption,
+compression, hashing, text processing, and Python scripting. Each enabled step
+uses the previous step's output. Reorder or bypass steps to compare results,
+then choose the current selection, marked regions, or entire file as the scope.
+Use **Inspect step** to check intermediate output and each operation's help for
+its required parameters. See [Transform recipes](RECIPES.md) for the workflow,
+examples, preview limits, and saving results.
 
 ## Saving and recovery
 

@@ -50,13 +50,52 @@ generated diff and run the GUI tests when updating the form.
 ```sh
 python -m pip install pytest httpx hypothesis
 python -m pytest
-python -m pytest modules/yarax-editor/tests
+cd modules/yarax-editor
+python -m pytest
+cd ../..
 ```
 
-Application tests use Qt's offscreen platform. Optional Windows/native-code and
-external-corpus tests explain their requirements when skipped. See the editor
+Application tests use Qt's offscreen platform. Run the editor suite from its
+own directory so pytest uses its independent configuration and collection rules.
+Optional Caddy, Windows/native-code, and external-corpus tests explain their
+requirements when skipped. See the editor
 package's [validation notes](../modules/yarax-editor/docs/VALIDATION.md) for its
 additional corpus and browser checks.
+
+## GitHub Actions
+
+The [CI workflow](../.github/workflows/ci.yml) and
+[Windows build workflow](../.github/workflows/windows-build.yml) run on every
+push and pull request. Both also support **Actions → Run workflow** once the
+workflow files are on the default branch. No repository secrets are required.
+
+| Check | Coverage |
+|---|---|
+| Application and editor tests | Ubuntu 24.04 and Windows Server 2025, each with 64-bit Python 3.12 and 3.13; includes GUI, API, repository, scanning, and recipe regressions |
+| Editor browser and package | Python 3.11, the editor's minimum version; standalone tests, real Chromium interactions, wheel and source archive builds, and installation of the wheel in a fresh environment outside the checkout |
+| Headless API container | Linux and Windows Compose configuration validation, Docker image build, then live health, compilation, validation, formatting, and repository requests with temporary storage |
+| Windows executable | Python 3.13; runs `compile_to_exe.bat` and produces `YaraXGUI.exe` |
+
+Linux test jobs obtain Caddy from the same `caddy:2` image used in deployment,
+so the real proxy/TLS tests run there. Windows jobs exercise the native-code
+tests. The external compression corpus remains optional; set `XPRESS_TEST_CORPUS`
+to an existing local corpus when running that additional check manually.
+Windows checkouts preserve original line endings for the bundled reference
+checksum tests, and Python uses UTF-8 on both platforms.
+
+Open a workflow run to see failing steps and download its artifacts. JUnit XML
+reports are retained even when tests fail; successful builds provide the editor
+wheel/source archive and `YaraXGUI-windows-x64` executable artifact. Artifacts
+expire after 14 days. The executable job verifies packaging; desktop behavior
+is covered by the application tests. These workflows do not publish releases
+or deploy the server.
+
+Each workflow cancels its older run for the same ref when a new run starts.
+Dependency downloads use the [setup-python pip cache](https://github.com/actions/setup-python#caching-packages).
+The Chromium job installs its browser and system dependencies using the
+[Playwright CI setup](https://playwright.dev/python/docs/ci).
+Action revisions are pinned to commits with version comments beside them;
+update the pin and comment together when upgrading an action.
 
 ## Executable build
 

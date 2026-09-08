@@ -1,6 +1,7 @@
 # YaraXGUI — headless REST API server
 # Builds a slim image running the FastAPI app (api.yaraxgui_api:app).
-# No PySide6/Qt, keyring, or pyinstaller — server code does not import them.
+# No PySide6/Qt or PyInstaller. mwdblib installs keyring transitively,
+# but server code does not use desktop credential backends.
 
 FROM python:3.12-slim
 

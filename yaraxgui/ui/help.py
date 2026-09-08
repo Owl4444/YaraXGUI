@@ -43,7 +43,7 @@ def documentation_pages():
     pages = []
     for name, filename in (('User Guide', 'USER_GUIDE.md'),
                            ('Keyboard Shortcuts', 'KEYBOARD_SHORTCUTS.md'),
-                           ('XPRESS Huffman Recipe', 'XPRESS_HUFFMAN.md'),
+                           ('Transform Recipes', 'RECIPES.md'),
                            ('Recovery & Troubleshooting', 'RECOVERY_AND_TROUBLESHOOTING.md')):
         path = root / 'docs' / filename
         pages.append((name, path, path.read_text(encoding='utf-8')))
@@ -70,7 +70,7 @@ def documentation_pages():
     path = root / 'docs' / 'EDITOR_COMPATIBILITY.md'
     if path.exists():
         pages.append(('YARA-X Reference / Compatibility', path, path.read_text(encoding='utf-8')))
-    order = ['User Guide', 'Keyboard Shortcuts', 'Recovery & Troubleshooting',
+    order = ['User Guide', 'Keyboard Shortcuts', 'Transform Recipes', 'Recovery & Troubleshooting',
              'YARA-X Reference / Compatibility', 'YARA-X Reference / Getting Started',
              'YARA-X Reference / Language', 'YARA-X Reference / Modules',
              'YARA-X Reference / Module Guides', 'YARA-X Reference / API',

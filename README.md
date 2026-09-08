@@ -85,5 +85,5 @@ its rules. The shared API key is managed in Settings and grants administrator ac
 | Call an API endpoint | [API reference](docs/API_REFERENCE.md) |
 | Develop, test, or add a plugin | [Development](docs/DEVELOPMENT.md) |
 | Customize the theme | [Theming](docs/THEMING.md) |
-| Use XPRESS Huffman decompression | [Recipe guide](docs/XPRESS_HUFFMAN.md) |
+| Decode, decrypt, or transform bytes with recipes | [Transform recipes](docs/RECIPES.md) |
 | Understand editor syntax support and limits | [Editor toolkit](modules/yarax-editor/README.md) |

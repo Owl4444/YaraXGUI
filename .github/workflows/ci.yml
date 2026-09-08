@@ -1,0 +1,204 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  PYTHONUTF8: "1"
+  PYTHONUNBUFFERED: "1"
+  PIP_DISABLE_PIP_VERSION_CHECK: "1"
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  tests:
+    name: Tests (${{ matrix.os }}, Python ${{ matrix.python }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-24.04, windows-2025]
+        python: ["3.12", "3.13"]
+    env:
+      QT_QPA_PLATFORM: offscreen
+    steps:
+      # The bundled upstream corpus has byte-for-byte checksum tests.
+      - name: Preserve fixture line endings
+        run: git config --global core.autocrlf false
+
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: ${{ matrix.python }}
+          architecture: x64
+          cache: pip
+          cache-dependency-path: |
+            requirements.txt
+            modules/yarax-editor/pyproject.toml
+
+      - name: Install Linux Qt libraries and fonts
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --no-install-recommends -y libegl1 libgl1 libopengl0 libxkbcommon0 fonts-dejavu-core
+
+      - name: Get deployment Caddy for TLS tests
+        if: runner.os == 'Linux'
+        run: |
+          docker create --name caddy-ci caddy:2
+          docker cp caddy-ci:/usr/bin/caddy "$RUNNER_TEMP/caddy"
+          docker rm caddy-ci
+          echo "CADDY_BINARY=$RUNNER_TEMP/caddy" >> "$GITHUB_ENV"
+
+      - name: Install application and test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt pytest httpx hypothesis
+          python -m pip check
+          openssl version
+
+      - name: Run application tests
+        run: python -m pytest -ra --junitxml=test-results/application.xml
+
+      - name: Run standalone editor tests
+        working-directory: modules/yarax-editor
+        run: python -m pytest -ra --junitxml=../../test-results/editor.xml
+
+      - name: Upload test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: tests-${{ matrix.os }}-python-${{ matrix.python }}
+          path: test-results/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+  editor:
+    name: Editor browser and package (Python 3.11)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          # The independently packaged editor supports Python 3.11+.
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: modules/yarax-editor/pyproject.toml
+
+      - name: Install editor and browser dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "./modules/yarax-editor[test,browser]" build
+          python -m pip check
+          python -m playwright install --with-deps chromium
+
+      - name: Run editor and Chromium tests
+        working-directory: modules/yarax-editor
+        run: python -m pytest tests browser_tests -ra --junitxml=../../test-results/editor-browser.xml
+
+      - name: Build editor wheel and source archive
+        run: python -m build modules/yarax-editor
+
+      - name: Check wheel outside the checkout
+        run: |
+          python -m venv "$RUNNER_TEMP/editor-wheel"
+          "$RUNNER_TEMP/editor-wheel/bin/python" -m pip install modules/yarax-editor/dist/*.whl
+          cd "$RUNNER_TEMP"
+          "$RUNNER_TEMP/editor-wheel/bin/python" -I - <<'PY'
+          import hashlib
+          from importlib.resources import files
+          import json
+          from yarax_editor import Compiler, LanguageService
+          from yarax_editor.formatter import format_source
+
+          data = files("yarax_editor").joinpath("data")
+          manifest = json.loads(data.joinpath("manifest.json").read_text(encoding="utf-8"))
+          assert hashlib.sha256(data.joinpath("catalog.json").read_bytes()).hexdigest() == manifest["catalog_sha256"]
+          for entry in manifest["files"]:
+              assert hashlib.sha256(data.joinpath(entry["path"]).read_bytes()).hexdigest() == entry["sha256"], entry["path"]
+          source = "rule smoke {condition: with n = filesize : (n > 0)}"
+          assert Compiler().validate(format_source(source)).valid
+          prefix = 'import "pe" rule smoke {condition: pe.sections[0].raw'
+          assert LanguageService().complete(prefix, len(prefix), explicit=True)
+          print("Installed wheel: references, formatting, compilation and completion passed")
+          PY
+
+      - name: Upload editor test reports
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: editor-browser-tests
+          path: test-results/*.xml
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Upload editor package
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: yarax-editor-package
+          path: modules/yarax-editor/dist/*
+          if-no-files-found: error
+          retention-days: 14
+
+  docker:
+    name: Headless API container
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      # Public test values used only to validate Compose interpolation.
+      YARAXGUI_API_KEY: ci-only-compose-key-0123456789abcdef
+      YARAXGUI_DOMAIN: localhost
+      YARAXGUI_DATA_DIR: ./ci-data
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate Linux and Windows Compose configurations
+        run: |
+          docker compose --env-file /dev/null -f compose.yaml config --quiet
+          docker compose --env-file /dev/null -f compose.yaml -f deployment/compose.windows.yaml config --quiet
+
+      - name: Build API image
+        run: docker build --tag yaraxgui-api:ci .
+
+      - name: Start API with temporary storage
+        id: container
+        run: |
+          docker run --detach --name yaraxgui-api-ci \
+            --read-only \
+            --tmpfs /tmp:rw,nosuid,size=536870912,mode=1777 \
+            --tmpfs /data:rw,nosuid,size=134217728,uid=1000,gid=1000 \
+            --env YARAXGUI_DEV_MODE=1 \
+            yaraxgui-api:ci
+
+      - name: Check live API and headless dependencies
+        # Requests stay on loopback inside the container, as development mode requires.
+        run: docker exec -i yaraxgui-api-ci python - < scripts/ci/smoke_api.py
+
+      - name: Show container logs
+        if: always() && steps.container.outcome == 'success'
+        run: docker logs yaraxgui-api-ci
+
+      - name: Remove test container
+        if: always() && steps.container.outcome == 'success'
+        run: docker rm --force yaraxgui-api-ci

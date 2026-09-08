@@ -1,18 +1,21 @@
 # Development
 
-Run commands from the checkout root unless noted otherwise. Use Python 3.12+
+Run commands from the checkout root unless noted otherwise. Use Python 3.13+
 and a 64-bit interpreter for the desktop build.
 
 ## Setup and launch
 
 ```sh
-python -m venv .venv
 # Linux/macOS:
+python3.13 -m venv .venv
 . .venv/bin/activate
-# Windows: .venv\Scripts\activate
+# Windows: py -3.13 -m venv .venv, then .venv\Scripts\activate
 python -m pip install -r requirements.txt
 python -m yaraxgui
 ```
+
+You can substitute a newer Python interpreter when creating the environment.
+After activation, `python` refers to that environment's interpreter.
 
 `python mainwindow.py` remains a compatibility entry point. Both launchers
 accept files and directories as arguments, and dispatch frozen analysis workers
@@ -71,9 +74,9 @@ workflow files are on the default branch. No repository secrets are required.
 
 | Check | Coverage |
 |---|---|
-| Application and editor tests | Ubuntu 24.04 and Windows Server 2025, each with 64-bit Python 3.12 and 3.13; includes GUI, API, repository, scanning, and recipe regressions |
-| Editor browser and package | Python 3.11, the editor's minimum version; standalone tests, real Chromium interactions, wheel and source archive builds, and installation of the wheel in a fresh environment outside the checkout |
-| Headless API container | Linux and Windows Compose configuration validation, Docker image build, then live health, compilation, validation, formatting, and repository requests with temporary storage |
+| Application and editor tests | Ubuntu 24.04 and Windows Server 2025, each with 64-bit Python 3.13; includes GUI, API, repository, scanning, and recipe regressions |
+| Editor browser and package | Python 3.13, the minimum supported version; standalone tests, real Chromium interactions, wheel and source archive builds, and installation of the wheel in a fresh environment outside the checkout |
+| Headless API container | Linux and Windows Compose configuration validation, Python 3.13 Docker image build, then live health, compilation, validation, formatting, and repository requests with temporary storage |
 | Windows executable | Python 3.13; runs `compile_to_exe.bat` and produces `YaraXGUI.exe` |
 
 Linux test jobs obtain Caddy from the same `caddy:2` image used in deployment,
@@ -132,8 +135,9 @@ On Unix, `scripts/run_api.sh` runs the same server from any working directory.
 It reads security settings from the inherited environment and accepts `--host`
 and `--port`. Development mode is loopback-only; public mode requires HTTPS
 and an API key. Set `YARAXGUI_PYTHON` to an interpreter path if needed; its
-default is `python3`. It does not source `.env`; Docker Compose uses the root
-`.env` separately. See `.env.example` and [API security and deployment](API_SECURITY.md).
+default is `python3`, which must be version 3.13 or newer. It does not source
+`.env`; Docker Compose uses the root `.env` separately. See `.env.example` and
+[API security and deployment](API_SECURITY.md).
 
 The Docker build copies the application package, but the API only imports its
 headless components. Persistent server data belongs on the `/data` volume.
@@ -207,6 +211,6 @@ See the [REST endpoint catalog](API_REFERENCE.md) for built-in routes.
 
 Use `compile_to_exe.bat` without arguments for an active virtual environment,
 or pass `py -3.13` or an explicit `python.exe` path. The script prints the
-selected interpreter and validates Python 3.12+ / 64-bit. Use `py --list` if
+selected interpreter and validates Python 3.13+ / 64-bit. Use `py --list` if
 the launcher cannot find your runtime. Close the output executable before
 building. Set `YARAXGUI_BUILD_NO_PAUSE=1` for unattended builds.

@@ -3,7 +3,7 @@
 # No PySide6/Qt or PyInstaller. mwdblib installs keyring transitively,
 # but server code does not use desktop credential backends.
 
-FROM python:3.12-slim
+FROM python:3.13-slim
 
 # Non-root user
 RUN groupadd -g 1000 yaraxgui && useradd -u 1000 -g yaraxgui -d /app -s /usr/sbin/nologin yaraxgui

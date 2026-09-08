@@ -74,12 +74,12 @@ if "%~x1"=="" set "YARAXGUI_BUILD_CANDIDATE=%~1.exe"
 for %%P in ("%YARAXGUI_BUILD_CANDIDATE%") do if exist "%%~fP" set "YARAXGUI_BUILD_CANDIDATE=%%~fP"
 for %%P in ("%YARAXGUI_BUILD_CANDIDATE%") do if not "%%~$PATH:P"=="" set "YARAXGUI_BUILD_CANDIDATE=%%~$PATH:P"
 if defined YARAXGUI_BUILD_PROBE_VERBOSE goto probe_verbose
-"%YARAXGUI_BUILD_CANDIDATE%" %~2 -c "import struct, sys; sys.exit(not (sys.version_info >= (3, 12) and struct.calcsize('P') == 8))" >nul 2>&1
+"%YARAXGUI_BUILD_CANDIDATE%" %~2 -c "import struct, sys; sys.exit(not (sys.version_info >= (3, 13) and struct.calcsize('P') == 8))" >nul 2>&1
 goto probe_result
 
 :probe_verbose
 echo Checking requested interpreter: "%YARAXGUI_BUILD_CANDIDATE%" %~2
-"%YARAXGUI_BUILD_CANDIDATE%" %~2 -c "import struct, sys; bits = struct.calcsize('P') * 8; print('Executable:', sys.executable); print('Version:', sys.version); print('Architecture:', bits, 'bit'); valid = sys.version_info >= (3, 12) and bits == 64; print('Interpreter check:', 'OK' if valid else 'Requires Python 3.12+ and a 64-bit interpreter'); sys.exit(0 if valid else 1)"
+"%YARAXGUI_BUILD_CANDIDATE%" %~2 -c "import struct, sys; bits = struct.calcsize('P') * 8; print('Executable:', sys.executable); print('Version:', sys.version); print('Architecture:', bits, 'bit'); valid = sys.version_info >= (3, 13) and bits == 64; print('Interpreter check:', 'OK' if valid else 'Requires Python 3.13+ and a 64-bit interpreter'); sys.exit(0 if valid else 1)"
 
 :probe_result
 set "YARAXGUI_BUILD_PROBE_EXIT=%errorlevel%"
@@ -92,7 +92,7 @@ exit /b 0
 set "YARAXGUI_BUILD_EXIT=9009"
 if defined YARAXGUI_BUILD_PROBE_EXIT set "YARAXGUI_BUILD_EXIT=%YARAXGUI_BUILD_PROBE_EXIT%"
 echo.
-echo Could not run a 64-bit Python 3.12 or newer interpreter.
+echo Could not run a 64-bit Python 3.13 or newer interpreter.
 if defined YARAXGUI_BUILD_PROBE_VERBOSE echo The requested command failed with exit code %YARAXGUI_BUILD_EXIT%; see its output above.
 echo List installed Python runtimes with: py --list
 if defined VIRTUAL_ENV echo To use the active virtual environment instead, run: compile_to_exe.bat

@@ -37,7 +37,8 @@ as the baseline; recovery reports that error instead of replaying edits onto it.
 ## Windows executable build cannot find Python
 
 The build script detects an active or project virtual environment, Qt Creator's
-Python environment, then `py -3` or `python`. It requires 64-bit Python 3.12+.
+Python environment, then `py -3.13`, `py -3`, or `python`.
+It requires 64-bit Python 3.13 or newer.
 An explicit path can be supplied:
 
 ```bat

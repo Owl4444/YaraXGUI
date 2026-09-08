@@ -8,7 +8,7 @@ version = "0.1.0"
 description = "Standalone, versioned YARA-X language services and editor toolkit"
 readme = "README.md"
 license-files = ["THIRD_PARTY_NOTICES.md"]
-requires-python = ">=3.11"
+requires-python = ">=3.13"
 dependencies = ["yara-x==1.20.0"]
 
 [project.optional-dependencies]

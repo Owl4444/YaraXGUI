@@ -321,7 +321,8 @@ rules do not untrack files that were already committed.
 
 ## Existing proxy or certificate files
 
-For an HTTPS reverse proxy running natively on the same host, run the API with:
+For an HTTPS reverse proxy running natively on the same host, use a Python 3.13+
+environment and run the API with:
 
 ```sh
 export YARAXGUI_API_KEY='<generated-key>'

@@ -17,7 +17,7 @@ Use it as a desktop app, or connect to your own server to share a rule repositor
 
 ## Run the desktop app
 
-Requires **64-bit Python 3.12+**. Windows examples use Python 3.13.
+Requires **64-bit Python 3.13 or newer**. Examples below use Python 3.13.
 Clone the project once, or open your existing checkout:
 
 ```sh
@@ -38,7 +38,7 @@ py -3.13 -m venv .venv
 **Linux / macOS**
 
 ```sh
-python3 -m venv .venv
+python3.13 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements.txt
 ./.venv/bin/python -m yaraxgui
 ```

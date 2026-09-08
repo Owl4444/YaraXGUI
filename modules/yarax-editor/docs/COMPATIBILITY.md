@@ -2,6 +2,8 @@
 
 ## Version and engine boundary
 
+YaraXGUI and the editor toolkit require **Python 3.13 or newer**.
+
 The tested target of this package revision is the **public Python wheel
 `yara-x==1.20.0`**, corresponding to upstream commit
 `60ad06971467029e77967e59d580cbbe85a1474d`. “Compatible” means accepting/rejecting

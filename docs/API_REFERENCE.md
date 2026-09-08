@@ -8,7 +8,8 @@ URL configured for your server. Remote file paths refer to server-side files
 and must be inside its allowed directories; upload a client file first if needed.
 A shared API key grants administrator access; there are no per-user roles.
 
-For interactive request/response schemas during loopback development, run
+For interactive request/response schemas during loopback development, use a
+Python 3.13+ environment. Run
 `YARAXGUI_DEV_MODE=1 python -m api.server` on Linux and open
 `http://localhost:7777/docs`. In PowerShell, set `$env:YARAXGUI_DEV_MODE="1"`
 before running `python -m api.server`. Production documentation endpoints are

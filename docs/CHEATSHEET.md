@@ -2,7 +2,8 @@
 
 Common tasks in one place. Run commands from your project folder, such as
 `R:\Tools\YaraXGUI\YaraXGUI` on Windows or `/opt/stacks/yaraxgui` on Linux.
-Use the same checkout and Docker storage layout each time.
+Use Python 3.13 or newer for host commands, and the same checkout and Docker
+storage layout each time.
 
 [Desktop](#desktop) · [LAN server](#connect-to-a-server-by-lan-ip) ·
 [Server commands](#everyday-server-commands) · [Backups](#back-up-export-or-migrate-rules) ·
@@ -52,7 +53,7 @@ for **192.168.1.50** throughout.
 
    | Windows | Linux |
    |---|---|
-   | `py -3.13 -c "import secrets; print(secrets.token_urlsafe(32))"` | `python3 -c "import secrets; print(secrets.token_urlsafe(32))"` |
+   | `py -3.13 -c "import secrets; print(secrets.token_urlsafe(32))"` | `python3.13 -c "import secrets; print(secrets.token_urlsafe(32))"` |
 
 3. Apply the settings. Clearing the shell variable prevents an old value from
    overriding `.env`.
@@ -136,7 +137,7 @@ py -3.13 scripts/repository.py backup backups/rules-2026-09-06.db
 py -3.13 scripts/repository.py export backups/rules-2026-09-06.zip
 ```
 
-**Linux:** use `python3` instead of `py -3.13`; use `sudo python3` if Docker
+**Linux:** use `python3.13` instead of `py -3.13`; use `sudo python3.13` if Docker
 requires it. The helper automatically chooses the platform's storage layout.
 
 The **`.db`** is a consistent snapshot for migration. The **ZIP** contains `.yar`
@@ -153,7 +154,7 @@ py -3.13 scripts/repository.py restore backups/rules-2026-09-06.db
 
 If a destination database already exists, add **`--replace`** to the restore
 command only after backing it up. Restore replaces the rules; it does not merge.
-On Linux substitute `./scripts/compose.sh` and `python3`. Restart only after a
+On Linux substitute `./scripts/compose.sh` and `python3.13`. Restart only after a
 successful restore. [Full migration guide and limits](REPOSITORY_BACKUPS.md).
 
 ## Where your rules live

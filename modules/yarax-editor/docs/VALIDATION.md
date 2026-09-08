@@ -1,7 +1,13 @@
 # Validation report
 
-Target: **YARA-X 1.20.0**, Linux x86-64, Python 3.12. The module remains independently packaged; YaraXGUI now integrates it through
-Qt and headless adapters. This report describes the standalone implementation.
+Current requirement: **Python 3.13 or newer**, with **YARA-X 1.20.0**.
+The module remains independently packaged; YaraXGUI integrates it through
+Qt and headless adapters.
+
+The results below are a historical record of earlier Linux x86-64 validation.
+The [machine-readable report](validation-report.json) retains the original
+interpreter version and results. Current CI uses Python 3.13; see
+[Development](../../../docs/DEVELOPMENT.md#github-actions) for the active checks.
 
 | Check | Result |
 |---|---|

@@ -10,7 +10,7 @@ an engine/catalog version mismatch fails visibly instead of claiming compatibili
 
 ## Run the editor
 
-From this directory, in a Python 3.11+ virtual environment:
+From this directory, in a Python 3.13+ virtual environment:
 
 ```sh
 python -m pip install -e '.[test]'

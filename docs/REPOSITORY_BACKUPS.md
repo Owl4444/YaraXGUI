@@ -23,8 +23,9 @@ transfer module:
 .\scripts\compose.bat up -d --build
 ```
 
-The tools use only Python's standard library on the host; no GUI dependencies
-are needed. From the project folder, while the source API is running:
+Use Python 3.13 or newer on the host. The tools use only its standard library;
+no GUI dependencies are needed. From the project folder, while the source API
+is running:
 
 ```powershell
 py -3.13 scripts/repository.py backup backups/rules-2026-09-06.db
@@ -98,13 +99,14 @@ Custom database tables and custom schema extensions are not migrated.
 
 ## Linux and moving between platforms
 
-On Linux, substitute `python3` for `py -3.13` and `./scripts/compose.sh` for
-`.\scripts\compose.bat`. For example, after copying the Windows backup to Linux:
+On Linux, substitute `python3.13` (or a newer interpreter) for `py -3.13` and
+`./scripts/compose.sh` for `.\scripts\compose.bat`. For example, after copying
+the Windows backup to Linux:
 
 ```sh
 ./scripts/compose.sh build yaraxgui-api
 ./scripts/compose.sh stop yaraxgui-api
-python3 scripts/repository.py restore backups/rules-2026-09-06.db
+python3.13 scripts/repository.py restore backups/rules-2026-09-06.db
 ./scripts/compose.sh up -d
 ```
 
@@ -125,10 +127,10 @@ your own Compose commands, or operate on the stopped database directly.
 The module also works without Docker and takes an explicit database path:
 
 ```sh
-python3 -m api.repository_transfer backup backup.db --database /srv/yaraxgui/rules.db
-python3 -m api.repository_transfer export rules.zip --database /srv/yaraxgui/rules.db
+python3.13 -m api.repository_transfer backup backup.db --database /srv/yaraxgui/rules.db
+python3.13 -m api.repository_transfer export rules.zip --database /srv/yaraxgui/rules.db
 # Stop the API (or close the desktop for its local database) before restoring.
-python3 -m api.repository_transfer restore backup.db --database /srv/yaraxgui/rules.db --replace
+python3.13 -m api.repository_transfer restore backup.db --database /srv/yaraxgui/rules.db --replace
 ```
 
 Run as the database owner. The module defaults to `YARAXGUI_REPO_DB` when set.
@@ -155,7 +157,7 @@ into a separate deployment before relying on it.
 ## Container reports No module named api.repository_transfer
 
 This error comes from Python inside the container, even when the host script
-was launched with `sudo python3`. Updating the host checkout does not replace
+was launched with `sudo python3.13`. Updating the host checkout does not replace
 code in an already running container. Confirm `api/repository_transfer.py` is
 present in the server checkout, then rebuild/recreate using the same platform
 launcher and storage settings. On Linux:
@@ -163,7 +165,7 @@ launcher and storage settings. On Linux:
 ```sh
 sudo ./scripts/compose.sh up -d --build --force-recreate
 sudo ./scripts/compose.sh exec -T yaraxgui-api python -m api.repository_transfer --help
-sudo python3 scripts/repository.py backup backups/rules.db
+sudo python3.13 scripts/repository.py backup backups/rules.db
 ```
 
 Omit `sudo` if your account already has Docker access. On Windows, use

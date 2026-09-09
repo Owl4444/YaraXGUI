@@ -68,6 +68,12 @@ Start with the [server cheatsheet](docs/CHEATSHEET.md#connect-to-a-server-by-lan
 It covers Docker startup, the CA certificate, and desktop settings for Windows/Linux.
 For Internet hosting, follow the [public deployment guide](docs/API_SECURITY.md#public-deployment-with-automatic-https).
 
+MWDB retrohunts also need the [MWDB URL and CA configured on the scan server](docs/API_SECURITY.md#mwdb-retrohunt-server-configuration).
+The desktop's MWDB connection settings configure browsing; the API server
+performs the scans. A missing or different server MWDB URL returns HTTP 403.
+For a desktop on another computer, use the [MWDB scan connection checklist](docs/API_SECURITY.md#connect-a-remote-desktop-to-this-lan-deployment)
+to configure both service addresses, credentials, and CA certificates in order.
+
 Rules persist in the mounted database across container rebuilds and restarts.
 Keep separate [backups](docs/REPOSITORY_BACKUPS.md); deleting the data volume deletes
 its rules. The shared API key is managed in Settings and grants administrator access.

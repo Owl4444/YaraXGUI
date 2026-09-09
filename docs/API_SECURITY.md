@@ -418,6 +418,162 @@ launching the desktop too. This applies to both its urllib and mwdblib transport
 otherwise their standard trust stores are used. The Settings CA field is
 specifically for the YaraXGUI API.
 
+## MWDB retrohunt server configuration
+
+The desktop's **Connect** button contacts MWDB directly. **Scan MWDB** submits
+a job to the YaraXGUI API server, which connects to MWDB to download and scan
+samples. The API server therefore needs its own allowed MWDB URL and CA.
+
+An empty `YARAXGUI_MWDB_URL`, or a requested URL that differs from it, returns
+HTTP 403 with `MWDB scans require the server-configured YARAXGUI_MWDB_URL`.
+An incorrect YaraXGUI API key also returns 403, with `Invalid API key`.
+The MWDB API token and the YaraXGUI API key belong to separate services.
+
+Current desktop builds show the scan API address and distinguish these two
+403 reasons in the MWDB status message. They also normalize a trailing slash
+in the MWDB URL before checking the allowed destination. Older desktop builds
+show only `HTTP Error 403: Forbidden`; use a MWDB URL ending in `/api` without
+a trailing slash on those builds.
+
+If the error persists after editing `.env`, check the settings in the running
+container. These can differ from the files until the container is recreated:
+
+```bash
+cd /home/zima/yaraxgui
+sudo docker compose exec -T yaraxgui-api python -c 'import os; p=os.getenv("YARAXGUI_MWDB_CA_FILE", ""); print("MWDB URL:", os.getenv("YARAXGUI_MWDB_URL", "")); print("MWDB CA:", p); print("CA readable:", os.access(p, os.R_OK))'
+```
+
+For the setup below, the expected values are `https://192.168.50.12:8443/api`,
+`/data/certs/mwdb-root.crt`, and `True`. This diagnostic does not print API keys
+or MWDB tokens. In the remote desktop's Settings, **YaraXGUI Server** must
+point to `https://192.168.50.12`; the MWDB URL with port 8443 belongs in the
+MWDB tab. Successful MWDB login does not validate the scan server's API key.
+
+For the Karton Playground instance at `192.168.50.12:8443`, add or update
+these entries in the **YaraXGUI server's** `.env`, preserving its other entries:
+
+```dotenv
+YARAXGUI_MWDB_URL=https://192.168.50.12:8443/api
+YARAXGUI_MWDB_CA_FILE=/data/certs/mwdb-root.crt
+```
+
+The supplied Compose file passes both variables into `yaraxgui-api`. The CA
+path is inside the container. On Linux with the default
+`YARAXGUI_DATA_DIR=/mnt/exthdd/yaraxgui-data`, install the exported public CA
+into the corresponding host directory:
+
+```bash
+sudo install -D -m 0644 /home/zima/karton-playground/mwdb-root.crt /mnt/exthdd/yaraxgui-data/certs/mwdb-root.crt
+cd /home/zima/yaraxgui
+sudo docker compose config --quiet
+sudo docker compose up -d --no-deps yaraxgui-api
+```
+
+Adjust the source and data-directory paths for your installation. The API
+runs as UID 1000; mode `0644` allows it to read this public CA even if Docker
+exported the original certificate with root-only permissions. Copy the public
+`root.crt` from the MWDB proxy. Its private key remains with that proxy.
+
+For Docker Desktop using the named `/data` volume, create `/data/certs` and
+copy the public certificate into that volume, then make it readable by UID
+1000. Use `scripts/compose.bat` so the Windows storage override is included.
+
+Recreating the API container applies the environment changes and clears its
+in-memory scan jobs, so let active scans finish first. Its database and sample
+storage remain in the mounted data directory.
+
+Verify the API container can reach MWDB with certificate verification enabled:
+
+```bash
+sudo docker compose exec -T yaraxgui-api python -c 'import json, os, ssl, urllib.request; url = os.environ["YARAXGUI_MWDB_URL"].rstrip("/") + "/server"; context = ssl.create_default_context(cafile=os.environ["YARAXGUI_MWDB_CA_FILE"]); response = urllib.request.urlopen(url, context=context, timeout=10); print(json.load(response)["server_version"])'
+```
+
+This requests public server information and should print the MWDB version.
+Then use `https://192.168.50.12:8443/api` in the desktop MWDB tab (without a
+trailing slash). In desktop Settings, the YaraXGUI server URL is
+`https://192.168.50.12`, and its API key must match `YARAXGUI_API_KEY` on that
+server. The desktop still needs its own MWDB CA setting as described above.
+
+### Connect a remote desktop to this LAN deployment
+
+Use this checklist after configuring the scan server as above. The example
+has both services on `192.168.50.12` and the desktop app on another computer.
+Hash lookup contacts MWDB directly. Scanning submits a job to the YaraXGUI
+API, which then downloads samples from MWDB.
+
+| Connection | URL | Credential | Public CA certificate |
+|---|---|---|---|
+| Desktop to YaraXGUI scan API | `https://192.168.50.12` | Server's `YARAXGUI_API_KEY` | YaraXGUI proxy's `caddy-root.crt` |
+| Desktop to MWDB | `https://192.168.50.12:8443/api` | MWDB login or token | MWDB proxy's `mwdb-root.crt` |
+| YaraXGUI scan API to MWDB | `https://192.168.50.12:8443/api` | MWDB token supplied with the scan | `/data/certs/mwdb-root.crt` inside the API container |
+
+1. **Check the completed server setup.** The running `yaraxgui-api` container
+   needs `YARAXGUI_MWDB_URL=https://192.168.50.12:8443/api` and
+   `YARAXGUI_MWDB_CA_FILE=/data/certs/mwdb-root.crt`. The readability check
+   above must print `True`, and the verified HTTPS check must print the MWDB
+   version. Once these pass, proceed to desktop configuration.
+
+2. **On the server, export the scan API's public CA.** This comes from the
+   `caddy` service in the YaraXGUI project. If you already have its current
+   certificate on the desktop, proceed to the next step.
+
+   ```bash
+   cd /home/zima/yaraxgui
+   sudo docker compose cp caddy:/data/caddy/pki/authorities/local/root.crt ./caddy-root.crt
+   sudo chmod 0644 ./caddy-root.crt
+   ```
+
+   On the desktop, open a terminal in the folder where you want to keep this
+   certificate and run:
+
+   ```text
+   scp zima@192.168.50.12:/home/zima/yaraxgui/caddy-root.crt .
+   ```
+
+   Keep the file in that folder after selecting it in Settings. The final
+   `.` copies it into the desktop terminal's current directory.
+
+3. **Get the YaraXGUI API key.** On the server, open
+   `/home/zima/yaraxgui/.env` and copy the value of `YARAXGUI_API_KEY` into the
+   desktop's API Key field in the next step. Keep the existing server key;
+   configuring this connection does not require generating a replacement.
+   Keep the value private when sharing diagnostic output.
+
+4. **Configure the desktop scan connection.** In **Settings → Editor
+   Settings… → Connections & Credentials**, set **YaraXGUI Server** to
+   `https://192.168.50.12`, enable **Require HTTPS**, select the desktop copy
+   of `caddy-root.crt` in **Additional CA (PEM)**, and enter the key from step
+   3 in **API Key**. Save the settings. In **Rule Repository**, choose
+   **Remote Server**, enter `https://192.168.50.12`, and click **Connect**.
+   Expect a connected status with a rule count, which can be zero.
+
+5. **Confirm the MWDB connection.** In the MWDB tab, use exactly
+   `https://192.168.50.12:8443/api` without a trailing slash, enter your MWDB
+   credentials, and click **Connect**. The desktop reads MWDB's CA through
+   `YARAXGUI_MWDB_CA_FILE`; if authenticated hash lookup already works, that
+   desktop connection is working.
+
+6. **Test one scan.** Open your YARA rule in the editor, paste a known sample's
+   full SHA-256 into the MWDB tab's **File Hash** field, and click **Scan
+   MWDB**. Expect a job to be created and finish with scan results. For a
+   connection test, this rule matches any sample:
+
+   ```yara
+   rule mwdb_connection_check {
+       condition: true
+   }
+   ```
+
+If Rule Repository Connect fails, record its complete status message. Its
+HTTP errors include the server's explanation: `Invalid API key` identifies
+the scan API credential, while a TLS failure identifies the scan connection's
+certificate or address. If Rule Repository connects but Scan MWDB returns
+403, check the exact MWDB URL in the plugin against the running server's
+`YARAXGUI_MWDB_URL`, including `/api`. Updated desktop code also displays the
+scan API's detailed refusal; an older installed app on another computer must
+be updated separately to receive that diagnostic improvement. A readable CA
+alone does not diagnose an HTTP 403.
+
 ## Remaining boundaries and operational responsibilities
 
 - This is a **shared administrator API**, not a multi-tenant service. Every key

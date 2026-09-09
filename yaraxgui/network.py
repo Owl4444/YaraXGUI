@@ -5,10 +5,11 @@ HTTP fallback are permitted for requests that may carry credentials.
 """
 import errno
 import ipaddress
+import json
 import os
 import socket
 import ssl
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.parse import urlsplit, urlunsplit
 from urllib.request import HTTPRedirectHandler, HTTPSHandler, Request, build_opener
 
@@ -79,6 +80,60 @@ def api_urlopen(request, get_setting=None, *, timeout=10):
     return secure_urlopen(request, timeout=timeout,
                           ca_file=get('api_ca_file', ''),
                           allow_loopback_http=not get('api_https_enabled', True))
+
+
+def mwdb_api_url(url):
+    """Canonical MWDB base for the scan server's fixed-destination check."""
+    value = url.strip().rstrip('/')
+    parsed = urlsplit(value)
+    if (parsed.scheme != 'https' or not parsed.hostname or parsed.username
+            or parsed.password or parsed.query or parsed.fragment):
+        raise ValueError('Use an HTTPS MWDB URL without credentials, query, or fragment')
+    parsed.port
+    return value if value.endswith('/api') else value + '/api'
+
+
+def api_error_message(error, url):
+    """Explain API refusals without displaying arbitrary response bodies."""
+    if not isinstance(error, HTTPError):
+        return connection_error_message(error, url)
+    parsed = urlsplit(url)
+    host = parsed.hostname or 'server'
+    authority = f'[{host}]' if ':' in host else host
+    port = parsed.port or (443 if parsed.scheme == 'https' else 80)
+    endpoint = f'{parsed.scheme}://{authority}:{port}'
+    detail = ''
+    try:
+        body = error.read(4097)
+        if len(body) <= 4096:
+            payload = json.loads(body)
+            if isinstance(payload, dict) and isinstance(payload.get('detail'), str):
+                detail = payload['detail']
+    except (OSError, ValueError, TypeError, AttributeError):
+        pass
+    finally:
+        error.close()
+
+    if detail == 'Invalid API key' or error.code == 401:
+        advice = ('The YaraXGUI API key is missing or incorrect. Update API Key in '
+                  'Settings > Connections & Credentials using the scan server\'s key. '
+                  'MWDB uses its own credentials in the MWDB tab.')
+    elif detail == 'MWDB scans require the server-configured YARAXGUI_MWDB_URL':
+        advice = ('The scan server has not allowed this MWDB URL. Set '
+                  'YARAXGUI_MWDB_URL on the YaraXGUI API server to the MWDB HTTPS '
+                  'API URL, including /api, then recreate the API container.')
+    elif detail == 'Origin is not allowed':
+        advice = 'The YaraXGUI API server rejected the request origin. Check its allowed origins.'
+    elif detail == 'Development mode only accepts loopback clients':
+        advice = 'The YaraXGUI API server is in localhost development mode. Configure it for remote clients.'
+    elif error.code in (403, 404):
+        advice = ('Check YaraXGUI Server and API Key in Settings > Connections & Credentials. '
+                  'Use the YaraXGUI scan API address there; enter the MWDB address in the MWDB tab.')
+    elif error.code == 429:
+        advice = 'The scan server is busy or rate limited. Wait for existing scans to finish and retry.'
+    else:
+        advice = 'Check the YaraXGUI API server logs for the rejected request.'
+    return f'YaraXGUI API at {endpoint} returned HTTP {error.code}. {advice}'
 
 
 def connection_error_message(error, url):

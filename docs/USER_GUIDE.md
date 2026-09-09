@@ -200,6 +200,9 @@ folder and may contain sensitive source or binary data.
 
 Configure your MWDB HTTPS URL and credentials in Settings, then connect from
 the MWDB tab. Its YaraXGUI API requests use the shared server URL and API key.
+**Connect** contacts MWDB directly; **Scan MWDB** submits work to the separate
+**YaraXGUI Server** configured in Settings. Scan failures identify that API
+address and explain recognized authentication or MWDB destination errors.
 Browse/search files, select a rule and run a retrohunt. Server-to-server scans
 return results and match previews; using a Download action explicitly saves
 sample files to your computer. The API server permits only its configured

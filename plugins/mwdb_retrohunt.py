@@ -50,7 +50,11 @@ def _MwdbRetrohuntDock(ctx):
     """Build the MWDB retrohunt dock widget."""
     import json
     import urllib.request
-    from yaraxgui.network import api_url as normalize_api_url, api_urlopen, mwdb_urlopen, safe_sample_name, save_download
+    from yaraxgui.network import (
+        api_url as normalize_api_url, api_urlopen, api_error_message,
+        mwdb_api_url as normalize_mwdb_api_url, mwdb_urlopen,
+        safe_sample_name, save_download,
+    )
     from functools import partial
     from yaraxgui.credentials import load_setting_secret
 
@@ -98,7 +102,7 @@ def _MwdbRetrohuntDock(ctx):
             conn_form = QFormLayout(conn_group)
 
             self._url_input = QLineEdit()
-            self._url_input.setPlaceholderText("https://mwdb.example.com/api/")
+            self._url_input.setPlaceholderText("https://mwdb.example.com/api")
             conn_form.addRow("MWDB URL:", self._url_input)
 
             # Auth mode selector
@@ -256,6 +260,8 @@ def _MwdbRetrohuntDock(ctx):
             retro_layout.addWidget(self._progress)
 
             self._status = QLabel("")
+            self._status.setTextFormat(Qt.TextFormat.PlainText)
+            self._status.setWordWrap(True)
             retro_layout.addWidget(self._status)
 
             # ── Results table ────────────────────────────
@@ -1066,6 +1072,19 @@ def _MwdbRetrohuntDock(ctx):
             if not mwdb_url:
                 QMessageBox.warning(self, "Missing", "MWDB URL is required.")
                 return
+            try:
+                mwdb_api_url = normalize_mwdb_api_url(mwdb_url)
+            except ValueError as exc:
+                QMessageBox.warning(self, "MWDB URL", str(exc))
+                return
+
+            api_url = self._build_api_url()
+            if not api_url:
+                QMessageBox.warning(
+                    self, "YaraXGUI Server",
+                    "Set YaraXGUI Server in Settings > Connections & Credentials. "
+                    "MWDB scans run on that API server.")
+                return
 
             try:
                 mwdb_token = self._get_mwdb_token()
@@ -1096,11 +1115,7 @@ def _MwdbRetrohuntDock(ctx):
             file_hash = self._hash_input.text().strip() or None
             query = self._query_input.text().strip() or None
 
-            # Ensure URL has /api suffix for the server-side scanner
-            mwdb_api_url = mwdb_url if mwdb_url.endswith("/api") else mwdb_url + "/api"
-
             # Submit to API server
-            api_url = self._build_api_url()
             payload = {
                 "rule_text": rule_text,
                 "mwdb_url": mwdb_api_url,
@@ -1118,7 +1133,7 @@ def _MwdbRetrohuntDock(ctx):
             self._progress.setMaximum(self._limit_spin.value())
             self._progress.setValue(0)
             self._table.setRowCount(0)
-            self._status.setText("Submitting scan job...")
+            self._status.setText(f"Submitting scan to {api_url}...")
 
             def _submit():
                 body = json.dumps(payload).encode()
@@ -1127,8 +1142,11 @@ def _MwdbRetrohuntDock(ctx):
                     data=body,
                     headers=self._api_headers(),
                     method="POST")
-                resp = api_urlopen(req, ctx.get_setting, timeout=30)
-                return json.loads(resp.read())
+                try:
+                    with api_urlopen(req, ctx.get_setting, timeout=30) as resp:
+                        return json.loads(resp.read())
+                except (urllib.error.URLError, OSError) as exc:
+                    raise ValueError(api_error_message(exc, api_url)) from exc
 
             def _on_submitted(result):
                 if isinstance(result, Exception):
